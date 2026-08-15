@@ -10,19 +10,24 @@
 	  서버가 거절한 뒤 Notice 로 이유를 알린다. 눌러보고 알게 되는 편이,
 	  남이 산 것 때문에 내 매대가 꺼져 있는 것보다 낫다.
 
-	입장(신발장)과 구매(매대) 둘 다 ProximityPrompt 다. 교실 좌석과 같은 이유다 —
+	구매(매대)는 ProximityPrompt 다. 교실 좌석과 같은 이유다 —
 	어느 물건이 발화했는지를 엔진이 넘겨주므로 클라이언트가 인자를 고를 여지가 없다.
+
+	★ 반면 입장은 프롬프트가 아니라 계단 위 문턱을 밟는 것이다.
+	  프롬프트는 "누를 수 있는 물건"을 가리키는 장치인데, 계단은 물건이 아니라 길이다.
+	  올라갔으면 들어가는 것이 계단의 약속이고, 그 위에 E 를 한 번 더 얹으면
+	  약속이 깨진다. 대신 Touched 는 한 번 넘어가는 동안 여러 번 울리므로,
+	  중복 방지는 ProgressService.enterClass 쪽 가드(inClass·busy)가 맡는다.
 ]]
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RoomKeys = require(ReplicatedStorage.Shared.Config.RoomKeys)
 local Upgrades = require(ReplicatedStorage.Shared.Config.Upgrades)
 local Template = require(script.Parent.Parent.Playground.Template)
 
--- 신발장은 짧게 누르고 있어야 발화한다. 지나가다 E 를 눌러 교실로 빨려 들어가면
--- 그것대로 억울하다. 매대는 결과가 되돌릴 수 없으므로 조금 더 길게 잡는다.
-local RACK_HOLD = 0.4
+-- 매대는 결과가 되돌릴 수 없으므로 살짝 붙잡고 있어야 발화한다.
 local SHOP_HOLD = 0.6
 local PROMPT_DISTANCE = 10
 
@@ -46,7 +51,7 @@ function PlaygroundService.spawn(): SpawnLocation
 	return hub.spawn
 end
 
--- 교실에서 돌아올 때의 위치. 신발장 쪽을 본다.
+-- 교실에서 돌아올 때의 위치. 계단 발치에서 계단을 본다.
 function PlaygroundService.returnCFrame(): CFrame
 	assert(hub, "PlaygroundService.Start 가 먼저 돌아야 한다.")
 	return hub.returnCFrame
@@ -69,10 +74,20 @@ function PlaygroundService.Start()
 	hub.model.Name = RoomKeys.HUB
 	hub.model.Parent = workspace
 
-	-- 신발장. 실내화로 갈아신는 것이 곧 교실 입장이다.
-	local rack = attachPrompt(hub.shoeRack, "실내화로 갈아신기", "신발장", RACK_HOLD)
-	rack.Triggered:Connect(function(player: Player)
-		if enterHandler then
+	--[[
+		계단 끝 문턱. 밟으면 교실로 들어간다.
+
+		Touched 는 파트 이름이 아니라 "무엇이 닿았나"만 주므로, 닿은 파트에서
+		캐릭터 → 플레이어를 거슬러 올라간다. GetPlayerFromCharacter 가 nil 이면
+		NPC 거나 던져진 물건이니 그냥 흘린다.
+	]]
+	hub.entrance.Touched:Connect(function(hit: BasePart)
+		local character = hit.Parent
+		if not character then
+			return
+		end
+		local player = Players:GetPlayerFromCharacter(character)
+		if player and enterHandler then
 			enterHandler(player)
 		end
 	end)

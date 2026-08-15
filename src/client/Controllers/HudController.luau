@@ -3,7 +3,7 @@
 	HUD. 계획서 §7.3 의 규칙은 "덜어내는 것"이다.
 
 	  좌상단  — 지금 몇 학년 몇 반인가, 별은 몇 개인가, 소리 켬/끔
-	  하단중앙 — 지금 이동 모드가 무엇인가 (작게)
+	  하단중앙 — 지금 장착한 업그레이드, 그 아래 이동 모드 (둘 다 작게)
 	  가운데  — 알림 한 줄. 상점 결과처럼 연출이 필요 없는 통보
 	  수료 배너 — 학년을 끝냈을 때만
 
@@ -23,6 +23,7 @@ local StarterGui = game:GetService("StarterGui")
 local TweenService = game:GetService("TweenService")
 
 local MovementConfig = require(ReplicatedStorage.Shared.Config.MovementConfig)
+local Upgrades = require(ReplicatedStorage.Shared.Config.Upgrades)
 local MovementController = require(script.Parent.MovementController)
 local SoundController = require(script.Parent.SoundController)
 
@@ -38,6 +39,19 @@ local MODE_COLORS = {
 	RUN = Color3.fromRGB(255, 140, 140),
 }
 
+--[[
+	장착 칸의 글리프. 이미지 에셋을 쓰지 않는 프로젝트라 이모지로 대신한다.
+	이름만 나열하면 세 개가 다 비슷한 글자 덩어리로 보이는데,
+	앞에 그림이 하나 붙으면 곁눈질로도 어느 것이 켜져 있는지 구분된다.
+]]
+local UPGRADE_GLYPHS = {
+	quietShoes = "👟",
+	balance = "⚖️",
+	instinct = "👁️",
+}
+
+local CHIP_POP = 0.22
+
 local player = Players.LocalPlayer
 
 local HudController = {}
@@ -48,9 +62,11 @@ local modeLabel: TextLabel
 local noticeLabel: TextLabel
 local bannerLabel: TextLabel
 local muteButton: TextButton
+local chips: { [string]: TextLabel } = {}
 
 local noticeToken = 0
 local bannerToken = 0
+local shownUpgrades: { [string]: boolean } = {}
 
 local function makeLabel(parent: Instance, name: string, size: number, font: Enum.Font): TextLabel
 	local label = Instance.new("TextLabel")
@@ -111,7 +127,58 @@ local function buildGui()
 	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = muteButton
 
-	-- ── 하단 중앙 ──
+	--[[
+		── 하단 중앙: 장착한 업그레이드 ──
+
+		산 물건이 화면 어디에도 안 보이면, 별을 쓴 것이 실제로 무엇을 바꿨는지
+		알 방법이 없다. 그렇다고 크게 띄우면 이 HUD 의 규칙("덜어내는 것")이 깨지므로,
+		이동 모드 바로 위에 작은 칸으로 눕힌다. 아무것도 없으면 줄 자체가 안 보인다.
+
+		AutomaticSize 를 쓰는 이유는 칸 개수가 0~3 으로 변하기 때문이다.
+		너비를 못박으면 하나만 켜졌을 때 가운데가 아니라 왼쪽에 치우쳐 보인다.
+	]]
+	local chipRow = Instance.new("Frame")
+	chipRow.Name = "Equipped"
+	chipRow.BackgroundTransparency = 1
+	chipRow.AnchorPoint = Vector2.new(0.5, 1)
+	chipRow.Position = UDim2.new(0.5, 0, 1, -44)
+	chipRow.Size = UDim2.fromOffset(0, 26)
+	chipRow.AutomaticSize = Enum.AutomaticSize.X
+	chipRow.Parent = gui
+
+	local rowLayout = Instance.new("UIListLayout")
+	rowLayout.FillDirection = Enum.FillDirection.Horizontal
+	rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	rowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rowLayout.Padding = UDim.new(0, 6)
+	rowLayout.Parent = chipRow
+
+	for order, key in Upgrades.ORDER do
+		local def = Upgrades.DEFS[key]
+		local chip = makeLabel(chipRow, key, 15, Enum.Font.GothamMedium)
+		chip.LayoutOrder = order
+		chip.Size = UDim2.fromOffset(0, 26)
+		chip.AutomaticSize = Enum.AutomaticSize.X
+		chip.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		chip.BackgroundTransparency = 0.5
+		chip.TextStrokeTransparency = 1
+		chip.Text = `{UPGRADE_GLYPHS[key] or "•"} {def.name}`
+		chip.Visible = false
+
+		local chipCorner = Instance.new("UICorner")
+		chipCorner.CornerRadius = UDim.new(0, 8)
+		chipCorner.Parent = chip
+
+		local pad = Instance.new("UIPadding")
+		pad.PaddingLeft = UDim.new(0, 10)
+		pad.PaddingRight = UDim.new(0, 10)
+		pad.Parent = chip
+
+		chips[key] = chip
+	end
+
+	-- ── 하단 중앙: 이동 모드 ──
 	-- 모바일 터치 버튼(ContextActionService 가 자동 생성)은 오른쪽 아래에 뜨므로 겹치지 않는다.
 	modeLabel = makeLabel(gui, "Mode", 18, Enum.Font.GothamMedium)
 	modeLabel.Size = UDim2.new(1, 0, 0, 24)
@@ -156,12 +223,38 @@ local function toggleMute()
 	refreshMute()
 end
 
+--[[
+	장착 칸 갱신. ProfileUpdated 는 산 직후에도, 접속할 때도 똑같이 온다.
+	그래서 "이번에 새로 생긴 것"만 튀어오르게 하고 나머지는 조용히 켠다 —
+	재접속할 때마다 세 칸이 다 같이 뛰면 그건 피드백이 아니라 소음이다.
+]]
+local function refreshChips(owned: { [string]: boolean }?)
+	for key, chip in chips do
+		local has = owned ~= nil and owned[key] == true
+		chip.Visible = has
+
+		if has and not shownUpgrades[key] then
+			-- 새로 산 것. 살짝 크게 떴다가 제자리로 — TRANS_BACK 대신 Back/Out 이다
+			chip.TextSize = 21
+			TweenService
+				:Create(
+					chip,
+					TweenInfo.new(CHIP_POP, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+					{ TextSize = 15 }
+				)
+				:Play()
+		end
+		shownUpgrades[key] = has
+	end
+end
+
 function HudController.onProfile(packet)
 	if not classLabel then
 		return
 	end
 	classLabel.Text = `{packet.grade}학년 {packet.class}반`
 	starLabel.Text = `★ {packet.stars}`
+	refreshChips(packet.upgrades)
 end
 
 function HudController.onNotice(message: string)

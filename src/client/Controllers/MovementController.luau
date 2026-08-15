@@ -73,11 +73,20 @@ local slideSpeed = 0
 local slideStopTime = 0
 local slideDir = Vector3.zero
 
--- 방해물·업그레이드 보정. 둘 다 stopTime 에만 곱해진다.
+-- 방해물·업그레이드·장소 보정. 셋 다 stopTime 에만 곱해진다.
 local room: Model? = nil
 local slipItems: { BasePart } = {}
 local slipUntil = 0
 local balanceScale = 1
+
+--[[
+	지금 교실 안인가. Transition 리모트가 유일한 근거다.
+
+	★ 첫 화면이 운동장이므로 초기값은 false 다. 여기를 true 로 두면
+	  접속하자마자 운동장에서 교실용 감속이 걸리는데, 그건 아무도
+	  원인을 못 찾는 종류의 "왜 이렇게 미끄럽지"가 된다.
+]]
+local inClass = false
 
 local function applyMode()
 	-- 살금살금이 달리기를 이긴다. 둘 다 누르면 안전한 쪽으로 간다.
@@ -127,6 +136,9 @@ end
 -- 지금 입력을 떼면 얼마나 미끄러지는가. 시상수는 여기 한 곳에서만 조립한다.
 local function currentStopTime(now: number): number
 	local base = MovementConfig.MODES[mode].stopTime * balanceScale
+	if not inClass then
+		base *= MovementConfig.OUTSIDE_STOP_SCALE
+	end
 	return if now < slipUntil then base * SLIP_STOP_SCALE else base
 end
 
@@ -215,6 +227,18 @@ end
 ]]
 function MovementController.onProfile(packet)
 	balanceScale = if packet.upgrades and packet.upgrades.balance then Upgrades.BALANCE_STOP_SCALE else 1
+end
+
+--[[
+	장소가 바뀌었다. 교실 안에서만 감속 커브를 전부 쓴다.
+
+	전환 화면이 덮고 있는 동안 불리므로, 진행 중이던 미끄러짐은 여기서 끊는다.
+	안 끊으면 운동장에서 뛰다 들어간 관성이 교실 첫 프레임에 그대로 남는다.
+]]
+function MovementController.onTransition(where: string)
+	inClass = where == "class"
+	sliding = false
+	slideDir = Vector3.zero
 end
 
 --[[

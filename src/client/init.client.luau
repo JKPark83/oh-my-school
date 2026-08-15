@@ -115,6 +115,8 @@ end)
 Remotes.Transition.OnClientEvent:Connect(function(packet)
 	TransitionController.onTransition(packet)
 	SoundController.onTransition(packet.to)
+	-- 감속 커브는 교실에서만 전부 쓴다. 밖에서는 달리기를 제한 없이 쓸 수 있어야 한다.
+	MovementController.onTransition(packet.to)
 
 	-- 교실로 들어가는 첫 전환에서 나머지 컨트롤러를 붙인다.
 	-- 검은 화면이 이 대기를 가려주므로 여기가 유일하게 기다려도 되는 자리다.

@@ -16,7 +16,10 @@
 	교실 템플릿과 마찬가지로 아트 에셋을 쓰지 않는다. 전부 파트다.
 ]]
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local BuildKit = require(script.Parent.Parent.BuildKit)
+local Upgrades = require(ReplicatedStorage.Shared.Config.Upgrades)
 
 local part = BuildKit.part
 local surfaceText = BuildKit.surfaceText
@@ -33,9 +36,33 @@ local FACADE_H = 44
 local DOOR_HALF_W = 9
 local DOOR_H = 13
 
-local LOBBY_Z_END = -112 -- 로비 안쪽 벽
+local LOBBY_Z_END = -124 -- 로비 안쪽 벽. 계단 한 층이 들어갈 만큼 깊어야 한다
 local LOBBY_HALF_X = 32
 local LOBBY_H = 15
+
+--[[
+	교실로 올라가는 계단. 이 게임에서 유일하게 "올라가는" 동작이다.
+
+	★ 진입은 버튼이 아니라 계단이다.
+	  전에는 신발장 앞에서 E 를 눌렀다. 누르는 순간과 교실에 서 있는 순간 사이에
+	  아무 일도 없어서, 교실이 어디에 붙어 있는 곳인지 감이 안 잡혔다.
+	  계단을 아홉 칸 밟아 올라가면 "2층으로 올라왔다"가 몸에 남는다.
+	  신발장은 소품으로 남긴다 — 프롬프트가 둘이면 어느 쪽이 입구인지 헷갈린다.
+
+	치수는 사람이 걸어 올라갈 수 있어야 한다는 것 하나로 정해진다.
+	0.8 단높이는 Humanoid 가 멈칫하지 않고 올라가고, 1.5 단너비면 28도 —
+	실제 학교 계단(약 30도)과 거의 같다.
+]]
+local STAIR_STEPS = 9
+local STAIR_RISE = 0.8
+local STAIR_RUN = 1.5
+local STAIR_W = 20
+local STAIR_TOP_Y = STAIR_STEPS * STAIR_RISE -- 7.2. 한 층 올라온 높이
+local STAIR_FRONT_Z = -104 -- 첫 단의 앞 모서리
+local STAIR_BACK_Z = STAIR_FRONT_Z - STAIR_STEPS * STAIR_RUN -- 마지막 단 뒷면
+
+local DOOR2F_HALF_W = 5 -- 2층 복도로 나가는 문
+local DOOR2F_TOP_Y = STAIR_TOP_Y + 5
 
 local SPAWN_Z = 40 -- 운동장 한가운데. 본관까지 120 스터드 — 건물이 한눈에 들어온다
 
@@ -152,15 +179,22 @@ local function buildFacade(parent: Instance)
 			if i == 0 then
 				continue -- 현관 위는 비워둔다
 			end
+			--[[
+				★ 창문·창틀·간판은 벽의 +Z 쪽에 붙는다. 운동장이 +Z 이기 때문이다.
+				  벽은 두께 2 로 FACADE_Z 에 중심이 있으니 앞면이 FACADE_Z + 1 이고,
+				  거기서 조금 더 나와야 벽에 파묻히지 않는다.
+				  전에는 셋 다 -Z 였다 — 즉 건물 뒤통수에 붙어 있어서 운동장에서는
+				  민무늬 콘크리트 벽 한 장만 보였다.
+			]]
 			local x = i * 13
-			part(parent, `Window{floor}_{i}`, Vector3.new(9, 6, 0.4), Vector3.new(x, y, FACADE_Z - 1.1), {
+			part(parent, `Window{floor}_{i}`, Vector3.new(9, 6, 0.4), Vector3.new(x, y, FACADE_Z + 1.1), {
 				color = C.glass,
 				material = Enum.Material.Glass,
 				transparency = 0.35,
 				collide = false,
 				cast = false,
 			})
-			part(parent, `WindowFrame{floor}_{i}`, Vector3.new(9.8, 6.8, 0.3), Vector3.new(x, y, FACADE_Z - 0.9), {
+			part(parent, `WindowFrame{floor}_{i}`, Vector3.new(9.8, 6.8, 0.3), Vector3.new(x, y, FACADE_Z + 0.9), {
 				color = C.line,
 				material = Enum.Material.Metal,
 				collide = false,
@@ -200,20 +234,98 @@ local function buildFacade(parent: Instance)
 	end
 
 	-- 학교 간판. 첫 시야에서 읽혀야 하는 유일한 글자다
-	local sign = part(parent, "SchoolSign", Vector3.new(34, 5, 0.5), Vector3.new(0, DOOR_H + 5.5, FACADE_Z - 1.2), {
+	local sign = part(parent, "SchoolSign", Vector3.new(34, 5, 0.5), Vector3.new(0, DOOR_H + 5.5, FACADE_Z + 1.3), {
 		color = Color3.fromRGB(248, 246, 240),
 		collide = false,
 		cast = false,
 	})
-	surfaceText(sign, Enum.NormalId.Front, "<b>행복초등학교</b>", C.sign, 1.5)
+	surfaceText(sign, Enum.NormalId.Back, "<b>행복초등학교</b>", C.sign, 1.5)
+end
+
+--[[
+	매대 위에 올라가는 견본. 업그레이드 키마다 모양이 다르다.
+
+	세 개 전부 -X 를 정면으로 본다(매대가 오른쪽 벽에 붙어 있으므로 손님은 -X 쪽에 선다).
+	그래서 "앞으로 튀어나오는" 부속은 전부 x 를 빼는 방향으로 붙인다.
+
+	@param origin 매대 상판 윗면 한가운데
+]]
+local function buildShopIcon(parent: Instance, key: string, origin: Vector3)
+	local function at(dx: number, dy: number, dz: number): Vector3
+		return origin + Vector3.new(dx, dy, dz)
+	end
+
+	if key == "quietShoes" then
+		-- 실내화 한 켤레. 흰 바탕에 파란 코 — 이 조합이면 설명 없이 실내화로 읽힌다
+		for _, side in { -1, 1 } do
+			local z = side * 1.1
+			part(parent, `Icon_shoe_sole{side}`, Vector3.new(2.4, 0.4, 1.3), at(0, 0.2, z), {
+				color = Color3.fromRGB(244, 244, 240),
+				material = Enum.Material.SmoothPlastic,
+				collide = false,
+			})
+			part(parent, `Icon_shoe_heel{side}`, Vector3.new(1.3, 1.1, 1.2), at(0.5, 0.95, z), {
+				color = Color3.fromRGB(248, 248, 244),
+				material = Enum.Material.Fabric,
+				collide = false,
+			})
+			part(parent, `Icon_shoe_toe{side}`, Vector3.new(0.5, 0.7, 1.25), at(-1.05, 0.75, z), {
+				color = Color3.fromRGB(92, 130, 200),
+				material = Enum.Material.Fabric,
+				collide = false,
+			})
+		end
+	elseif key == "balance" then
+		--[[
+			시소. 기울어진 판 하나가 "균형"이라는 말을 가장 짧게 한다.
+			판을 수평으로 두면 그냥 탁자가 된다 — 기울기가 곧 의미다.
+		]]
+		part(parent, "Icon_balance_post", Vector3.new(0.8, 1.6, 0.8), at(0, 0.8, 0), {
+			color = C.metal,
+			material = Enum.Material.Metal,
+			collide = false,
+		})
+		part(parent, "Icon_balance_beam", Vector3.new(0.35, 0.35, 4.6), at(0, 1.75, 0), {
+			color = Color3.fromRGB(214, 168, 96),
+			material = Enum.Material.Wood,
+			collide = false,
+			cframe = CFrame.Angles(math.rad(14), 0, 0),
+		})
+		for _, side in { -1, 1 } do
+			part(parent, `Icon_balance_pan{side}`, Vector3.new(1.4, 0.25, 1.4), at(0, 1.75 - side * 0.55, side * 2.2), {
+				color = Color3.fromRGB(214, 168, 96),
+				material = Enum.Material.Wood,
+				collide = false,
+			})
+		end
+	elseif key == "instinct" then
+		-- 눈. 흰자 위에 검은 동공 하나. 손님 쪽(-X)을 본다
+		part(parent, "Icon_eye_ball", Vector3.new(2.4, 2.4, 2.4), at(0, 1.4, 0), {
+			color = Color3.fromRGB(248, 248, 246),
+			material = Enum.Material.SmoothPlastic,
+			shape = Enum.PartType.Ball,
+			collide = false,
+		})
+		part(parent, "Icon_eye_iris", Vector3.new(1.1, 1.1, 1.1), at(-0.85, 1.4, 0), {
+			color = Color3.fromRGB(38, 62, 92),
+			material = Enum.Material.SmoothPlastic,
+			shape = Enum.PartType.Ball,
+			collide = false,
+		})
+		part(parent, "Icon_eye_brow", Vector3.new(0.3, 0.3, 2.8), at(-0.5, 2.9, 0), {
+			color = Color3.fromRGB(52, 46, 44),
+			material = Enum.Material.SmoothPlastic,
+			collide = false,
+		})
+	end
 end
 
 --[[
 	현관 로비. 신발장과 문구점(상점)이 있는 곳이고, 교실로 들어가는 입구다.
 
-	@return 신발장 파트, 상점 매대 3개(업그레이드 키 순서대로)
+	@return 상점 매대 3개(업그레이드 키 순서대로), 교실 입장 판정 파트
 ]]
-local function buildLobby(parent: Instance): (BasePart, { BasePart })
+local function buildLobby(parent: Instance): ({ BasePart }, BasePart)
 	local depth = FACADE_Z - LOBBY_Z_END
 	local centerZ = (FACADE_Z + LOBBY_Z_END) / 2
 	-- 로비는 운동장에서 유일하게 닫힌 공간이라, 여기서만 벽이 카메라를 가린다
@@ -228,13 +340,52 @@ local function buildLobby(parent: Instance): (BasePart, { BasePart })
 		material = Enum.Material.Concrete,
 		fade = true,
 	})
+	--[[
+		안쪽 벽. 계단 위에 문 구멍 하나를 비운다.
+		본관 정면 벽과 같은 방식이다 — 좌우 두 장 + 문 아래 + 문 위.
+		구멍을 남기지 않고 통짜로 세우면 계단이 벽에 처박히는 그림이 된다.
+	]]
+	local sideW = LOBBY_HALF_X - DOOR2F_HALF_W
+	for _, sign in { -1, 1 } do
+		part(
+			parent,
+			`LobbyBack{sign}`,
+			Vector3.new(sideW, LOBBY_H, 1.5),
+			Vector3.new(sign * (DOOR2F_HALF_W + sideW / 2), LOBBY_H / 2, LOBBY_Z_END),
+			wall
+		)
+	end
 	part(
 		parent,
-		"LobbyBack",
-		Vector3.new(LOBBY_HALF_X * 2, LOBBY_H, 1.5),
-		Vector3.new(0, LOBBY_H / 2, LOBBY_Z_END),
+		"LobbyBackSill",
+		Vector3.new(DOOR2F_HALF_W * 2, STAIR_TOP_Y, 1.5),
+		Vector3.new(0, STAIR_TOP_Y / 2, LOBBY_Z_END),
 		wall
 	)
+	part(
+		parent,
+		"LobbyBackHeader",
+		Vector3.new(DOOR2F_HALF_W * 2, LOBBY_H - DOOR2F_TOP_Y, 1.5),
+		Vector3.new(0, (LOBBY_H + DOOR2F_TOP_Y) / 2, LOBBY_Z_END),
+		wall
+	)
+
+	--[[
+		문 위 안내판. 현관에 들어서서 처음 보이는 글자여야 한다.
+
+		프롬프트가 사라진 자리를 이것이 메운다. 프롬프트는 가까이 가야 뜨지만
+		안내판은 문을 들어서는 순간 이미 보이므로, "저기로 가면 되는구나"가
+		걸음을 떼기 전에 정해진다. 계단을 쓰기로 한 이상 길 안내는 벽이 해야 한다.
+	]]
+	local wayfind = part(
+		parent,
+		"ClassWayfind",
+		Vector3.new(DOOR2F_HALF_W * 2 - 0.5, 1.8, 0.12),
+		Vector3.new(0, DOOR2F_TOP_Y + 1.4, LOBBY_Z_END + 0.82),
+		{ color = Color3.fromRGB(58, 92, 66), collide = false, cast = false }
+	)
+	-- Back(+Z)이 로비 쪽이다. 안쪽 벽이라 현관에서 들어온 사람은 +Z 에 서 있다
+	surfaceText(wayfind, Enum.NormalId.Back, "<b>↑ 2층 1학년 교실</b>", Color3.fromRGB(238, 244, 238), 0.8)
 	for _, sign in { -1, 1 } do
 		part(
 			parent,
@@ -273,19 +424,138 @@ local function buildLobby(parent: Instance): (BasePart, { BasePart })
 		light.Parent = lamp
 	end
 
-	-- 안쪽 벽 계단(교실로 올라가는 길). 실제로 올라가지는 않는다 — 전환은 신발장이 한다
-	for i = 1, 5 do
+	--[[
+		── 교실로 올라가는 계단 ──
+
+		단을 얇은 판이 아니라 바닥까지 꽉 찬 덩어리로 짠다. 판만 띄워두면
+		옆에서 봤을 때 공중에 뜬 발판이 되는데, 이 계단은 옆이 트여 있어서 다 보인다.
+	]]
+	local stone = { color = C.concrete, material = Enum.Material.Concrete }
+	for i = 1, STAIR_STEPS do
+		local top = i * STAIR_RISE
 		part(
 			parent,
 			`LobbyStair{i}`,
-			Vector3.new(20, 0.8, 1.8),
-			Vector3.new(0, i * 0.8 - 0.4, LOBBY_Z_END + 1 + (6 - i) * 1.8),
+			Vector3.new(STAIR_W, top, STAIR_RUN),
+			Vector3.new(0, top / 2, STAIR_FRONT_Z - (i - 0.5) * STAIR_RUN),
+			stone
+		)
+	end
+
+	-- 계단참. 마지막 단에서 안쪽 벽까지 평평하게 메운다
+	local landingDepth = STAIR_BACK_Z - (LOBBY_Z_END + 0.75)
+	part(
+		parent,
+		"LobbyLanding",
+		Vector3.new(STAIR_W, STAIR_TOP_Y, landingDepth),
+		Vector3.new(0, STAIR_TOP_Y / 2, STAIR_BACK_Z - landingDepth / 2),
+		stone
+	)
+
+	--[[
+		난간. 경사면을 따라 비스듬히 눕힌 봉 하나씩.
+
+		+Z 를 (0, 7.2, -13.5) 방향으로 돌려야 하므로 X 축 회전각은 atan(rise/run) 이다.
+		부호를 반대로 주면 난간이 계단과 X 자로 교차한다 — 각도만 맞추고 넘어가면 안 되는 자리.
+	]]
+	local runZ = STAIR_STEPS * STAIR_RUN
+	local slope = math.atan2(STAIR_TOP_Y, runZ)
+	for _, sign in { -1, 1 } do
+		part(
+			parent,
+			`StairRail{sign}`,
+			Vector3.new(0.35, 0.35, math.sqrt(runZ * runZ + STAIR_TOP_Y * STAIR_TOP_Y)),
+			Vector3.new(sign * (STAIR_W / 2 - 0.3), STAIR_TOP_Y / 2 + 3, STAIR_FRONT_Z - runZ / 2),
 			{
-				color = C.concrete,
-				material = Enum.Material.Concrete,
+				color = C.metal,
+				material = Enum.Material.Metal,
+				collide = false,
+				cast = false,
+				cframe = CFrame.Angles(slope, 0, 0),
 			}
 		)
 	end
+
+	--[[
+		── 2층 복도 초입 ──
+
+		문 너머가 검은 공백이면 "여기가 끝"으로 읽힌다. 실제로는 문턱을 넘는
+		순간 화면이 덮이므로 이 복도는 한두 프레임밖에 안 보이지만,
+		그 한두 프레임이 "교실은 저 안에 있다"를 만든다. 그래서 깊게 짓지 않는다.
+	]]
+	local hallDepth = 14
+	local hallZ = LOBBY_Z_END - hallDepth / 2
+	local hallH = DOOR2F_TOP_Y - STAIR_TOP_Y
+
+	part(
+		parent,
+		"HallFloor",
+		Vector3.new(DOOR2F_HALF_W * 2 + 4, 1, hallDepth),
+		Vector3.new(0, STAIR_TOP_Y - 0.5, hallZ),
+		{ color = C.floor, material = Enum.Material.Pebble }
+	)
+	part(
+		parent,
+		"HallCeiling",
+		Vector3.new(DOOR2F_HALF_W * 2 + 4, 1, hallDepth),
+		Vector3.new(0, DOOR2F_TOP_Y + 0.5, hallZ),
+		{ color = C.wall, material = Enum.Material.Concrete }
+	)
+	for _, sign in { -1, 1 } do
+		part(
+			parent,
+			`HallSide{sign}`,
+			Vector3.new(1, hallH, hallDepth),
+			Vector3.new(sign * (DOOR2F_HALF_W + 2), STAIR_TOP_Y + hallH / 2, hallZ),
+			{ color = C.wall, material = Enum.Material.Plaster }
+		)
+	end
+	part(
+		parent,
+		"HallEnd",
+		Vector3.new(DOOR2F_HALF_W * 2 + 4, hallH, 1),
+		Vector3.new(0, STAIR_TOP_Y + hallH / 2, hallZ - hallDepth / 2),
+		{ color = C.wall, material = Enum.Material.Plaster }
+	)
+
+	-- 복도 끝 교실 문 하나. 이것 때문에 복도가 복도로 읽힌다
+	local classDoor = part(
+		parent,
+		"HallClassDoor",
+		Vector3.new(0.2, 4.4, 3.6),
+		Vector3.new(-DOOR2F_HALF_W - 1.4, STAIR_TOP_Y + 2.2, hallZ - 2),
+		{ color = C.wood, material = Enum.Material.WoodPlanks, collide = false, cast = false }
+	)
+	surfaceText(classDoor, Enum.NormalId.Right, "<b>1-1</b>", Color3.fromRGB(60, 50, 40), 1.2)
+
+	local hallLamp = part(
+		parent,
+		"HallLight",
+		Vector3.new(6, 0.3, 1),
+		Vector3.new(0, DOOR2F_TOP_Y - 0.4, hallZ),
+		{ color = Color3.fromRGB(255, 252, 238), material = Enum.Material.Neon, collide = false, cast = false }
+	)
+	local hallLight = Instance.new("PointLight")
+	hallLight.Brightness = 0.9
+	hallLight.Range = 26
+	hallLight.Shadows = true
+	hallLight.Parent = hallLamp
+
+	--[[
+		입장 판정. 문턱을 채우는 보이지 않는 판이다.
+
+		★ ProximityPrompt 를 안 쓰는 이유가 여기 있다. 프롬프트는 "누를 수 있음"을
+		  띄워주지만, 계단은 그런 안내 없이도 올라가는 곳이다. 문턱을 넘으면
+		  들어가는 것이 계단의 약속이고, 그 약속을 지키는 것이 이 판이다.
+		  실제 발화 처리와 중복 방지는 PlaygroundService 가 한다.
+	]]
+	local entrance = part(
+		parent,
+		"ClassEntrance",
+		Vector3.new(DOOR2F_HALF_W * 2, hallH, 2),
+		Vector3.new(0, STAIR_TOP_Y + hallH / 2, LOBBY_Z_END),
+		{ color = C.line, transparency = 1, collide = false, cast = false }
+	)
 
 	--[[
 		── 신발장 (왼쪽 벽) ──
@@ -393,17 +663,10 @@ local function buildLobby(parent: Instance): (BasePart, { BasePart })
 	end
 
 	--[[
-		ProximityPrompt 를 달 자리. 프롬프트는 붙은 파트의 중심에 뜨는데,
-		몸통 파트에 달면 신발장 속에서 뜬다. 앞면 바로 앞 가슴 높이에
-		보이지 않는 파트를 하나 두고 거기에 단다.
+		★ 신발장에는 이제 프롬프트가 없다. 입장은 계단이 한다.
+		  그래도 신발장은 남긴다 — 여기가 초등학교 현관이라는 말을 하는 것은
+		  간판이 아니라 이 신발장이고, 그건 누를 수 없어도 제 몫을 한다.
 	]]
-	local rack = part(parent, "ShoeRack", Vector3.new(1, 1, 1), Vector3.new(RACK_FRONT_X + 1, 4.5, centerZ), {
-		color = C.locker,
-		transparency = 1,
-		collide = false,
-		cast = false,
-	})
-
 	local rackSign =
 		part(parent, "ShoeRackSign", Vector3.new(0.1, 2, 8), Vector3.new(-LOBBY_HALF_X + 0.9, 11, centerZ), {
 			color = Color3.fromRGB(250, 248, 240),
@@ -412,10 +675,20 @@ local function buildLobby(parent: Instance): (BasePart, { BasePart })
 		})
 	surfaceText(rackSign, Enum.NormalId.Right, "<b>1학년 신발장</b>", Color3.fromRGB(45, 45, 50), 0.9)
 
-	-- ── 문구점 매대 (오른쪽 벽) ──
-	-- 순서는 Upgrades 표의 순서와 맞춰 호출자가 키를 붙인다
+	--[[
+		── 문구점 매대 (오른쪽 벽) ──
+
+		순서는 Upgrades 표의 순서와 맞춰 호출자가 키를 붙인다.
+
+		★ 매대마다 물건이 놓여 있어야 한다. 전에는 빈 나무판 세 개였는데,
+		  프롬프트를 띄우기 전까지는 무엇을 파는지 알 방법이 없었다. 상점은
+		  "가까이 가서 눌러봐야 아는 곳"이 아니라 "멀리서 보고 고르는 곳"이다.
+		  아트 에셋을 안 쓰므로 파트로 짠다 — 신발 한 켤레, 시소, 눈 하나.
+		  벽에는 이름·값·설명을 적은 패를 걸어 값을 읽고 걸어오게 만든다.
+	]]
 	local stands: { BasePart } = {}
-	for i = 1, 3 do
+	for i, key in Upgrades.ORDER do
+		local def = Upgrades.DEFS[key]
 		local z = centerZ - 9 + (i - 1) * 9
 		part(parent, `ShopCounter{i}`, Vector3.new(5, 3.4, 6), Vector3.new(LOBBY_HALF_X - 4, 1.7, z), {
 			color = C.wood,
@@ -426,7 +699,24 @@ local function buildLobby(parent: Instance): (BasePart, { BasePart })
 			material = Enum.Material.Wood,
 		})
 		table.insert(stands, top)
+
+		buildShopIcon(parent, key, Vector3.new(LOBBY_HALF_X - 4, 3.8, z))
+
+		-- 값패. 매대 바로 위 눈높이에 건다
+		local card = part(parent, `ShopCard{i}`, Vector3.new(0.12, 4.2, 7), Vector3.new(LOBBY_HALF_X - 0.95, 7.2, z), {
+			color = Color3.fromRGB(252, 250, 242),
+			collide = false,
+			cast = false,
+		})
+		surfaceText(
+			card,
+			Enum.NormalId.Left,
+			`<b>{def.name}</b>\n<font color="#c05000">★{def.cost}</font>\n{def.desc}`,
+			Color3.fromRGB(60, 52, 46),
+			0.62
+		)
 	end
+
 	local shopSign = part(parent, "ShopSign", Vector3.new(0.1, 2.4, 28), Vector3.new(LOBBY_HALF_X - 0.9, 11, centerZ), {
 		color = Color3.fromRGB(250, 244, 228),
 		collide = false,
@@ -440,7 +730,7 @@ local function buildLobby(parent: Instance): (BasePart, { BasePart })
 		0.85
 	)
 
-	return rack, stands
+	return stands, entrance
 end
 
 -- ── 조립 ──────────────────────────────────────────────────────────
@@ -469,7 +759,7 @@ function Template.build()
 	buildGround(yard)
 
 	buildFacade(building)
-	local shoeRack, shopStands = buildLobby(building)
+	local shopStands, entrance = buildLobby(building)
 
 	--[[
 		스폰. 회전 없는 CFrame 이므로 LookVector 가 -Z, 즉 본관 정면을 본다.
@@ -488,10 +778,14 @@ function Template.build()
 	return {
 		model = hub,
 		spawn = spawn,
-		-- 교실에서 돌아올 때 쓴다. 신발장 쪽을 보게 두면 다음 판으로 가는 길이 자연스럽다
-		returnCFrame = CFrame.new(Vector3.new(0, 3, FACADE_Z + 16), Vector3.new(0, 3, FACADE_Z - 20)),
-		shoeRack = shoeRack,
+		--[[
+			교실에서 돌아올 때 쓴다. 계단 발치에 계단을 보고 서게 둔다.
+			로비 한가운데로 뱉으면 매번 "어디로 가야 하지"가 한 번 끼는데,
+			다음 판까지 그 한 번이 매 라운드 쌓인다.
+		]]
+		returnCFrame = CFrame.new(Vector3.new(0, 3, STAIR_FRONT_Z + 14), Vector3.new(0, 3, STAIR_FRONT_Z)),
 		shopStands = shopStands,
+		entrance = entrance,
 	}
 end
 
