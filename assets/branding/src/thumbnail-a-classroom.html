@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1920px; height:1080px; overflow:hidden; background:#000; }
+  .stage { position:relative; width:1920px; height:1080px; overflow:hidden;
+           font-family:"Apple SD Gothic Neo", sans-serif; }
+  .layer { position:absolute; inset:0; }
+  svg { display:block; overflow:visible; }
+
+  .wall { position:absolute; inset:0;
+    background: radial-gradient(130% 95% at 30% 20%, #55604f 0%, #2c352f 45%, #101513 100%); }
+  .lightbeam { position:absolute; left:-10%; top:-25%; width:66%; height:160%;
+    background:linear-gradient(102deg, rgba(200,225,255,.18) 0%, rgba(200,225,255,.05) 42%, transparent 72%);
+    transform:rotate(-6deg); filter:blur(20px); }
+
+  .board { position:absolute; left:90px; top:80px; width:1090px; height:470px;
+    background: radial-gradient(80% 70% at 32% 34%, #33604e 0%, #23443a 55%, #14302a 100%);
+    border:18px solid #8f6d45; border-radius:6px;
+    box-shadow: 0 44px 100px rgba(0,0,0,.65), inset 0 0 130px rgba(0,0,0,.5); }
+  .board::after { content:""; position:absolute; inset:0;
+    background:
+      repeating-linear-gradient(112deg, rgba(255,255,255,.055) 0 2px, transparent 2px 26px),
+      repeating-linear-gradient(64deg, rgba(255,255,255,.04) 0 3px, transparent 3px 34px); }
+  .chalk { position:absolute; color:#e4f2e8; white-space:nowrap; font-weight:700;
+           text-shadow:0 0 10px rgba(228,242,232,.5); }
+  .rail { position:absolute; left:72px; top:548px; width:1126px; height:16px;
+          background:linear-gradient(#a8804f,#5d4326); border-radius:3px;
+          box-shadow:0 10px 24px rgba(0,0,0,.6); }
+
+  .floorfade { position:absolute; left:0; right:0; bottom:0; height:560px;
+    background:linear-gradient(transparent, rgba(8,11,10,.9)); }
+  .vignette { position:absolute; inset:0; z-index:40; pointer-events:none;
+    background: radial-gradient(115% 100% at 50% 44%, transparent 38%, rgba(0,0,0,.78) 100%); }
+
+  .tag { position:absolute; right:56px; top:44px; z-index:30;
+    background:#ff2b3a; color:#fff; font-size:42px; font-weight:900;
+    padding:16px 32px; border-radius:16px; letter-spacing:-1px;
+    box-shadow:0 12px 0 #8d0c16, 0 24px 44px rgba(0,0,0,.65); transform:rotate(3deg); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="wall"></div>
+
+  <div class="board">
+    <div class="chalk" style="left:56px; top:44px; font-size:62px; opacity:.72;">6학년 12반</div>
+    <div class="chalk" style="left:600px; top:120px; font-size:210px; opacity:.34; letter-spacing:10px;">얼음</div>
+  </div>
+  <div class="rail"></div>
+  <div class="lightbeam"></div>
+
+  <!-- 공용 defs + 시야 콘 -->
+  <svg class="layer" viewBox="0 0 1920 1080">
+    <defs>
+      <linearGradient id="deskTop" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#6d4f30"/><stop offset="1" stop-color="#3a2a19"/></linearGradient>
+      <linearGradient id="cone" x1="1" y1="0" x2="0" y2="0">
+        <stop offset="0" stop-color="#ff2b3a" stop-opacity=".42"/>
+        <stop offset=".55" stop-color="#ff2b3a" stop-opacity=".18"/>
+        <stop offset="1" stop-color="#ff2b3a" stop-opacity="0"/></linearGradient>
+      <filter id="cyanGlow" x="-70%" y="-70%" width="240%" height="240%">
+        <feGaussianBlur stdDeviation="11" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <filter id="redGlow" x="-90%" y="-90%" width="280%" height="280%">
+        <feGaussianBlur stdDeviation="9" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="6"/></filter>
+      <filter id="coneBlur" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="7"/></filter>
+    </defs>
+
+    <!-- 선생님 시야 콘 -->
+    <g filter="url(#coneBlur)">
+      <polygon points="1352,330 560,150 560,800" fill="url(#cone)"/>
+      <polygon points="1352,330 700,246 700,690" fill="url(#cone)" opacity=".7"/>
+    </g>
+  </svg>
+
+  <!-- 중경: 책상 + 더미 학생 + 빈자리 -->
+  <svg class="layer" viewBox="0 0 1920 1080">
+    <!-- 더미 학생 (앉아 있는 실루엣) -->
+    <g fill="#22302c">
+      <g transform="translate(300,586)"><rect x="18" y="0" width="66" height="62" rx="7"/><rect x="0" y="72" width="102" height="92" rx="7"/>
+        <rect x="18" y="0" width="66" height="6" fill="#4a5b52"/><rect x="0" y="72" width="102" height="5" fill="#3d4d46"/></g>
+      <g transform="translate(560,594)"><rect x="18" y="0" width="68" height="64" rx="7"/><rect x="0" y="74" width="106" height="94" rx="7"/>
+        <rect x="18" y="0" width="68" height="6" fill="#4a5b52"/><rect x="0" y="74" width="106" height="5" fill="#3d4d46"/></g>
+      <g transform="translate(1090,590)"><rect x="18" y="0" width="68" height="64" rx="7"/><rect x="0" y="74" width="106" height="94" rx="7"/>
+        <rect x="18" y="0" width="68" height="6" fill="#4a5b52"/><rect x="0" y="74" width="106" height="5" fill="#3d4d46"/></g>
+    </g>
+
+    <!-- 중간 책상 열 -->
+    <g>
+      <g transform="translate(270,700)"><rect width="180" height="17" fill="url(#deskTop)"/><rect y="17" width="180" height="11" fill="#241a11"/>
+        <rect x="12" y="28" width="12" height="86" fill="#171009"/><rect x="156" y="28" width="12" height="86" fill="#171009"/></g>
+      <g transform="translate(530,706)"><rect width="188" height="18" fill="url(#deskTop)"/><rect y="18" width="188" height="12" fill="#241a11"/>
+        <rect x="13" y="30" width="13" height="90" fill="#171009"/><rect x="162" y="30" width="13" height="90" fill="#171009"/></g>
+      <g transform="translate(1060,700)"><rect width="188" height="18" fill="url(#deskTop)"/><rect y="18" width="188" height="12" fill="#241a11"/>
+        <rect x="13" y="30" width="13" height="90" fill="#171009"/><rect x="162" y="30" width="13" height="90" fill="#171009"/></g>
+    </g>
+
+    <!-- 빈자리 하이라이트 -->
+    <g transform="translate(800,672)" filter="url(#cyanGlow)">
+      <rect x="0" y="0" width="196" height="128" fill="#5df0ff" opacity=".16"/>
+      <rect x="0" y="0" width="196" height="128" fill="none" stroke="#5df0ff" stroke-width="7" stroke-dasharray="36 24"/>
+    </g>
+    <g transform="translate(790,706)"><rect width="188" height="18" fill="url(#deskTop)"/><rect y="18" width="188" height="12" fill="#241a11"/>
+      <rect x="13" y="30" width="13" height="90" fill="#171009"/><rect x="162" y="30" width="13" height="90" fill="#171009"/></g>
+    <text x="898" y="654" text-anchor="middle" font-family="Apple SD Gothic Neo" font-weight="900"
+          font-size="42" fill="#7ff4ff" stroke="#052a33" stroke-width="8" paint-order="stroke"
+          filter="url(#cyanGlow)">빈자리</text>
+  </svg>
+
+  <!-- 선생님 -->
+  <svg class="layer" viewBox="0 0 1920 1080">
+    <defs>
+      <linearGradient id="suit" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#41527090"/><stop offset="0" stop-color="#415270"/>
+        <stop offset=".55" stop-color="#2b374a"/><stop offset="1" stop-color="#131a24"/></linearGradient>
+      <linearGradient id="skin" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#f5cfa8"/><stop offset=".6" stop-color="#dcae84"/>
+        <stop offset="1" stop-color="#947054"/></linearGradient>
+      <linearGradient id="hair" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#2d2522"/><stop offset="1" stop-color="#0b0a09"/></linearGradient>
+    </defs>
+
+    <g transform="translate(1265,120) scale(2.0)">
+      <ellipse cx="105" cy="394" rx="128" ry="24" fill="#000" opacity=".6" filter="url(#soft)"/>
+      <rect x="62" y="252" width="42" height="132" fill="#242c3a"/>
+      <rect x="110" y="252" width="42" height="132" fill="#181f29"/>
+      <rect x="58" y="374" width="50" height="18" rx="4" fill="#0b0e13"/>
+      <rect x="108" y="374" width="50" height="18" rx="4" fill="#070a0e"/>
+
+      <rect x="56" y="120" width="102" height="140" fill="url(#suit)"/>
+      <path d="M92 120 L107 150 L122 120 Z" fill="#eaeff6"/>
+      <path d="M105 142 L117 154 L107 202 L97 154 Z" fill="#c0242f"/>
+      <rect x="56" y="120" width="102" height="7" fill="#61759a" opacity=".55"/>
+
+      <rect x="18" y="120" width="36" height="112" fill="#31405a"/>
+      <rect x="18" y="222" width="36" height="26" fill="url(#skin)"/>
+      <rect x="26" y="240" width="16" height="22" rx="3" fill="#f4f8f4"/>
+      <rect x="160" y="120" width="36" height="112" fill="#1a2330"/>
+      <rect x="160" y="222" width="36" height="26" fill="#b98f6c"/>
+
+      <rect x="92" y="104" width="30" height="20" fill="#b48a67"/>
+
+      <g transform="rotate(-8 107 66)">
+        <rect x="64" y="26" width="86" height="80" rx="7" fill="url(#skin)"/>
+        <rect x="56" y="18" width="102" height="26" rx="11" fill="url(#hair)"/>
+        <path d="M58 42 q4 -30 49 -30 q45 0 49 30 l0 10 l-15 0 q-6 -17 -34 -17 q-28 0 -34 17 l-15 0 z" fill="url(#hair)"/>
+        <rect x="69" y="58" width="35" height="25" rx="5" fill="#0b0f14" opacity=".5" stroke="#eef3f9" stroke-width="4"/>
+        <rect x="111" y="58" width="35" height="25" rx="5" fill="#0b0f14" opacity=".5" stroke="#eef3f9" stroke-width="4"/>
+        <rect x="103" y="68" width="9" height="4" fill="#eef3f9"/>
+        <g filter="url(#redGlow)">
+          <rect x="77" y="66" width="19" height="9" rx="3" fill="#ff2b3a"/>
+          <rect x="119" y="66" width="19" height="9" rx="3" fill="#ff2b3a"/>
+        </g>
+        <rect x="93" y="90" width="30" height="11" rx="5" fill="#59292a"/>
+      </g>
+    </g>
+  </svg>
+
+  <!-- 플레이어 학생 -->
+  <svg class="layer" viewBox="0 0 1920 1080">
+    <g transform="translate(596,470) scale(1.34)">
+      <ellipse cx="66" cy="272" rx="76" ry="15" fill="#000" opacity=".55" filter="url(#soft)"/>
+      <rect x="34" y="186" width="32" height="84" fill="#212832"/>
+      <rect x="70" y="186" width="32" height="84" fill="#161c24"/>
+      <rect x="28" y="94" width="80" height="98" rx="5" fill="#ffc21f"/>
+      <rect x="28" y="94" width="80" height="8" fill="#fff" opacity=".35"/>
+      <rect x="80" y="94" width="28" height="98" fill="#000" opacity=".2"/>
+      <rect x="0" y="94" width="28" height="86" rx="4" fill="#e2a812"/>
+      <rect x="108" y="94" width="28" height="86" rx="4" fill="#c08c0c"/>
+      <rect x="34" y="24" width="68" height="66" rx="6" fill="#f5cfa8"/>
+      <rect x="78" y="24" width="24" height="66" fill="#000" opacity=".17"/>
+      <path d="M30 40 q6 -26 38 -26 q32 0 38 26 l0 8 l-76 0 z" fill="#1e170f"/>
+      <rect x="47" y="55" width="13" height="11" rx="3" fill="#12171c"/>
+      <rect x="72" y="55" width="13" height="11" rx="3" fill="#12171c"/>
+      <rect x="59" y="76" width="16" height="7" rx="3" fill="#8d5a4a"/>
+      <g filter="url(#cyanGlow)" opacity=".8">
+        <rect x="26" y="94" width="5" height="98" fill="#5df0ff"/>
+        <rect x="32" y="24" width="5" height="66" fill="#5df0ff"/>
+      </g>
+      <!-- 발각 경고 느낌표 -->
+      <g transform="translate(-96,-140)">
+        <g filter="url(#redGlow)">
+          <rect x="-6" y="-6" width="44" height="74" rx="12" fill="#fff" opacity=".95"/>
+          <rect x="-6" y="78" width="44" height="34" rx="12" fill="#fff" opacity=".95"/>
+          <rect x="2" y="2" width="28" height="58" rx="8" fill="#ff2b3a"/>
+          <rect x="2" y="86" width="28" height="18" rx="8" fill="#ff2b3a"/>
+        </g>
+      </g>
+    </g>
+  </svg>
+
+  <!-- 전경 책상 (프레이밍) -->
+  <svg class="layer" viewBox="0 0 1920 1080">
+    <g fill="#0e1413">
+      <g transform="translate(-40,952)"><rect width="440" height="34" rx="6"/><rect width="440" height="4" fill="#33403c"/>
+        <rect x="40" y="34" width="26" height="160"/><rect x="370" y="34" width="26" height="160"/></g>
+      <g transform="translate(1240,966)"><rect width="470" height="36" rx="6"/><rect width="470" height="4" fill="#33403c"/>
+        <rect x="44" y="36" width="28" height="160"/><rect x="394" y="36" width="28" height="160"/></g>
+    </g>
+  </svg>
+
+  <div class="floorfade"></div>
+
+  <!-- 타이틀 -->
+  <svg class="layer" viewBox="0 0 1920 1080" style="z-index:35">
+    <g font-family="Apple SD Gothic Neo" font-weight="900" paint-order="stroke" stroke-linejoin="round">
+      <text x="96" y="866" font-size="268" fill="#ffffff" stroke="#0d1215" stroke-width="30" letter-spacing="-10">얼음<tspan fill="#ff2b3a">!</tspan></text>
+      <text x="104" y="866" font-size="268" fill="#ffffff" letter-spacing="-10">얼음<tspan fill="#ff2b3a">!</tspan></text>
+      <text x="106" y="990" font-size="132" fill="#ffd63d" stroke="#0d1215" stroke-width="24" letter-spacing="-3">6학년</text>
+      <text x="106" y="990" font-size="132" fill="#ffd63d" letter-spacing="-3">6학년</text>
+    </g>
+    <g transform="translate(470,930)">
+      <rect x="0" y="0" width="12" height="76" fill="#ff2b3a"/>
+      <rect x="12" y="0" width="700" height="76" fill="#0c1110" opacity=".82"/>
+      <text x="42" y="53" font-family="Apple SD Gothic Neo" font-weight="800" font-size="46" fill="#eef4ef" letter-spacing="-1">선생님이 돌아보기 전에 앉아라</text>
+    </g>
+  </svg>
+
+  <div class="tag">한 판 1분</div>
+  <div class="vignette"></div>
+</div>
+</body>
+</html>
