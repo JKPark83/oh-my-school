@@ -53,11 +53,20 @@ local profiles: { [Player]: any } = {}
 local releasing: { [Player]: boolean } = {}
 
 function DataService.Start()
-	local base = ProfileStore.New(STORE_NAME, DEFAULT_PROFILE)
-
 	-- 스튜디오에서는 실제 DataStore 키를 건드리지 않는다.
 	-- 플레이테스트 한 번이 라이브 진행도를 덮어쓰는 사고를 원천 차단한다.
-	store = if RunService:IsStudio() then base.Mock else base
+	--
+	-- 다만 Mock 은 실제 UpdateAsync·throttle·yield 를 태우지 않는다.
+	-- 그것까지 확인하려면 ServerScriptService 에 UseLiveDataStore 속성을 켠다.
+	-- 이때도 스토어 이름이 라이브와 다르므로 진행도를 덮어쓸 수는 없다.
+	-- (Game Settings → Security → Enable Studio Access to API Services 가 켜져 있어야 한다)
+	local isStudio = RunService:IsStudio()
+	local useLive = isStudio and ServerScriptService:GetAttribute("UseLiveDataStore") == true
+
+	local name = if isStudio then STORE_NAME .. "_Dev" else STORE_NAME
+	local base = ProfileStore.New(name, DEFAULT_PROFILE)
+
+	store = if isStudio and not useLive then base.Mock else base
 end
 
 --[[
