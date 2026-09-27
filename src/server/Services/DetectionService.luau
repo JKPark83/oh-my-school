@@ -55,6 +55,31 @@ local CREAK_HEIGHT = 4
 -- 삐걱 소리 최소 간격(초). 판정은 20Hz 라 널판 위를 달리면 초당 스무 번 울린다.
 local CREAK_COOLDOWN = 0.5
 
+--[[
+	── 고자질하는 학생 ──
+
+	선생님과 판정 순서는 같고(거리 → 시야각 → 엄폐) 조건이 셋 다르다.
+
+	  1. 움직임을 보지 않는다. 얼어붙어도 눈이 마주치면 본 것이다.
+	     이게 선생님과 다른 문제를 만드는 유일한 차이다 — 답이 "멈추기"가 아니라
+	     "벗어나기"여야 두 위협이 서로 다른 질문이 된다.
+	  2. 사거리가 짧다(14). 교실 반대편 애가 나를 보면 지나갈 길이 없어진다.
+	  3. 봐도 곧바로 이르지 않는다. 손을 먼저 든다.
+
+	유예 1.5초는 예고(0.38~0.75초)보다 훨씬 길다. 선생님의 예고는 "지금 멈춰라"라
+	반사 신경으로 받는 것이지만, 이건 "여기서 몇 걸음 나가라"라서 실제로 걸을
+	시간이 있어야 한다. 살금살금(4 stud/s)으로 6 스터드, 걷기면 15 스터드다 —
+	책상 한 줄을 벗어나기에 충분하고, 교실을 가로지르기에는 모자란다.
+]]
+local SNITCH_SIGHT = 14
+local SNITCH_FOV = 100
+local SNITCH_GRACE = 1.5
+
+-- 앉은 학생의 눈높이(바닥 기준). 앉은 메시(SIT_HEIGHT 4.8 x 체구)의 머리 중심이 대략 이 높이다.
+-- 좌석 파트의 Y 를 쓰지 않는 이유는 그게 엉덩이 높이라, 책상 위를 넘겨다보는
+-- 시선이 책상 상판에 막혀 아무것도 못 보게 되기 때문이다.
+local SNITCH_EYE_Y = 4
+
 local DetectionService = {}
 
 local lastPositions: { [Player]: Vector3 } = {}
@@ -141,6 +166,56 @@ local function checkCreak(player: Player, hrp: BasePart, session, speed: number,
 	end
 end
 
+--[[
+	고자질하는 학생들. 선생님 판정과 완전히 독립적으로 돈다 —
+	선생님이 판서 중이든 돌아봤든 이 학생은 계속 자기 방향을 보고 있다.
+
+	★ 이르는 결과가 "적발"이 아니라 TeacherAI.interrupt 다. 즉 선생님이
+	  판서를 끊고 예고를 띄운 뒤에 돌아본다. 학생이 직접 잡게 만들면
+	  예고 없는 적발이 생기고, 그건 이 게임이 유일하게 타협하지 않는 항목이다.
+	  고자질하는 학생은 나를 잡는 존재가 아니라 시계를 앞당기는 존재다.
+]]
+local function checkSnitches(player: Player, hrp: BasePart, session, now: number)
+	local position = hrp.Position
+
+	for _, seat in session.snitches do
+		local eye = Vector3.new(seat.Position.X, SNITCH_EYE_Y, seat.Position.Z)
+		local toPlayer = position - eye
+		local dist = toPlayer.Magnitude
+
+		-- (1) 거리 → (2) 시야각 → (3) 엄폐. 선생님과 같은 순서, 같은 이유다.
+		local seen = dist == dist and dist <= SNITCH_SIGHT and dist > 1e-3
+		if seen then
+			local yaw = seat:GetAttribute(RoomKeys.FACING_ATTRIBUTE) or 0
+			local look = CFrame.Angles(0, math.rad(yaw), 0).LookVector
+			seen = look:Dot(toPlayer.Unit) >= math.cos(math.rad(SNITCH_FOV / 2))
+		end
+		if seen then
+			seen = workspace:Raycast(eye, toPlayer, coverParams) == nil
+		end
+
+		if not seen then
+			-- 벗어났다. 손이 내려가고 시계도 처음으로 돌아간다 —
+			-- 유예 안에 숨었으면 아무 일도 없었던 것이 맞다.
+			session.snitchNoticedAt[seat] = nil
+			ClassroomService.setHandRaised(seat, false)
+			continue
+		end
+
+		local since = session.snitchNoticedAt[seat]
+		if not since then
+			session.snitchNoticedAt[seat] = now
+			ClassroomService.setHandRaised(seat, true)
+			-- 손은 등 뒤에서 안 보인다. 소리가 없으면 유예 1.5초를 통째로 모르고 지나간다.
+			Remotes.Cue:FireClient(player, "whisper")
+		elseif now - since >= SNITCH_GRACE then
+			session.snitchNoticedAt[seat] = nil
+			ClassroomService.setHandRaised(seat, false)
+			TeacherAI.interrupt(session.teacher)
+		end
+	end
+end
+
 local function check(player: Player, session, now: number, deltaTime: number)
 	local character = player.Character
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
@@ -163,6 +238,11 @@ local function check(player: Player, session, now: number, deltaTime: number)
 			checkCreak(player, hrp, session, speed, now)
 		end
 	end
+
+	-- 선생님 판정보다 먼저, 그리고 조기 return 앞에 둔다.
+	-- 고자질하는 학생은 선생님이 판서 중일 때 — 즉 내가 마음 놓고 걷는 동안 — 본다.
+	-- 선생님이 이미 돌아본 뒤에만 도는 자리에 두면 이 학생은 아무 일도 하지 않는다.
+	checkSnitches(player, hrp, session, now)
 
 	local teacher = session.teacher
 	if not TeacherAI.isWatching(teacher, now) then

@@ -95,6 +95,9 @@ export type ProfilePacket = {
 	stars: number,
 	upgrades: UpgradeMap,
 	totalSeconds: number,
+
+	-- 종까지 남은 초. 교실 밖에서는 없다 — 운동장에는 울릴 종이 없다.
+	bellSeconds: number?,
 }
 
 return Types

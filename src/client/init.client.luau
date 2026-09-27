@@ -27,6 +27,7 @@ local CameraController = require(script.Controllers.CameraController)
 local FeedbackController = require(script.Controllers.FeedbackController)
 local HudController = require(script.Controllers.HudController)
 local MovementController = require(script.Controllers.MovementController)
+local SeatMarkerController = require(script.Controllers.SeatMarkerController)
 local SignalController = require(script.Controllers.SignalController)
 local SoundController = require(script.Controllers.SoundController)
 local StudentRenderController = require(script.Controllers.StudentRenderController)
@@ -66,6 +67,7 @@ local function bindRoom()
 	TeacherPoseController.Start(room)
 	StudentRenderController.Start(room)
 	FeedbackController.Start(room)
+	SeatMarkerController.Start(room)
 end
 
 -- ── 리모트 배선 ───────────────────────────────────────────────────
@@ -91,6 +93,7 @@ end)
 Remotes.ClassCleared.OnClientEvent:Connect(function(payload)
 	SoundController.onCleared()
 	FeedbackController.onCleared(payload)
+	SeatMarkerController.onCleared()
 end)
 
 -- 진행도 스냅샷. HUD 표시와 클라 이동 보정(균형감각)의 유일한 근거다.
@@ -117,6 +120,10 @@ Remotes.Transition.OnClientEvent:Connect(function(packet)
 	SoundController.onTransition(packet.to)
 	-- 감속 커브는 교실에서만 전부 쓴다. 밖에서는 달리기를 제한 없이 쓸 수 있어야 한다.
 	MovementController.onTransition(packet.to)
+	-- 교실에서만 의미가 있는 표시(내 자리, 종 시계)를 밖에서는 내린다.
+	-- 앞 반의 자리와 시계가 운동장까지 따라오면 그건 틀린 정보다.
+	SeatMarkerController.onTransition(packet.to)
+	HudController.onTransition(packet.to)
 
 	-- 교실로 들어가는 첫 전환에서 나머지 컨트롤러를 붙인다.
 	-- 검은 화면이 이 대기를 가려주므로 여기가 유일하게 기다려도 되는 자리다.

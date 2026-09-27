@@ -1,15 +1,18 @@
 --!nonstrict
 --[[
-	사운드 9종 중 일곱 개를 담당한다.
+	사운드 12종 중 열 개를 담당한다.
 	나머지 둘(분필·수업 목소리)은 SignalController 가 선생님 몸에 붙여 관리한다 —
 	그 둘은 "선생님이 내는 소리"라 선생님을 아는 쪽이 들고 있어야 한다.
 
 	여기서 내는 소리:
 	  발소리   — 이동 모드와 실제 속도로 클라이언트가 직접 친다
 	  삐걱     — 서버가 판정해 Cue 로 보내준다
-	  의자     — 착석 성공
+	  의자     — 착석
+	  성공음   — 그 자리가 빈자리였다는 판정. 의자와 겹쳐 난다
 	  호통     — 적발
 	  종       — 학년 수료
+	  지각 종  — 이번 반의 제한 시간이 끝났다. 실패가 아니라 퍼펙트만 날아간다
+	  숨소리   — 고자질하는 학생이 나를 봤다. 삐걱처럼 서버가 판정해 Cue 로 보낸다
 	  복도     — 2D 앰비언트. 계속 돈다
 	  긴장감   — 2D 앰비언트. 교실에 있는 동안만 돈다
 
@@ -137,8 +140,15 @@ function SoundController.onCue(key: string)
 	play(key)
 end
 
+--[[
+	착석 성공. 의자 끄는 소리와 성공음을 같은 프레임에 겹쳐 낸다.
+
+	★ 의자를 먼저 친다. 둘이 붙어 나긴 하지만 귀는 먼저 들어온 쪽을 원인으로 듣는다 —
+	  "앉았고, 그래서 통과했다"의 순서다. 뒤집으면 통과한 다음에 앉은 것처럼 들린다.
+]]
 function SoundController.onCleared()
 	play("chair")
+	play("success")
 end
 
 function SoundController.onCaught()
@@ -154,7 +164,7 @@ function SoundController.Start()
 		2D 로 쓰는 소리는 SoundService 아래에 둔다. 캐릭터에 붙이면
 		부활할 때마다 같이 사라져서 다시 만들어야 한다.
 	]]
-	for _, key in { "creak", "chair", "scold", "bell" } do
+	for _, key in { "creak", "chair", "success", "scold", "bell", "late", "whisper" } do
 		local sound = SoundConfig.create(key)
 		sound.Parent = SoundService
 		pool[key] = sound

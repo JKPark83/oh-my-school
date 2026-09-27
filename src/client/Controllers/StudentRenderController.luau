@@ -7,8 +7,13 @@
 	  서버는 좌석 파트 18개(IsEmpty 어트리뷰트)만 소유하고, 각 클라이언트는
 	  자기 교실 하나만 그린다. 그리는 쪽에서 보면 언제나 18명이다.
 
-	학생은 게임 규칙상 전원 칠판(-Z)을 본다.
-	CharacterBuilder 의 기본 방향이 -Z 이므로 회전 없는 CFrame 이면 그대로 맞는다.
+	학생은 기본적으로 칠판(-Z)을 본다. CharacterBuilder 의 기본 방향이 -Z 이므로
+	회전 없는 CFrame 이면 그대로 맞는다. 예외가 고자질하는 학생이다 —
+	Facing 어트리뷰트가 0 이 아니면 그만큼 돌려 앉힌다.
+
+	★ 방향과 손드는 자세를 여기서 "정하지" 않는다. 서버가 어트리뷰트로 말한 것을
+	  그리기만 한다. 누가 고자질하는 학생인지는 서버의 판정 근거이기도 해서,
+	  화면이 자기 마음대로 그리면 보이는 것과 규칙이 어긋난다.
 
 	빈자리에는 아무도 그리지 않는다. 서버가 IsEmpty 를 바꾸면 여기서 즉시 반영된다 —
 	즉 "빈자리가 어디인가"는 클라이언트가 정하는 것이 아니라 보여주기만 한다.
@@ -38,8 +43,19 @@ type Student = {
 }
 
 local container: Folder
+local seatsFolder: Instance
 local students: { [BasePart]: Student } = {}
 local rng = Random.new(20260815)
+
+--[[
+	이 교실의 학년. 아이들 체구가 여기서 나온다.
+
+	★ 프로필(ProfileUpdated)이 아니라 교실 모델의 어트리뷰트를 본다.
+	  학생 렌더는 교실에 매여 있고 프로필은 플레이어에 매여 있어서, 둘의 도착 순서가
+	  어긋나면 한 반을 통째로 전 학년 체구로 그린다. 그리는 근거는
+	  그리는 대상에 붙어 있어야 한다.
+]]
+local grade = 1
 
 local function despawn(seat: BasePart)
 	local student = students[seat]
@@ -54,18 +70,26 @@ local function spawnStudent(seat: BasePart)
 	despawn(seat)
 
 	local index = seat:GetAttribute("Index") or 1
+	local config = CharacterBuilder.studentConfig(index, grade)
 
-	-- 발이 바닥(y = 0)에 닿는 위치. 회전이 없으므로 칠판을 본다.
-	local base = CFrame.new(seat.Position.X, 0, seat.Position.Z)
-	local model = CharacterBuilder.build(`Student{index}`, base, CharacterBuilder.studentConfig(index))
+	-- 발이 바닥(y = 0)에 닿는 위치. 회전이 0 이면 칠판을 본다.
+	local yaw = seat:GetAttribute(RoomKeys.FACING_ATTRIBUTE) or 0
+	local base = CFrame.new(seat.Position.X, 0, seat.Position.Z) * CFrame.Angles(0, math.rad(yaw), 0)
+	local model = CharacterBuilder.build(`Student{index}`, base, config)
 	model.Parent = container
 
-	students[seat] = {
+	local student = {
 		model = model,
 		pivot = model:GetPivot(),
 		phase = rng:NextNumber(0, math.pi * 2),
 		speed = rng:NextNumber(1.1, 1.8),
 	}
+	students[seat] = student
+
+	-- 반 도중에 다시 그려지는 경우(빈자리 재배치 등)를 위해 손 상태도 같이 복원한다.
+	if seat:GetAttribute(RoomKeys.RAISED_ATTRIBUTE) == true then
+		CharacterBuilder.setHandRaised(model, true)
+	end
 end
 
 local function refresh(seat: BasePart)
@@ -82,6 +106,16 @@ local function track(child: Instance)
 	end
 	child:GetAttributeChangedSignal(RoomKeys.EMPTY_ATTRIBUTE):Connect(function()
 		refresh(child)
+	end)
+	-- 방향이 바뀌면 다시 세운다. 손든 팔의 기준 자세도 같이 새로 잡힌다.
+	child:GetAttributeChangedSignal(RoomKeys.FACING_ATTRIBUTE):Connect(function()
+		refresh(child)
+	end)
+	child:GetAttributeChangedSignal(RoomKeys.RAISED_ATTRIBUTE):Connect(function()
+		local student = students[child]
+		if student then
+			CharacterBuilder.setHandRaised(student.model, child:GetAttribute(RoomKeys.RAISED_ATTRIBUTE) == true)
+		end
 	end)
 	refresh(child)
 end
@@ -113,10 +147,32 @@ end
 function StudentRenderController.Start(room: Model)
 	local seats = room:WaitForChild(RoomKeys.SEATS_FOLDER, WAIT_TIMEOUT)
 	assert(seats, "좌석 폴더가 복제되지 않았다.")
+	seatsFolder = seats
 
 	container = Instance.new("Folder")
 	container.Name = "StudentsLocal"
 	container.Parent = Workspace
+
+	grade = room:GetAttribute(RoomKeys.GRADE_ATTRIBUTE) or grade
+
+	--[[
+		학년이 바뀌면 열여덟 명을 통째로 다시 그린다.
+
+		★ 반이 바뀔 때마다가 아니라 학년이 바뀔 때만 일어나는 일이다.
+		  같은 학년 안에서 1반부터 12반까지는 이 신호가 안 온다.
+
+		★ 살아 있는 students 표를 순회하지 않고 좌석 폴더를 다시 훑는다.
+		  refresh 가 표에서 지웠다가 다시 넣기 때문에, 순회 중에 그러면
+		  Lua 가 다음 키를 못 찾는다.
+	]]
+	room:GetAttributeChangedSignal(RoomKeys.GRADE_ATTRIBUTE):Connect(function()
+		grade = room:GetAttribute(RoomKeys.GRADE_ATTRIBUTE) or grade
+		for _, child in seatsFolder:GetChildren() do
+			if child:IsA("BasePart") then
+				refresh(child)
+			end
+		end
+	end)
 
 	-- 이미 복제된 좌석과, 아직 오는 중인 좌석을 모두 처리한다.
 	for _, child in seats:GetChildren() do

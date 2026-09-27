@@ -28,6 +28,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
+local GradeTheme = require(ReplicatedStorage.Shared.Config.GradeTheme)
 local RoomKeys = require(ReplicatedStorage.Shared.Config.RoomKeys)
 local BuildKit = require(script.Parent.Parent.BuildKit)
 
@@ -43,6 +44,33 @@ local TEACHER_Z = -15
 local DOOR_X = 14
 local DOOR_WIDTH = 8
 
+--[[
+	뒷문 높이. 7 이었다.
+
+	★ 폭 8 에 높이 7 이면 거의 정사각형이다. 그래서 이 자리가 "문"이 아니라
+	  "벽에 뚫린 구멍"으로 읽혔다 — 사람 키(5.6)보다 높긴 했으니 못 지나갈 일은
+	  없었는데, 지나갈 수 있다는 것과 문으로 보인다는 것은 다른 문제다.
+	  9.5 는 사람 키의 1.7배다. 문설주와 상인방을 두르면 비율이 세로로 선다.
+
+	★ 폭은 8 그대로다. 미닫이 두 짝이 각각 벽 뒤로 4.1 씩 물러나야 하는데,
+	  왼쪽 벽은 x = 10 에서, 오른쪽 벽은 x = 18 에서 시작한다. 폭을 줄이면
+	  열린 문짝이 문구멍을 도로 반쯤 막는다.
+]]
+local DOOR_HEIGHT = 9.5
+local DOOR_LEAF_W = DOOR_WIDTH / 2 + 0.1 -- 두 짝이 가운데에서 살짝 겹친다
+
+--[[
+	문짝이 매달린 면. 벽(z = 18.5~19.5)보다 0.25 만큼 교실 안쪽이다.
+
+	★ 문틀 안에 끼우지 않고 벽 앞면에 매다는 이유는 열릴 자리 때문이다.
+	  문틀 안에서 미닫으면 두 짝이 서로 겹치는 만큼만 열려서 폭 8 이 4 가 된다.
+	  벽 위로 빼면 8 이 통째로 열린다. 레일이 밖으로 나온 미닫이문은
+	  실제 학교 복도에도 흔하다.
+
+	  0.85 는 문설주(z = 18.4~19.6)와 안 겹치는 최소값에서 여유를 둔 값이다.
+]]
+local DOOR_Z = HALF_D - 0.85
+
 -- 책상 격자. Phase 1 과 동일하다.
 local DESK_X = { -14, 0, 14 }
 local DESK_Z = { -8, -4, 0, 4, 8, 12 }
@@ -52,10 +80,24 @@ local DESK_Z = { -8, -4, 0, 4, 8, 12 }
 local SEAT_DZ = 1.6
 local DESK_DEPTH = 2.2
 
--- 가구는 학생 체구에 맞춘다. 이 두 값 덕분에 엉덩이가 의자에, 팔뚝이 책상에 정확히 얹힌다.
-local FURNITURE_SCALE = 0.86
-local CHAIR_TOP = CharacterBuilder.SIT_HIP * FURNITURE_SCALE
-local DESK_TOP = CharacterBuilder.SIT_DESK * FURNITURE_SCALE
+--[[
+	가구 높이는 학생 체구에서 나온다. 이 두 식 덕분에 엉덩이가 의자에,
+	팔뚝이 책상에 정확히 얹힌다.
+
+	★ 예전에는 체구가 0.86 하나로 고정이라 상수 두 개였다. 학년마다 아이들 키가
+	  달라지면서 식이 됐다 — 아이만 키우고 가구를 두면 6학년이 유치원 의자에 앉는다.
+	  바뀌는 것은 y 뿐이다. 책상의 X/Z 발자국은 통로 폭을 정하는 값이라 손대지 않는다.
+]]
+local function chairTopY(scale: number): number
+	return CharacterBuilder.SIT_HIP * scale
+end
+
+local function deskTopY(scale: number): number
+	return CharacterBuilder.SIT_DESK * scale
+end
+
+-- 지을 때 쓰는 기준 학년. 실제 학년은 ClassroomService 가 반을 열 때 다시 입힌다.
+local BUILD_GRADE = 1
 
 -- 이름은 전부 RoomKeys 에서 온다. 클라이언트가 같은 문자열로 찾아야 하기 때문이다.
 Template.SEAT_TAG = RoomKeys.SEAT_TAG
@@ -97,6 +139,52 @@ local C = {
 	dark = Color3.fromRGB(48, 48, 52),
 }
 
+--[[
+	── 학년 스킨 ──
+
+	교실을 지으면서 "학년이 바뀌면 손봐야 하는 것"만 따로 모아둔 목록이다.
+
+	★ 학년마다 교실을 다시 짓지 않는다. 슬롯 12개는 서버가 뜰 때 한 번 지어지고
+	  그 뒤로는 반이 바뀔 때마다 옷만 갈아입는다. 다시 지으면 좌석 참조가 끊기고,
+	  그 참조를 들고 있는 것이 세션·감지·프롬프트 전부다.
+
+	★ 나중에 이름으로 찾지 않고 지을 때 받아두는 이유는, 이름 검색이 조용히
+	  실패하기 때문이다. 파트 이름 하나를 오타 내면 그 학년만 색이 안 바뀌는데
+	  에러는 안 난다. 목록에 넣는 것을 빼먹으면 그건 diff 에 보인다.
+]]
+export type Skin = {
+	accent: { BasePart },
+	accentDark: { BasePart },
+	deskTops: { BasePart },
+	chairs: { BasePart },
+	books: { BasePart },
+	curtains: { BasePart },
+	desks: { DeskUnit }, -- 체구를 따라 높이가 다시 잡히는 책상 한 벌
+	labels: { [string]: any }, -- 칠판·급훈·시간표·게시판·문패의 TextLabel
+}
+
+type DeskUnit = {
+	top: BasePart,
+	legs: { BasePart },
+	back: BasePart,
+	leg: BasePart,
+	seat: BasePart,
+	book: BasePart,
+}
+
+local function newSkin(): Skin
+	return {
+		accent = {},
+		accentDark = {},
+		deskTops = {},
+		chairs = {},
+		books = {},
+		curtains = {},
+		desks = {},
+		labels = {},
+	}
+end
+
 -- ── 파트 생성 헬퍼 ─────────────────────────────────────────────────
 -- Phase 5 에서 운동장 허브가 같은 헬퍼를 쓰게 되면서 BuildKit 으로 옮겼다.
 -- 이름을 그대로 지역 변수에 받는 이유는, 아래 700줄이 전부 part(...) 로 쓰여 있어서다.
@@ -136,8 +224,8 @@ local function buildStructure(parent: Instance)
 	part(
 		parent,
 		"DoorHeader",
-		Vector3.new(DOOR_WIDTH, HEIGHT - 7, WALL),
-		Vector3.new(DOOR_X, 7 + (HEIGHT - 7) / 2, HALF_D),
+		Vector3.new(DOOR_WIDTH, HEIGHT - DOOR_HEIGHT, WALL),
+		Vector3.new(DOOR_X, DOOR_HEIGHT + (HEIGHT - DOOR_HEIGHT) / 2, HALF_D),
 		opts
 	)
 
@@ -209,6 +297,184 @@ local function buildStructure(parent: Instance)
 end
 
 --[[
+	── 뒷문 ──
+
+	★ 원래 여기는 문이 아니라 구멍이었다. 벽에 사각형을 비워두고 그걸 문이라고 불렀다.
+	  플레이어가 "문을 여닫을 수 없다"고 말한 것은 기능 요청이 아니라 관찰이다 —
+	  여닫을 수 없는 것은 문이 아니고, 문이 아닌 것 옆에서 부활하면
+	  자기가 방금 어디로 들어왔는지 알 수 없다.
+
+	한국 교실 뒷문은 미닫이 두 짝이다. 여닫이가 아니라 미닫이여야 하는 이유가
+	이 게임에는 하나 더 있다 — 여닫이는 열릴 때 호를 그리며 사람을 밀어낸다.
+	부활 지점이 문에서 3 스터드 앞이라, 열리는 문이 매번 플레이어를 걷어찬다.
+	미닫이는 벽을 따라 옆으로 빠지므로 아무도 안 건드린다.
+
+	@return 문짝 두 짝. 각 짝은 파트 묶음과 열릴 때 갈 방향이다.
+	        닫힌 자세(CFrame)는 여기서 안 잰다 — 교실은 지어진 뒤 슬롯으로 옮겨지므로
+	        지금 잰 좌표는 전부 원점 기준이고, 옮기고 나면 전부 틀린 값이 된다.
+	        재는 것은 PivotTo 를 한 쪽(ClassroomService)의 몫이다.
+]]
+type Leaf = { parts: { BasePart }, slide: Vector3 }
+
+local function buildBackDoor(parent: Instance, skin): { Leaf }
+	-- 문설주와 상인방. 이 테두리가 있어야 구멍이 문이 된다
+	local trim = { color = C.wall, material = Enum.Material.WoodPlanks, fade = true }
+	for _, sign in { -1, 1 } do
+		table.insert(
+			skin.accent,
+			part(
+				parent,
+				`DoorJamb{sign}`,
+				Vector3.new(0.55, DOOR_HEIGHT + 0.7, 1.2),
+				Vector3.new(DOOR_X + sign * (DOOR_WIDTH / 2 + 0.27), (DOOR_HEIGHT + 0.7) / 2, HALF_D),
+				trim
+			)
+		)
+	end
+	table.insert(
+		skin.accent,
+		part(
+			parent,
+			"DoorLintel",
+			Vector3.new(DOOR_WIDTH + 1.7, 0.7, 1.2),
+			Vector3.new(DOOR_X, DOOR_HEIGHT + 0.35, HALF_D),
+			trim
+		)
+	)
+	part(parent, "DoorSill", Vector3.new(DOOR_WIDTH + 1.7, 0.12, 1.2), Vector3.new(DOOR_X, 0.06, HALF_D), {
+		color = C.metal,
+		material = Enum.Material.Metal,
+		collide = false, -- 문턱에 걸려 넘어지는 것은 연출이 아니라 버그로 읽힌다
+		cast = false,
+	})
+
+	--[[
+		레일. 문짝이 열려서 벽 위에 가 있을 때도 매달려 있어야 하므로
+		문구멍이 아니라 "이동 범위 전체"를 덮는 길이여야 한다.
+		문구멍 폭만큼만 깔면 열린 문이 공중에 뜬 판때기가 된다.
+	]]
+	local travel = DOOR_LEAF_W
+	part(
+		parent,
+		"DoorRail",
+		Vector3.new(DOOR_WIDTH + travel * 2 + 0.6, 0.3, 0.55),
+		Vector3.new(DOOR_X, DOOR_HEIGHT - 0.05, DOOR_Z),
+		{ color = C.metal, material = Enum.Material.Metal, collide = false, fade = true }
+	)
+
+	--[[
+		문짝. 아래는 나무 판, 위는 불투명 유리다.
+
+		★ 유리를 넣는 것이 그림 문제만은 아니다. 문이 닫혀 있어도 복도 조명이
+		  흐리게 비쳐야 "저 너머에 공간이 있다"가 남는다. 통판 나무로 막으면
+		  교실이 상자가 되고, 상자에서는 나갈 생각이 안 든다.
+	]]
+	local leaves: { Leaf } = {}
+	local half = DOOR_LEAF_W / 2
+	local TOP, BOTTOM = 9.28, 0.08
+	local PANEL_TOP, GLASS_TOP = 3.58, 8.92
+
+	for _, sign in { -1, 1 } do
+		local cx = DOOR_X + sign * half
+		local parts: { BasePart } = {}
+
+		local function piece(name: string, size: Vector3, dx: number, y: number, opts): BasePart
+			local p = part(parent, name, size, Vector3.new(cx + dx, y, DOOR_Z), opts)
+			table.insert(parts, p)
+			return p
+		end
+
+		local wood = { color = C.desk, material = Enum.Material.WoodPlanks, fade = true }
+		local rail = { color = C.wainscot, material = Enum.Material.Wood, fade = true }
+
+		piece("DoorPanel", Vector3.new(DOOR_LEAF_W, PANEL_TOP - BOTTOM, 0.16), 0, (BOTTOM + PANEL_TOP) / 2, wood)
+		table.insert(
+			skin.accentDark,
+			piece("DoorMidRail", Vector3.new(DOOR_LEAF_W, 0.34, 0.2), 0, PANEL_TOP + 0.17, rail)
+		)
+		table.insert(skin.accentDark, piece("DoorTopRail", Vector3.new(DOOR_LEAF_W, 0.36, 0.2), 0, TOP - 0.18, rail))
+		for _, edge in { -1, 1 } do
+			table.insert(
+				skin.accentDark,
+				piece("DoorStile", Vector3.new(0.26, TOP - BOTTOM, 0.2), edge * (half - 0.13), (BOTTOM + TOP) / 2, rail)
+			)
+		end
+
+		local glassH = GLASS_TOP - (PANEL_TOP + 0.34)
+		local glassY = (PANEL_TOP + 0.34 + GLASS_TOP) / 2
+		piece("DoorGlass", Vector3.new(DOOR_LEAF_W - 0.5, glassH, 0.08), 0, glassY, {
+			color = C.glass,
+			material = Enum.Material.Glass,
+			transparency = 0.5,
+			collide = false,
+			cast = false,
+			fade = true,
+		})
+		piece("DoorMullion", Vector3.new(0.12, glassH, 0.14), 0, glassY, {
+			color = C.wainscot,
+			material = Enum.Material.Wood,
+			collide = false,
+			cast = false,
+			fade = true,
+		})
+
+		-- 손잡이는 두 짝이 만나는 안쪽 모서리에 붙는다. 미닫이는 여기를 잡고 민다
+		piece("DoorHandle", Vector3.new(0.16, 1.2, 0.3), -sign * (half - 0.45), 4.6, {
+			color = C.metal,
+			material = Enum.Material.Metal,
+			collide = false,
+			cast = false,
+			fade = true,
+		})
+
+		-- 열리면 각자 바깥쪽 벽 위로 물러난다
+		table.insert(leaves, { parts = parts, slide = Vector3.new(sign * travel, 0, 0) })
+	end
+
+	--[[
+		문패. 교실 안쪽과 복도 쪽에 하나씩.
+
+		★ 학년이 안 보인다는 말에 대한 가장 짧은 답이 이것이다. 부활 지점이 문 앞이고
+		  플레이어는 매 판 여기서 시작하므로, 몸을 돌리면 언제나 "3-7"이 눈에 든다.
+		  복도 쪽에도 다는 이유는 나갔다 들어올 때 같은 것이 보여야 하기 때문이다.
+	]]
+	local plates: { TextLabel } = {}
+	for _, side in
+		{ { z = HALF_D - 0.68, face = Enum.NormalId.Front }, { z = HALF_D + 0.68, face = Enum.NormalId.Back } }
+	do
+		local plate =
+			part(parent, "DoorPlate", Vector3.new(4.2, 1.9, 0.14), Vector3.new(DOOR_X, DOOR_HEIGHT + 1.6, side.z), {
+				color = Color3.fromRGB(250, 248, 242),
+				collide = false,
+				cast = false,
+			})
+		table.insert(plates, surfaceText(plate, side.face, "<b>1-1</b>", C.dark, 1.1))
+		table.insert(
+			skin.accent,
+			part(
+				parent,
+				"DoorPlateFrame",
+				Vector3.new(4.6, 2.3, 0.1),
+				Vector3.new(
+					DOOR_X,
+					DOOR_HEIGHT + 1.6,
+					side.z + (if side.face == Enum.NormalId.Front then 0.1 else -0.1)
+				),
+				{
+					color = C.wainscot,
+					material = Enum.Material.Wood,
+					collide = false,
+					cast = false,
+				}
+			)
+		)
+	end
+	skin.labels.doorPlates = plates
+
+	return leaves
+end
+
+--[[
 	교실 밖 복도.
 
 	★ 이건 장식이 아니라 바닥이다. 뒷벽에 문 구멍을 뚫어놓고 그 밖에 아무것도
@@ -221,7 +487,7 @@ end
 local CORRIDOR_DEPTH = 16 -- 뒷벽(z = HALF_D)에서 바깥쪽으로
 local CORRIDOR_OVERHANG = 3 -- 교실 폭보다 좌우로 더 나가는 길이
 
-local function buildCorridor(parent: Instance)
+local function buildCorridor(parent: Instance, skin)
 	local zNear = HALF_D
 	local zFar = HALF_D + CORRIDOR_DEPTH
 	local zMid = (zNear + zFar) / 2
@@ -309,7 +575,7 @@ local function buildCorridor(parent: Instance)
 		color = C.cork,
 		material = Enum.Material.Fabric,
 	})
-	surfaceText(
+	skin.labels.corridor = surfaceText(
 		board,
 		Enum.NormalId.Right,
 		"<b>이달의 독서왕</b>\n\n1학년 1반  김민준\n1학년 2반  이서연",
@@ -341,15 +607,20 @@ end
 	여기 것은 S자 곡선을 못 내서 원판 두 장을 어긋나게 겹친 흉내였다.
 	급훈 액자와 시계만으로도 벽은 이미 한국 교실로 읽힌다.
 ]]
-local function buildFrontWall(parent: Instance)
+local function buildFrontWall(parent: Instance, skin)
 	local z = -HALF_D + 0.55 -- 굽도리보다 살짝 앞
 
 	-- 칠판. 초록 판 + 나무 테두리 + 분필받이
-	part(parent, "BlackboardFrame", Vector3.new(27, 5.8, 0.25), Vector3.new(0, 4.4, z), {
-		color = C.boardFrame,
-		material = Enum.Material.Wood,
-		collide = false,
-	})
+	-- 테두리가 학년 색을 입는다. 교실에서 가장 오래 보는 물건이 칠판이라,
+	-- 여기 한 줄이 벽 열 군데를 칠하는 것보다 학년을 잘 말한다
+	table.insert(
+		skin.accent,
+		part(parent, "BlackboardFrame", Vector3.new(27, 5.8, 0.25), Vector3.new(0, 4.4, z), {
+			color = C.boardFrame,
+			material = Enum.Material.Wood,
+			collide = false,
+		})
+	)
 	local board = part(parent, "Blackboard", Vector3.new(26, 5, 0.3), Vector3.new(0, 4.4, z + 0.16), {
 		color = C.board,
 		material = Enum.Material.Slate,
@@ -376,7 +647,7 @@ local function buildFrontWall(parent: Instance)
 		})
 	end
 
-	surfaceText(
+	skin.labels.board = surfaceText(
 		board,
 		Enum.NormalId.Back,
 		"1학년 1반  받아쓰기\n\n1. 학교종이 땡땡땡\n2. 우리 모두 다 같이",
@@ -385,18 +656,27 @@ local function buildFrontWall(parent: Instance)
 	)
 
 	-- 급훈 액자 / 시계
-	part(parent, "MottoFrame", Vector3.new(6.4, 2.8, 0.2), Vector3.new(8, 8.4, z + 0.2), {
-		color = C.boardFrame,
-		material = Enum.Material.Wood,
-		collide = false,
-		cast = false,
-	})
+	table.insert(
+		skin.accentDark,
+		part(parent, "MottoFrame", Vector3.new(6.4, 2.8, 0.2), Vector3.new(8, 8.4, z + 0.2), {
+			color = C.boardFrame,
+			material = Enum.Material.Wood,
+			collide = false,
+			cast = false,
+		})
+	)
 	local motto = part(parent, "Motto", Vector3.new(5.8, 2.2, 0.1), Vector3.new(8, 8.4, z + 0.32), {
 		color = Color3.fromRGB(250, 248, 240),
 		collide = false,
 		cast = false,
 	})
-	surfaceText(motto, Enum.NormalId.Back, "급훈\n<b>바르고 슬기롭게</b>", Color3.fromRGB(40, 40, 45), 0.85)
+	skin.labels.motto = surfaceText(
+		motto,
+		Enum.NormalId.Back,
+		"급훈\n<b>바르고 슬기롭게</b>",
+		Color3.fromRGB(40, 40, 45),
+		0.85
+	)
 
 	part(parent, "Clock", Vector3.new(0.15, 2.2, 2.2), Vector3.new(0, 8.6, z + 0.2), {
 		color = Color3.fromRGB(248, 248, 248),
@@ -440,24 +720,61 @@ local function buildFrontWall(parent: Instance)
 		collide = false,
 		cast = false,
 	})
+
+	--[[
+		학년 안내판. 창가 쪽 앞벽, TV 맞은편이다.
+
+		★ "난이도 조절이 된 건지 모르겠다"에 대한 답이 여기 걸린다.
+		  DifficultyTable 은 학년마다 항목을 하나씩만 새로 조이도록 짜여 있는데,
+		  그 설계는 플레이어가 조여진 항목이 무엇인지 알 때만 설계로 작동한다.
+		  모르면 그냥 "왜인지 어려워졌다"가 되고, 그건 연습으로 넘을 수 있는 벽이 아니다.
+		  수치를 적지는 않는다 — "회전 속도 1.4배"가 아니라
+		  "몸 도는 속도가 빨라졌다"여야 교실에 붙은 안내문으로 읽힌다.
+
+		x = -17.6 인 것은 칠판 테두리(폭 27, ±13.5)를 피해야 해서다.
+	]]
+	table.insert(
+		skin.accent,
+		part(parent, "GradeSignFrame", Vector3.new(6.9, 4.4, 0.25), Vector3.new(-17.6, 6.6, z + 0.1), {
+			color = C.boardFrame,
+			material = Enum.Material.Wood,
+			collide = false,
+			cast = false,
+		})
+	)
+	local sign = part(parent, "GradeSign", Vector3.new(6.3, 3.8, 0.12), Vector3.new(-17.6, 6.6, z + 0.28), {
+		color = Color3.fromRGB(250, 248, 240),
+		collide = false,
+		cast = false,
+	})
+	skin.labels.hint = surfaceText(
+		sign,
+		Enum.NormalId.Back,
+		"<b>1학년</b>\n\n선생님은\n돌아보기 전에 어깨가 먼저 움직인다",
+		Color3.fromRGB(45, 45, 52),
+		0.62
+	)
 end
 
 -- ── 뒷벽 (게시판 + 사물함) ─────────────────────────────────────────
-local function buildBackWall(parent: Instance, covers: { BasePart })
+local function buildBackWall(parent: Instance, covers: { BasePart }, skin)
 	local z = HALF_D - 0.6
 
 	-- 게시판. 코르크 판 + 아이들 작품(색종이)
-	part(parent, "NoticeFrame", Vector3.new(19, 6.2, 0.2), Vector3.new(-8, 5.4, z), {
-		color = C.boardFrame,
-		material = Enum.Material.Wood,
-		collide = false,
-	})
+	table.insert(
+		skin.accent,
+		part(parent, "NoticeFrame", Vector3.new(19, 6.2, 0.2), Vector3.new(-8, 5.4, z), {
+			color = C.boardFrame,
+			material = Enum.Material.Wood,
+			collide = false,
+		})
+	)
 	local cork = part(parent, "NoticeBoard", Vector3.new(18, 5.4, 0.15), Vector3.new(-8, 5.4, z - 0.15), {
 		color = C.cork,
 		material = Enum.Material.Fabric,
 		collide = false,
 	})
-	surfaceText(cork, Enum.NormalId.Front, "우리들의 작품", Color3.fromRGB(70, 50, 30), 0.9)
+	skin.labels.notice = surfaceText(cork, Enum.NormalId.Front, "우리들의 작품", Color3.fromRGB(70, 50, 30), 0.9)
 
 	local paperColors = {
 		Color3.fromRGB(255, 226, 140),
@@ -521,7 +838,7 @@ local function buildBackWall(parent: Instance, covers: { BasePart })
 end
 
 -- ── 창가 ──────────────────────────────────────────────────────────
-local function buildWindows(parent: Instance)
+local function buildWindows(parent: Instance, skin)
 	local x = -HALF_W + 0.6
 
 	part(parent, "Windowsill", Vector3.new(1.1, 0.3, 30), Vector3.new(x + 0.3, 3.1, 0), {
@@ -553,11 +870,14 @@ local function buildWindows(parent: Instance)
 
 		-- 커튼은 창 양옆에 묶여 있다
 		for _, sign in { -1, 1 } do
-			part(parent, `Curtain{i}{sign}`, Vector3.new(0.5, 6, 1.6), Vector3.new(x + 0.5, 6.1, z + sign * 4.4), {
-				color = C.curtain,
-				material = Enum.Material.Fabric,
-				collide = false,
-			})
+			table.insert(
+				skin.curtains,
+				part(parent, `Curtain{i}{sign}`, Vector3.new(0.5, 6, 1.6), Vector3.new(x + 0.5, 6.1, z + sign * 4.4), {
+					color = C.curtain,
+					material = Enum.Material.Fabric,
+					collide = false,
+				})
+			)
 		end
 	end
 
@@ -584,7 +904,7 @@ local function buildWindows(parent: Instance)
 		collide = false,
 		cast = false,
 	})
-	surfaceText(
+	skin.labels.timetable = surfaceText(
 		timetable,
 		Enum.NormalId.Right,
 		"<b>시간표</b>\n1교시 국어\n2교시 수학\n3교시 통합\n4교시 체육",
@@ -602,54 +922,126 @@ end
 	태그도 같이 붙이지만, 클라이언트가 의존하는 것은 폴더다.
 	태그 복제 시점을 기다리는 것보다 폴더 WaitForChild 가 확실하다.
 ]]
-local function buildDesks(furniture: Instance, seats: Folder)
-	local index = 0
+--[[
+	책상 한 벌의 높이를 체구에 맞춘다. 짓는 순간에도, 학년이 바뀔 때도 여기를 통한다.
+	식이 두 군데에 적혀 있으면 한쪽만 고치는 날이 반드시 온다.
 
-	for _, x in DESK_X do
-		for _, z in DESK_Z do
+	★ 바꾸는 것은 Size 와 y 뿐이다. X/Z 는 지금 값을 그대로 되쓴다 —
+	  이 함수는 교실이 슬롯(x = 10000 + ...)으로 옮겨진 뒤에도 불리는데,
+	  그때 로컬 좌표로 CFrame 을 새로 쓰면 책상 18개가 원점으로 순간이동한다.
+	  슬롯 원점은 y 성분이 0 인 순수 평행이동이라 y 만은 로컬 = 월드다.
+]]
+local function fitDesk(unit: DeskUnit, scale: number)
+	local deskTop = deskTopY(scale)
+	local chairTop = chairTopY(scale)
+
+	local function setY(p: BasePart, y: number)
+		-- 회전을 지키기 위해 위치만 갈아끼운다. 교과서는 비스듬히 놓여 있다
+		p.CFrame = p.CFrame + Vector3.new(0, y - p.Position.Y, 0)
+	end
+
+	unit.top.Size = Vector3.new(4.6, 0.2, DESK_DEPTH)
+	setY(unit.top, deskTop - 0.1)
+	for _, legPart in unit.legs do
+		legPart.Size = Vector3.new(0.25, deskTop - 0.2, DESK_DEPTH - 0.4)
+		setY(legPart, (deskTop - 0.2) / 2)
+	end
+
+	unit.back.Size = Vector3.new(1.9, 1.5, 0.2)
+	setY(unit.back, chairTop + 0.75)
+	unit.leg.Size = Vector3.new(1, chairTop - 0.2, 1)
+	setY(unit.leg, (chairTop - 0.2) / 2)
+
+	unit.seat.Size = Vector3.new(1.9, 0.2, 1.9)
+	setY(unit.seat, chairTop - 0.1)
+
+	setY(unit.book, deskTop + 0.11)
+end
+
+local function buildDesks(furniture: Instance, seats: Folder, skin)
+	local index = 0
+	local bookRng = Random.new(419)
+
+	-- col 은 창가(-X)부터 1, row 는 칠판(-Z)부터 1이다. 둘 다 좌석에 박아두면
+	-- 클라이언트가 "1분단 3번째"를 만들 때 DESK_X / DESK_Z 를 몰라도 된다.
+	for col, x in DESK_X do
+		for row, z in DESK_Z do
 			index += 1
 			local seatZ = z + SEAT_DZ
 
-			-- 책상: 상판 + 다리 패널 2장
-			part(furniture, `DeskTop{index}`, Vector3.new(4.6, 0.2, DESK_DEPTH), Vector3.new(x, DESK_TOP - 0.1, z), {
+			-- 책상: 상판 + 다리 패널 2장. 높이는 아래 fitDesk 가 잡는다
+			local top = part(furniture, `DeskTop{index}`, Vector3.new(4.6, 0.2, DESK_DEPTH), Vector3.new(x, 0, z), {
 				color = C.desk,
 				material = Enum.Material.Wood,
 			})
+			local legs: { BasePart } = {}
 			for _, sign in { -1, 1 } do
-				part(
-					furniture,
-					`DeskLeg{index}{sign}`,
-					Vector3.new(0.25, DESK_TOP - 0.2, DESK_DEPTH - 0.4),
-					Vector3.new(x + sign * 2, (DESK_TOP - 0.2) / 2, z),
-					{ color = C.metal, material = Enum.Material.Metal, collide = false }
+				table.insert(
+					legs,
+					part(
+						furniture,
+						`DeskLeg{index}{sign}`,
+						Vector3.new(0.25, 1, DESK_DEPTH - 0.4),
+						Vector3.new(x + sign * 2, 0, z),
+						{ color = C.metal, material = Enum.Material.Metal, collide = false }
+					)
 				)
 			end
 
 			-- 의자: 등받이 + 기둥. 앉는 면은 아래 좌석 파트가 겸한다
-			part(
+			local back = part(
 				furniture,
 				`ChairBack{index}`,
 				Vector3.new(1.9, 1.5, 0.2),
-				Vector3.new(x, CHAIR_TOP + 0.75, seatZ + 0.85),
+				Vector3.new(x, 0, seatZ + 0.85),
 				{ color = C.chair, material = Enum.Material.Wood, collide = false }
 			)
-			part(
+			local leg = part(
 				furniture,
 				`ChairLeg{index}`,
-				Vector3.new(1, CHAIR_TOP - 0.2, 1),
-				Vector3.new(x, (CHAIR_TOP - 0.2) / 2, seatZ),
+				Vector3.new(1, 1, 1),
+				Vector3.new(x, 0, seatZ),
 				{ color = C.metal, material = Enum.Material.Metal, collide = false }
 			)
+
+			--[[
+				펼쳐진 교과서. 학년마다 색이 다르다.
+
+				★ 책상 위가 텅 비어 있으면 아무리 색을 칠해도 "쓰는 교실"로 안 읽힌다.
+				  그리고 18개가 한 방향으로 정렬돼 있으면 그건 교실이 아니라 진열대다.
+				  각도만 조금씩 흩어놓는다. 발자국(X/Z)은 책상 위라 통로와 무관하다.
+			]]
+			local book = part(furniture, `Textbook{index}`, Vector3.new(1.7, 0.22, 1.2), Vector3.new(x - 1, 0, z), {
+				color = C.desk,
+				material = Enum.Material.SmoothPlastic,
+				collide = false,
+				cast = false,
+				cframe = CFrame.Angles(0, math.rad(bookRng:NextNumber(-18, 18)), 0),
+			})
+			table.insert(skin.books, book)
+			table.insert(skin.deskTops, top)
+			table.insert(skin.chairs, back)
 
 			local seat = part(
 				seats,
 				string.format("Seat%02d", index),
 				Vector3.new(1.9, 0.2, 1.9),
-				Vector3.new(x, CHAIR_TOP - 0.1, seatZ),
+				Vector3.new(x, 0, seatZ),
 				{ color = C.chair, material = Enum.Material.Wood, collide = false }
 			)
+			table.insert(skin.chairs, seat)
+
+			local unit: DeskUnit = { top = top, legs = legs, back = back, leg = leg, seat = seat, book = book }
+			fitDesk(unit, GradeTheme.get(BUILD_GRADE).bodyScale)
+			table.insert(skin.desks, unit)
+
 			seat:SetAttribute("Index", index)
 			seat:SetAttribute("IsEmpty", false)
+			seat:SetAttribute(RoomKeys.COLUMN_ATTRIBUTE, col)
+			seat:SetAttribute(RoomKeys.ROW_ATTRIBUTE, row)
+			-- 기본은 전원 칠판을 보고 손은 내리고 있다. 반마다 진행 쪽이 다시 정한다.
+			seat:SetAttribute(RoomKeys.FACING_ATTRIBUTE, 0)
+			seat:SetAttribute(RoomKeys.RAISED_ATTRIBUTE, false)
 			CollectionService:AddTag(seat, Template.SEAT_TAG)
 		end
 	end
@@ -701,6 +1093,56 @@ local function buildObstacles(parent: Instance): ({ BasePart }, { BasePart })
 	return creaks, slips
 end
 
+--[[
+	교실에 학년을 입힌다. 반이 열릴 때마다 ClassroomService 가 부른다.
+
+	★ 지오메트리는 한 칸도 안 움직인다. 바뀌는 것은 Color, TextLabel.Text,
+	  그리고 가구의 "높이"뿐이다. 교실 치수(46 x 38), 책상 격자, 엄폐물 발자국,
+	  선생님 z = -15 위에서 난이도가 튜닝됐고, 학년마다 방이 달라지면
+	  그 튜닝이 학년마다 다시 필요해진다. 그건 여섯 배의 일이 아니라
+	  "어느 학년에서 검증한 값인지 아무도 모르는 상태"다.
+
+	★ 가구 높이만 예외인 것은 체구 때문이다. 6학년 아이를 1학년 의자에 앉히면
+	  다리가 책상을 뚫는다. 높이는 감지에 안 쓰인다 — 시야 판정이 전부 X/Z 다.
+]]
+function Template.applyGrade(skin: Skin, grade: number, class: number)
+	local theme = GradeTheme.get(grade)
+
+	for _, p in skin.accent do
+		p.Color = theme.accent
+	end
+	for _, p in skin.accentDark do
+		p.Color = theme.accentDark
+	end
+	for _, p in skin.deskTops do
+		p.Color = theme.deskTop
+	end
+	for _, p in skin.chairs do
+		p.Color = theme.chair
+	end
+	for _, p in skin.books do
+		p.Color = theme.book
+	end
+	for _, p in skin.curtains do
+		p.Color = theme.curtain
+	end
+
+	for _, unit in skin.desks do
+		fitDesk(unit, theme.bodyScale)
+	end
+
+	local L = skin.labels
+	for _, plate in L.doorPlates do
+		plate.Text = `<b>{grade}-{class}</b>`
+	end
+	L.board.Text = `{theme.label} {class}반  {theme.board}`
+	L.motto.Text = `급훈\n<b>{theme.motto}</b>`
+	L.timetable.Text = `<b>시간표</b>\n{theme.timetable}`
+	L.notice.Text = theme.notice
+	L.hint.Text = `<b>{theme.label}</b>\n\n선생님은\n{theme.hint}`
+	L.corridor.Text = `<b>이달의 독서왕</b>\n\n{theme.label} 1반  김민준\n{theme.label} 2반  이서연`
+end
+
 -- ── 조립 ──────────────────────────────────────────────────────────
 --[[
 	@return 부모가 붙지 않은 교실 모델과, 서비스들이 필요로 하는 참조들.
@@ -712,7 +1154,7 @@ end
 	  슬롯마다 교실이 미묘하게 다른 곳에 놓인다.
 	  doorCFrame 도 로컬 좌표다. 호출자가 슬롯원점을 곱해서 쓴다.
 ]]
-function Template.build()
+function Template.build(slotIndex: number?)
 	local room = Instance.new("Model")
 	room.Name = "Classroom"
 
@@ -733,16 +1175,21 @@ function Template.build()
 	obstacles.Parent = room
 
 	local covers: { BasePart } = {}
+	local skin = newSkin()
 
 	buildStructure(structure)
-	buildCorridor(structure)
-	buildFrontWall(furniture)
-	buildBackWall(furniture, covers)
-	buildWindows(furniture)
-	buildDesks(furniture, seats)
+	local doorLeaves = buildBackDoor(structure, skin)
+	buildCorridor(structure, skin)
+	buildFrontWall(furniture, skin)
+	buildBackWall(furniture, covers, skin)
+	buildWindows(furniture, skin)
+	buildDesks(furniture, seats, skin)
 	local creakTiles, slipItems = buildObstacles(obstacles)
 
 	room:SetAttribute(Template.OBSTACLES_ATTRIBUTE, false)
+	-- 클라이언트(StudentRenderController)가 학생 체구를 정하는 데 읽는다.
+	-- 반이 열리기 전에 복제될 수 있으므로 nil 로 두지 않는다.
+	room:SetAttribute(RoomKeys.GRADE_ATTRIBUTE, BUILD_GRADE)
 
 	for _, cover in covers do
 		CollectionService:AddTag(cover, Template.COVER_TAG)
@@ -750,7 +1197,7 @@ function Template.build()
 
 	-- 선생님. 칠판(-Z)을 보고 선다. WATCHING 에서 180도 돌면 학생(+Z)을 본다.
 	local teacherBase = CFrame.new(0, 0, TEACHER_Z)
-	local teacher = CharacterBuilder.build("Teacher", teacherBase, CharacterBuilder.teacherConfig())
+	local teacher = CharacterBuilder.build("Teacher", teacherBase, CharacterBuilder.teacherConfig(slotIndex))
 	teacher.Parent = room
 
 	-- 뒷문 앞 스폰. 여기는 MAX_SIGHT 밖이라 패턴을 관찰하고 출발할 수 있다.
@@ -776,6 +1223,8 @@ function Template.build()
 		slipItems = slipItems,
 		spawn = spawn,
 		doorCFrame = CFrame.new(DOOR_X, 3, HALF_D - 3),
+		doorLeaves = doorLeaves,
+		skin = skin,
 	}
 end
 

@@ -21,9 +21,10 @@
 	  분필 소리(SignalController)와 같은 프레임에 팔이 내려온다. 소리를 끈 플레이어에게는
 	  이쪽이 본 신호가 된다.
 
-	팔에 관절이 없다(CharacterBuilder 는 앵커된 파트 조립체다). 그래서 팔은
-	"어깨에서 목표점 방향으로 뻗은 길이 가변 블록"으로 다룬다. 뭉툭한 인형이라
-	길이가 조금 늘었다 줄었다 하는 것은 플레이 거리에서 팔꿈치로 읽힌다.
+	팔에 관절이 없다(CharacterBuilder 는 앵커된 메시 조립체다). 그래서 팔은
+	"어깨를 축으로 목표점 방향으로 돌리는 막대"로 다룬다. 길이는 안 바꾼다 —
+	예전 상자 팔은 늘였다 줄였다 했지만 메시는 늘이면 소매가 찌그러진다.
+	대신 팔이 칠판에 닿도록 몸이 나가는 거리(stepForward)를 팔 길이에서 유도한다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -34,16 +35,16 @@ local RoomKeys = require(ReplicatedStorage.Shared.Config.RoomKeys)
 local WAIT_TIMEOUT = 10
 
 -- ── 자세 ──────────────────────────────────────────────────────────
--- 선생님은 칠판에서 3.1스터드 떨어져 서 있고 팔은 2스터드다. 그대로면 허공에 쓴다.
+-- 선생님은 칠판에서 3스터드쯤 떨어져 서 있고 팔은 2스터드 남짓이다. 그대로면 허공에 쓴다.
 -- 판서 중에만 한 걸음 나갔다가, 판서가 끝나면 정확히 제자리로 돌아온다.
-local STEP_FORWARD = 1.6
+-- 얼마나 나가는지는 Start 에서 팔 길이와 칠판까지의 거리로 계산한다(stepForward).
+-- 팔을 위로 뻗으면 앞으로의 닿는 거리가 줄어드니 팔 길이의 이 비율만 믿는다.
+local REACH_RATIO = 0.85
+local STEP_MAX = 3
 -- 칠판을 따라 좌우로 옮겨 다니는 한계. 판서 폭(글자 폭)보다 넉넉하면 된다.
 local SHUFFLE_LIMIT = 4.5
 -- 오른손잡이라 손이 몸통보다 오른쪽에 있다. 몸은 글자보다 이만큼 왼쪽에 선다.
 local HAND_LEAD = 1.2
--- 팔 길이 허용 범위. 아래를 벗어나면 분필 끝이 칠판에 안 닿거나 팔이 고무가 된다.
-local ARM_MIN, ARM_MAX = 1.15, 2.75
-
 local CHALK_LEN = 0.6
 local ERASER_LEN = 0.5
 local BOARD_GAP = 0.06 -- 칠판 면에서 살짝 띄운다. 0 이면 z-fighting 이 난다
@@ -77,8 +78,11 @@ local GRAPHEME_TIME = 0.16 -- 글자 하나 쓰는 데 걸리는 시간
 local HOLD_TIME = 2.0 -- 다 쓰고 나서 그대로 두는 시간
 local ERASE_TIME = 1.1 -- 지우개로 쓸어내는 시간
 
-local TWITCH_HEIGHT = 0.4 -- 어깨가 들썩이는 높이(스터드)
-local TWITCH_TIME = 0.2 -- 올라갔다 내려오는 왕복 전체
+local TWITCH_HEIGHT = 0.6 -- 어깨가 들썩이는 높이(스터드)
+local TWITCH_TIME = 0.22 -- 올라갔다 내려오는 왕복 전체
+-- 올라가는 데 쓰는 시간. 나머지는 내려오는 데 쓴다.
+-- ★ 대칭 사인이면 "놀란다"가 아니라 "떠오른다"로 보인다. 놀람은 순간에 튀고 힘이 빠지듯 내려온다.
+local TWITCH_RISE = 0.06
 
 local TeacherPoseController = {}
 
@@ -89,6 +93,7 @@ local bodyParts: { { part: BasePart, offset: CFrame } } = {}
 local arm: BasePart
 local armOffset: CFrame
 local armRestSize: Vector3
+local stepForward = 0
 local board: BasePart
 local label: TextLabel
 local chalk: BasePart
@@ -208,7 +213,6 @@ local function release()
 	for _, entry in bodyParts do
 		entry.part.CFrame = basePivot * entry.offset
 	end
-	arm.Size = armRestSize
 	arm.CFrame = basePivot * armOffset
 
 	chalk.Transparency = 1
@@ -236,8 +240,11 @@ local function step(dt: number)
 		local t = os.clock() - start
 		if t >= TWITCH_TIME then
 			twitchStart = nil
+		elseif t < TWITCH_RISE then
+			twitchY = (t / TWITCH_RISE) * TWITCH_HEIGHT
 		else
-			twitchY = math.sin(t / TWITCH_TIME * math.pi) * TWITCH_HEIGHT
+			local k = (t - TWITCH_RISE) / (TWITCH_TIME - TWITCH_RISE)
+			twitchY = (1 - k) * (1 - k) * TWITCH_HEIGHT
 		end
 	end
 
@@ -260,38 +267,40 @@ local function step(dt: number)
 	-- 몸. 글자 위치를 따라 칠판을 좌우로 옮겨 다니고, 판서 중에만 한 걸음 앞으로.
 	local localPen = basePivot:PointToObjectSpace(pen)
 	local shuffle = math.clamp(localPen.X - HAND_LEAD, -SHUFFLE_LIMIT, SHUFFLE_LIMIT)
-	local body = basePivot:VectorToWorldSpace(Vector3.new(shuffle, 0, -STEP_FORWARD)) * blend
+	local body = basePivot:VectorToWorldSpace(Vector3.new(shuffle, 0, -stepForward)) * blend
 		+ Vector3.new(0, twitchY, 0)
 
 	for _, entry in bodyParts do
 		entry.part.CFrame = basePivot * entry.offset + body
 	end
 
-	-- 팔. 어깨는 고정하고 목표점 방향으로 길이를 늘여 뻗는다.
-	local shoulder = (basePivot * armOffset * CFrame.new(0, armRestSize.Y / 2, 0)).Position + body
+	-- 팔. 어깨(팔 파트 윗면 중심)를 축으로 "아래"에서 목표점 방향으로 돌린다. 길이는 그대로다.
+	-- 파트 회전은 Y 축뿐이라 파트의 위쪽 = 세계의 위쪽이고, 내린 팔은 정확히 아래(-Y)를 향한다.
+	local shoulder = (basePivot * armOffset).Position + Vector3.new(0, armRestSize.Y / 2, 0) + body
 	local delta = pen - shoulder
 	local dist = delta.Magnitude
 	local dir = if dist > 0.01 then delta / dist else Vector3.new(0, 0, -1)
 
-	local restRot = (basePivot * armOffset).Rotation
-	local rot = restRot
-	-- lookAt 은 방향이 수직에 가까우면 축이 모호해진다. 그럴 일은 없지만 막아둔다.
-	if math.abs(dir.Y) < 0.99 then
-		local writeRot = CFrame.lookAt(Vector3.zero, dir).Rotation * CFrame.Angles(math.pi / 2, 0, 0)
-		rot = restRot:Lerp(writeRot, blend)
+	-- 아래(-Y)를 dir 로 보내는 회전. 두 방향이 나란하면 축이 없으니 그대로 둔다.
+	local down = Vector3.new(0, -1, 0)
+	local swingAxis = down:Cross(dir)
+	local swing = CFrame.identity
+	if swingAxis.Magnitude > 1e-3 then
+		local full = CFrame.fromAxisAngle(swingAxis.Unit, math.acos(math.clamp(down:Dot(dir), -1, 1)))
+		swing = CFrame.new():Lerp(full, blend)
 	end
 
-	local armLen = math.clamp(dist - CHALK_LEN, ARM_MIN, ARM_MAX)
-	local length = armRestSize.Y + (armLen - armRestSize.Y) * blend
+	local restRot = (basePivot * armOffset).Rotation
+	local rot = swing * restRot
+	arm.CFrame = CFrame.new(shoulder) * rot * CFrame.new(0, -armRestSize.Y / 2, 0)
 
-	arm.Size = Vector3.new(armRestSize.X, length, armRestSize.Z)
-	arm.CFrame = CFrame.new(shoulder) * rot * CFrame.new(0, -length / 2, 0)
-
-	-- 손에 쥔 것. 팔의 끝(로컬 -Y 방향)에 붙는다.
-	local axis = -rot.UpVector
+	-- 손에 쥔 것. 팔의 끝에 붙는다. 소품은 구운 회전이 없는 몸 기준 회전을 쓴다 —
+	-- 팔 파트의 회전을 그대로 주면 지우개가 비스듬히 잡힌다.
+	local propRot = swing * basePivot.Rotation
+	local axis = -propRot.UpVector
 	local erasing = phase == "ERASE"
 	local propLen = if erasing then ERASER_LEN else CHALK_LEN
-	local propCF = CFrame.new(shoulder + axis * (length + propLen / 2)) * rot
+	local propCF = CFrame.new(shoulder + axis * (armRestSize.Y + propLen / 2)) * propRot
 
 	chalk.CFrame = propCF
 	eraser.CFrame = propCF
@@ -380,6 +389,12 @@ function TeacherPoseController.Start(room: Model)
 
 	armOffset = pivot:ToObjectSpace(arm.CFrame)
 	armRestSize = arm.Size
+
+	-- 어깨에서 칠판 면까지의 거리 - 팔이 닿는 거리 = 나가야 할 거리. 남·여 선생님의 팔 길이가 달라 계산한다.
+	local shoulderZ = basePivot:PointToObjectSpace((basePivot * armOffset).Position).Z
+	local boardZ = basePivot:PointToObjectSpace(boardPoint(0, 0)).Z
+	local reach = (armRestSize.Y + CHALK_LEN / 2) * REACH_RATIO
+	stepForward = math.clamp((shoulderZ - boardZ) - reach, 0, STEP_MAX)
 
 	chalk = makeProp(teacher, "Chalk", Vector3.new(0.2, CHALK_LEN, 0.2), Color3.fromRGB(244, 244, 238))
 	eraser = makeProp(teacher, "Eraser", Vector3.new(1.1, ERASER_LEN, 0.45), Color3.fromRGB(72, 62, 58))

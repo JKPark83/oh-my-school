@@ -52,12 +52,19 @@ local UPGRADE_GLYPHS = {
 
 local CHIP_POP = 0.22
 
+-- 종까지 이만큼 남으면 숫자가 붉어진다. 달리기 색과 같은 값이다 —
+-- "이제 뛸 때다"를 색으로 먼저 말한다.
+local BELL_URGENT = 5
+local BELL_LATE_COLOR = Color3.fromRGB(150, 150, 150)
+
 local player = Players.LocalPlayer
 
 local HudController = {}
 
 local classLabel: TextLabel
 local starLabel: TextLabel
+local seatLabel: TextLabel
+local bellLabel: TextLabel
 local modeLabel: TextLabel
 local noticeLabel: TextLabel
 local bannerLabel: TextLabel
@@ -66,6 +73,11 @@ local chips: { [string]: TextLabel } = {}
 
 local noticeToken = 0
 local bannerToken = 0
+
+-- 종이 울리는 시각(클라 os.clock 기준)과 이번 반에 종을 이미 울렸는가.
+-- 서버는 "남은 초"만 보내주고, 초를 세는 것은 여기서 혼자 한다.
+local bellDeadline: number? = nil
+local bellRang = false
 local shownUpgrades: { [string]: boolean } = {}
 
 local function makeLabel(parent: Instance, name: string, size: number, font: Enum.Font): TextLabel
@@ -102,6 +114,19 @@ local function buildGui()
 	starLabel.TextColor3 = Color3.fromRGB(255, 226, 140)
 
 	--[[
+		오늘 앉아야 할 자리. 교실 안에서만 보인다.
+
+		★ 색은 교실에 뜨는 팻말·윤곽과 같은 값이다(SeatMarkerController.MARK_COLOR).
+		  좌상단 글자와 저 멀리 빛나는 책상이 같은 것을 가리킨다는 사실을
+		  설명 없이 알리는 방법은 색을 맞추는 것뿐이다.
+	]]
+	seatLabel = makeLabel(gui, "Seat", 20, Enum.Font.GothamMedium)
+	seatLabel.Size = UDim2.fromOffset(320, 24)
+	seatLabel.Position = UDim2.fromOffset(18, 70)
+	seatLabel.TextXAlignment = Enum.TextXAlignment.Left
+	seatLabel.TextColor3 = Color3.fromRGB(120, 220, 160)
+
+	--[[
 		소리 켬/끔. 버튼이 곧 표시등이다 — 껐다는 사실이 화면에 남아 있지 않으면
 		음소거해놓고 잊은 사람에게는 "소리가 안 나는 게임"이 된다.
 
@@ -112,7 +137,7 @@ local function buildGui()
 	muteButton = Instance.new("TextButton")
 	muteButton.Name = "Mute"
 	muteButton.Size = UDim2.fromOffset(96, 30)
-	muteButton.Position = UDim2.fromOffset(18, 78)
+	muteButton.Position = UDim2.fromOffset(18, 102)
 	muteButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	muteButton.BackgroundTransparency = 0.55
 	muteButton.BorderSizePixel = 0
@@ -186,6 +211,22 @@ local function buildGui()
 	modeLabel.AnchorPoint = Vector2.new(0.5, 0)
 	modeLabel.TextTransparency = 0.25
 
+	--[[
+		── 상단 중앙: 종까지 남은 시간 ──
+
+		이 HUD 의 규칙("덜어내는 것")을 어기고 화면 한복판 위에 숫자를 놓는 이유는,
+		이것이 지금 이 게임에 하나뿐인 "재촉하는 것"이기 때문이다. 좌상단에 두면
+		달리는 동안 아무도 안 본다. 안 보는 시계는 없는 시계다.
+
+		★ 놓치면 실패가 아니라 별 하나다. 그래서 크게 띄우되 붉게 깜빡이지는 않는다 —
+		  죽음을 알리는 경고처럼 생기면, 놓친 사람이 죽은 줄 알고 손을 놓는다.
+	]]
+	bellLabel = makeLabel(gui, "Bell", 30, Enum.Font.GothamBold)
+	bellLabel.Size = UDim2.fromOffset(200, 40)
+	bellLabel.Position = UDim2.new(0.5, 0, 0, 14)
+	bellLabel.AnchorPoint = Vector2.new(0.5, 0)
+	bellLabel.Visible = false
+
 	-- ── 알림 한 줄 ──
 	noticeLabel = makeLabel(gui, "Notice", 22, Enum.Font.GothamMedium)
 	noticeLabel.Size = UDim2.new(1, 0, 0, 30)
@@ -255,6 +296,47 @@ function HudController.onProfile(packet)
 	classLabel.Text = `{packet.grade}학년 {packet.class}반`
 	starLabel.Text = `★ {packet.stars}`
 	refreshChips(packet.upgrades)
+
+	--[[
+		종 시계를 서버 시각에 맞춘다. 이 패킷은 반이 시작할 때와 물건을 살 때 오는데,
+		둘 다 시계를 다시 맞춰도 되는 순간이다. 반 도중에 어떤 이유로 한 번 더 와도
+		"남은 초"라서 그때의 남은 시간으로 저절로 교정된다.
+
+		★ bellRang 을 여기서 되돌리는 것이 중요하다. 안 되돌리면 한 번 지각한 뒤로는
+		  다음 반부터 종이 영영 안 울린다.
+	]]
+	if typeof(packet.bellSeconds) == "number" then
+		bellDeadline = os.clock() + packet.bellSeconds
+		bellRang = packet.bellSeconds <= 0
+		bellLabel.Visible = true
+	else
+		bellDeadline = nil
+		bellLabel.Visible = false
+	end
+end
+
+--[[
+	교실 밖으로 나가면 시계를 내린다. 다음 프로필 갱신(교실 재입장)까지 기다리면
+	운동장에 서 있는 내내 이미 끝난 반의 숫자가 0 을 가리키고 있다.
+]]
+function HudController.onTransition(to: string)
+	if not bellLabel or to == "class" then
+		return
+	end
+	bellDeadline = nil
+	bellLabel.Visible = false
+end
+
+--[[
+	앉을 자리 표시. nil 이면 줄 자체가 사라진다 — 운동장에서는 앉을 자리가 없다.
+	빈 문자열을 넣어 자리만 비워두지 않는 이유는, 그 빈 줄만큼 아래 것들이
+	밀려 있는 화면이 "뭔가 안 뜬 화면"으로 보이기 때문이다.
+]]
+function HudController.onAssignedSeat(text: string?)
+	if not seatLabel then
+		return
+	end
+	seatLabel.Text = if text then `🪑 {text}` else ""
 end
 
 function HudController.onNotice(message: string)
@@ -319,6 +401,30 @@ function HudController.Start()
 		local mode = MovementController.getMode()
 		modeLabel.Text = MovementConfig.MODES[mode].label
 		modeLabel.TextColor3 = MODE_COLORS[mode]
+
+		if not bellDeadline then
+			return
+		end
+
+		local left = bellDeadline - os.clock()
+		if left > 0 then
+			-- ceil 이라 "1"이 1초 내내 떠 있다가 0 을 건너뛰고 종으로 넘어간다.
+			-- floor 를 쓰면 마지막 1초가 "0"으로 표시되어, 아직 갈 수 있는데 늦은 줄 안다.
+			bellLabel.Text = `🔔 {math.ceil(left)}`
+			bellLabel.TextColor3 = if left <= BELL_URGENT then MODE_COLORS.RUN else Color3.new(1, 1, 1)
+			return
+		end
+
+		if not bellRang then
+			bellRang = true
+			-- "bell" 이 아니라 "late" 다. 학년 수료 종과 같은 소리를 내면
+			-- 놓친 순간에 축하 소리가 난다.
+			SoundController.onCue("late")
+		end
+		-- 숫자를 0 에 세워두지 않고 말로 바꾼다. 0 은 "시간이 다 됐다"까지만 말하지만,
+		-- 여기서 알려야 할 것은 "퍼펙트는 날아갔고 통과는 아직 가능하다"이다.
+		bellLabel.Text = "🔔 지각"
+		bellLabel.TextColor3 = BELL_LATE_COLOR
 	end)
 end
 

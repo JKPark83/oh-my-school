@@ -23,6 +23,7 @@
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local DifficultyTable = require(ReplicatedStorage.Shared.Config.DifficultyTable)
 local MovementConfig = require(ReplicatedStorage.Shared.Config.MovementConfig)
@@ -36,9 +37,35 @@ local SLOT_COUNT = 12
 local SLOT_ORIGIN_X = 10000
 local SLOT_SPACING = 5000
 
--- 빈자리 개수. 1개면 목표가 명확하고, 2개면 경로 선택지가 생긴다.
-local EMPTY_MIN = 1
-local EMPTY_MAX = 2
+--[[
+	빈자리 개수. 이 중 정확히 하나만 "내 자리"이고 나머지는 함정이다.
+
+	★ 함정 자리를 두는 이유는 결정을 만들기 위해서다. 빈자리가 하나뿐이면
+	  "저기로 간다"가 전부지만, 눈앞에 앉을 수 있어 보이는 자리가 하나 더 있으면
+	  쫓기는 순간에 "그냥 여기 앉을까"라는 유혹이 생긴다. 그 유혹이 틀렸다는 것을
+	  프롬프트가 미리 말해준다("빈자리" vs "내 자리") — 함정이지 속임수는 아니다.
+]]
+local EMPTY_MIN = 2
+local EMPTY_MAX = 3
+
+--[[
+	내 자리를 뽑을 때 문에서 가까운 쪽부터 몇 %까지 후보로 볼 것인가.
+
+	1학년 1반은 앞쪽 30%(문 근처 대여섯 자리)에서만 나온다. 규칙을 배우는 반에서
+	교실을 가로지르게 만들면 배우기 전에 죽는다. 12반이면 교실 전체가 후보다.
+	2학년부터는 학년과 무관하게 전체다 — 방해물과 같은 이유로, 학년이 바뀔 때마다
+	자리가 다시 문 앞으로 돌아오면 새 학년 1반이 지난 학년 12반보다 쉬워진다.
+]]
+local REACH_MIN = 0.3
+
+--[[
+	고자질하는 학생이 바라보는 방향(도). 0(칠판)은 없다 — 그건 평범한 학생이다.
+
+	★ 세 방향뿐인 것이 중요하다. 각도를 자유롭게 뽑으면 "저 애가 어디까지 보는지"를
+	  매번 새로 재야 하고, 그러면 관찰이 아니라 눈대중 도박이 된다.
+	  옆 · 반대편 옆 · 뒤 세 가지면 문 앞에서 한 번 보고 경로를 정할 수 있다.
+]]
+local FACINGS = { 90, -90, 180 }
 
 local PROMPT_DISTANCE = 8
 
@@ -46,6 +73,27 @@ local PROMPT_DISTANCE = 8
 -- 홀드가 없으면 앉으려다 눌린 E 한 번에 허브로 튕겨나간다.
 local EXIT_HOLD = 0.7
 local EXIT_DISTANCE = 6
+
+--[[
+	뒷문 자동 개폐.
+
+	★ 프롬프트를 안 붙인다. 이미 같은 자리에 "복도로 나가기"가 있어서, 문에도
+	  E 를 달면 부활 지점에서 프롬프트 두 개가 겹친다. 그리고 여닫는 것 자체는
+	  결정이 아니다 — 열지 말지 고민할 이유가 게임 안에 없으면 그 버튼은
+	  선택지가 아니라 절차다.
+
+	★ 여는 거리(9)와 닫는 거리(13)를 다르게 둔다. 같은 값이면 그 경계에 서 있을 때
+	  문이 초당 수십 번 열고 닫힌다. 문틈에 서서 몸을 앞뒤로 흔드는 것은
+	  플레이어가 반드시 해보는 일이다.
+
+	★ TweenService 를 안 쓴다. 문짝 한 짝이 파트 일곱 개인데 Tween 은 Model 을
+	  못 움직인다. 파트마다 Tween 을 걸면 84개가 각자 보간하다가 미세하게 어긋나
+	  문짝이 벌어진다. 진행률 하나를 굴리고 전부 같은 값으로 밀어야 한 장으로 움직인다.
+]]
+local DOOR_OPEN_DISTANCE = 9
+local DOOR_CLOSE_DISTANCE = 13
+local DOOR_SPEED = 2.2 -- 초당 진행률. 완전히 열리는 데 약 0.45초
+local DOOR_RATE = 20 -- Hz. 미닫이는 천천히 움직여서 이보다 촘촘히 그릴 이유가 없다
 
 local RNG = Random.new()
 
@@ -67,24 +115,110 @@ local function setEmpty(seat: BasePart, empty: boolean)
 end
 
 --[[
-	빈자리를 다시 뽑는다. 한 판이 끝날 때마다 호출한다.
-	같은 자리가 연속으로 비면 경로를 외운 플레이어가 관찰을 건너뛴다.
+	내 자리 표시. 어트리뷰트는 클라이언트(하이라이트·HUD)가 읽고,
+	프롬프트 문구는 가까이 갔을 때 눈으로 한 번 더 확인시켜준다.
+
+	★ 프롬프트에 문구를 다르게 다는 것이 함정 자리를 공정하게 만든다.
+	  누르기 직전에 "빈자리"라고 적혀 있으면, 거기 앉아서 실패한 것은
+	  못 본 것이지 속은 것이 아니다.
 ]]
-function ClassroomService.reroll(session)
+local function setAssigned(seat: BasePart, mine: boolean)
+	seat:SetAttribute(RoomKeys.ASSIGNED_ATTRIBUTE, mine)
+
+	local prompt = seat:FindFirstChildOfClass("ProximityPrompt")
+	if prompt then
+		prompt.ObjectText = if mine then "내 자리" else "빈자리"
+	end
+end
+
+--[[
+	빈자리와 내 자리를 다시 뽑는다. 한 판이 끝날 때마다 호출한다.
+	같은 자리가 연속으로 비면 경로를 외운 플레이어가 관찰을 건너뛴다.
+
+	reach 는 0~1. 문에서 얼마나 먼 자리까지 후보로 볼 것인가다(REACH_MIN 참고).
+	생략하면 교실 전체다 — 슬롯을 처음 지을 때만 그렇다.
+]]
+function ClassroomService.reroll(session, reach: number?)
 	for _, seat in session.seats do
 		setEmpty(seat, false)
+		setAssigned(seat, false)
 	end
 
-	local count = RNG:NextInteger(EMPTY_MIN, EMPTY_MAX)
-	local pool = table.clone(session.seats)
+	-- 내 자리부터 뽑는다. 문에서 가까운 순으로 정렬된 배열의 앞쪽만 본다.
+	local span = REACH_MIN + (1 - REACH_MIN) * math.clamp(reach or 1, 0, 1)
+	local horizon = math.max(1, math.floor(#session.byDoorDistance * span))
+	local mine = session.byDoorDistance[RNG:NextInteger(1, horizon)] :: BasePart
 
-	for _ = 1, count do
+	session.assignedSeat = mine
+	setEmpty(mine, true)
+	setAssigned(mine, true)
+
+	-- 나머지는 함정이다. 내 자리를 뺀 풀에서 뽑는다.
+	local pool = table.clone(session.seats)
+	local at = table.find(pool, mine)
+	if at then
+		table.remove(pool, at)
+	end
+
+	for _ = 2, RNG:NextInteger(EMPTY_MIN, EMPTY_MAX) do
 		if #pool == 0 then
 			break
 		end
-		local picked = table.remove(pool, RNG:NextInteger(1, #pool)) :: BasePart
-		setEmpty(picked, true)
+		setEmpty(table.remove(pool, RNG:NextInteger(1, #pool)) :: BasePart, true)
 	end
+end
+
+--[[
+	고자질하는 학생을 다시 뽑는다. reroll 다음에 부른다 — 앉아 있는 자리 중에서
+	고르므로 누가 비었는지가 먼저 정해져야 한다.
+
+	★ 이 학생들이 이 게임에 두 번째 시계를 만든다. 선생님은 "지금 멈춰라"라고 하고
+	  고자질하는 학생은 "여기서 나가라"라고 한다. 둘이 동시에 말하는 순간이
+	  이 확장이 만들려던 결정이다 — 멈추면 고자질당하고 움직이면 들킨다.
+
+	★ 그래서 고자질은 "움직였는가"를 보지 않는다. 얼어붙어도 소용없어야
+	  선생님과 다른 문제가 된다. 같은 답으로 풀리는 두 번째 위협은 위협이 아니다.
+
+	@param count 이번 반의 고자질하는 학생 수. 0 이면 전원 칠판을 본다.
+]]
+function ClassroomService.setSnitches(session, count: number)
+	for _, seat in session.snitches do
+		seat:SetAttribute(RoomKeys.FACING_ATTRIBUTE, 0)
+		seat:SetAttribute(RoomKeys.RAISED_ATTRIBUTE, false)
+	end
+	table.clear(session.snitches)
+	table.clear(session.snitchNoticedAt)
+
+	if count <= 0 then
+		return
+	end
+
+	-- 앉아 있는 자리만 후보다. 빈자리에는 고자질할 사람이 없다.
+	local pool = {}
+	for _, seat in session.seats do
+		if not ClassroomService.isEmpty(seat) then
+			table.insert(pool, seat)
+		end
+	end
+
+	for _ = 1, math.min(count, #pool) do
+		local seat = table.remove(pool, RNG:NextInteger(1, #pool)) :: BasePart
+		table.insert(session.snitches, seat)
+		seat:SetAttribute(RoomKeys.FACING_ATTRIBUTE, FACINGS[RNG:NextInteger(1, #FACINGS)])
+		seat:SetAttribute(RoomKeys.RAISED_ATTRIBUTE, false)
+	end
+end
+
+--[[
+	고자질하는 학생의 손을 올리고 내린다. 어트리뷰트 하나로 그림과 상태를 같이 옮긴다.
+	이미 그 상태면 아무것도 안 한다 — 20Hz 판정에서 같은 값을 계속 쓰면
+	클라이언트의 어트리뷰트 변경 신호가 초당 스무 번 헛돈다.
+]]
+function ClassroomService.setHandRaised(seat: BasePart, raised: boolean)
+	if seat:GetAttribute(RoomKeys.RAISED_ATTRIBUTE) == raised then
+		return
+	end
+	seat:SetAttribute(RoomKeys.RAISED_ATTRIBUTE, raised)
 end
 
 --[[
@@ -108,6 +242,27 @@ function ClassroomService.setObstacles(session, active: boolean)
 	end
 end
 
+--[[
+	교실에 학년을 입힌다. ProgressService 가 반을 열 때 부른다.
+
+	★ 교실을 다시 짓지 않는다. 색과 글자와 가구 높이만 갈아끼운다.
+	  다시 지으면 좌석 참조가 끊기고, 그 참조가 세션·감지·프롬프트의 전부다.
+
+	★ Grade 어트리뷰트를 마지막에 붙인다. 클라이언트는 이 값이 바뀌는 것을 보고
+	  학생 18명을 새 체구로 다시 그리는데, 책상 높이보다 먼저 바뀌면
+	  아이들이 한 프레임 동안 옛날 책상에 앉는다.
+]]
+function ClassroomService.setGrade(session, grade: number, class: number)
+	if session.grade == grade and session.class == class then
+		return
+	end
+	session.grade = grade
+	session.class = class
+
+	Template.applyGrade(session.skin, grade, class)
+	session.model:SetAttribute(RoomKeys.GRADE_ATTRIBUTE, grade)
+end
+
 function ClassroomService.setTriggerHandler(handler: (Player, BasePart) -> ())
 	triggerHandler = handler
 end
@@ -118,6 +273,17 @@ end
 
 function ClassroomService.isEmpty(seat: BasePart): boolean
 	return seat:GetAttribute(RoomKeys.EMPTY_ATTRIBUTE) == true
+end
+
+--[[
+	내 자리인가. 어트리뷰트가 아니라 세션이 들고 있는 참조로 비교한다.
+
+	★ 어트리뷰트는 클라이언트에게 보여주려고 붙인 것이라 판정 근거가 될 수 없다.
+	  같은 값을 두 곳에서 읽으면 언젠가 한쪽만 바뀌고, 그때 어느 쪽이 진짜인지
+	  아무도 모른다. 진짜는 서버 메모리에 있는 이 참조 하나다.
+]]
+function ClassroomService.isAssigned(session, seat: BasePart): boolean
+	return session.assignedSeat == seat
 end
 
 function ClassroomService.get(player: Player)
@@ -177,16 +343,33 @@ function ClassroomService.release(player: Player)
 	-- 다음 사람이 1반부터 시작할 수 있도록 방해물은 꺼둔다.
 	ClassroomService.setObstacles(slot, false)
 	TeacherAI.reset(slot.teacher, DifficultyTable.get(1, 1))
+	-- 교실 외양도 같이 돌려놓는다. 다음 사람이 들어와 첫 반을 열기 전까지
+	-- 남의 학년 색과 남의 문패가 붙은 교실을 보게 된다.
+	ClassroomService.setGrade(slot, 1, 1)
 end
 
 local function buildSlot(index: number)
-	local built = Template.build()
+	local built = Template.build(index)
 	local origin = CFrame.new(SLOT_ORIGIN_X + (index - 1) * SLOT_SPACING, 0, 0)
 
 	local room = built.model
 	room.Name = `Classroom{index}`
 	-- Template.build 가 WorldPivot 을 원점으로 못박아 돌려주므로 순수 평행이동이다.
 	room:PivotTo(origin)
+
+	--[[
+		문짝의 "닫힌 자세"를 여기서 잰다. 템플릿이 아니라 여기인 이유는 위 한 줄 때문이다 —
+		템플릿이 잰 값은 전부 원점 기준이고, PivotTo 를 지나는 순간 전부 5000 씩 틀어진다.
+		움직이는 물건의 기준 자세는 언제나 다 옮기고 난 뒤에 재야 한다.
+	]]
+	local doorLeaves = {}
+	for _, leaf in built.doorLeaves do
+		local closed = {}
+		for _, p in leaf.parts do
+			table.insert(closed, p.CFrame)
+		end
+		table.insert(doorLeaves, { parts = leaf.parts, closed = closed, slide = leaf.slide })
+	end
 
 	local seats: { BasePart } = {}
 	for _, seat in built.seatsFolder:GetChildren() do
@@ -243,14 +426,48 @@ local function buildSlot(index: number)
 		end
 	end)
 
+	--[[
+		문에서 가까운 순으로 한 벌 더 정렬해둔다. 교실은 한 번 짓고 안 움직이므로
+		이 순서도 한 번만 구하면 된다 — 반이 바뀔 때마다 18개를 다시 재는 것은
+		같은 답을 72번 구하는 일이다.
+
+		거리는 직선거리다. 실제로 걸어야 하는 길이는 책상을 돌아가느라 더 길지만,
+		두 값의 순서는 거의 같고 순서만 맞으면 된다.
+	]]
+	local doorPosition = (origin * built.doorCFrame).Position
+	local byDoorDistance = table.clone(seats)
+	table.sort(byDoorDistance, function(a: BasePart, b: BasePart)
+		return (a.Position - doorPosition).Magnitude < (b.Position - doorPosition).Magnitude
+	end)
+
 	local slot = {
 		index = index,
 		origin = origin,
 		model = room,
 		seats = seats,
+		byDoorDistance = byDoorDistance,
+
+		-- reroll 이 매 반 새로 정한다. 착석 판정의 유일한 근거다.
+		assignedSeat = nil,
+
+		-- 고자질하는 학생이 앉은 좌석들과, 그 학생이 나를 본 시각.
+		-- 목록은 setSnitches 가, 시각은 감지 쪽이 채운다.
+		snitches = {},
+		snitchNoticedAt = {},
+
 		spawn = built.spawn,
 		creakTiles = built.creakTiles,
 		slipItems = built.slipItems,
+
+		-- 학년 외양. 지을 때 모아둔 파트/글자 목록이고, setGrade 가 여기에만 손댄다.
+		skin = built.skin,
+		grade = 1,
+		class = 1,
+
+		-- 뒷문. alpha 는 0(닫힘) ~ 1(열림), open 은 히스테리시스의 현재 상태다.
+		doorLeaves = doorLeaves,
+		doorAlpha = 0,
+		doorOpen = false,
 		-- doorCFrame 은 로컬 좌표로 왔다. 여기서 한 번만 월드로 바꿔 들고 다닌다.
 		doorCFrame = origin * built.doorCFrame,
 		teacher = TeacherAI.new(built.teacherModel, DifficultyTable.get(1, 1)),
@@ -269,18 +486,84 @@ local function buildSlot(index: number)
 		noiseRadius = MovementConfig.RUN_NOISE_RADIUS,
 		caughtInClass = 0,
 		classStartedAt = 0,
+
+		-- 종이 울리는 시각(os.clock 기준). 교실 밖에서는 nil 이다.
+		-- 진행 쪽이 반을 열 때 걸고 나갈 때 지운다.
+		bellAt = nil,
 	}
 
 	room.Parent = workspace
+	-- 1학년 옷을 한 번 입혀둔다. 템플릿의 기본 색·글자는 "아무 학년도 아닌" 상태라
+	-- 이걸 건너뛰면 1학년만 액센트 없는 교실을 쓰게 된다.
+	Template.applyGrade(slot.skin, slot.grade, slot.class)
 	ClassroomService.reroll(slot)
 
 	return slot
+end
+
+--[[
+	문짝을 진행률(alpha)에 맞춰 밀어놓는다. 열려 있어야 할 만큼만 민다.
+]]
+local function pushDoor(slot, alpha: number)
+	for _, leaf in slot.doorLeaves do
+		local offset = leaf.slide * alpha
+		for i, p in leaf.parts do
+			p.CFrame = leaf.closed[i] + offset
+		end
+	end
+end
+
+--[[
+	슬롯 12개의 뒷문을 한 루프에서 굴린다.
+
+	★ 문마다 Heartbeat 를 하나씩 걸지 않는다. 연결 12개는 12번의 함수 호출이고,
+	  그중 열한 개는 대개 "움직일 것이 없다"만 확인하고 끝난다.
+
+	★ 진행률이 목표에 도달한 슬롯은 CFrame 을 아예 안 쓴다. 안 그러면
+	  가만히 닫혀 있는 문 열한 짝이 초당 20번씩 같은 값을 복제한다.
+]]
+local function startDoors()
+	local accumulator = 0
+
+	RunService.Heartbeat:Connect(function(deltaTime)
+		accumulator += deltaTime
+		if accumulator < 1 / DOOR_RATE then
+			return
+		end
+		local step = accumulator
+		accumulator = 0
+
+		for _, slot in slots do
+			local distance = math.huge
+			local character = slot.owner and slot.owner.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if root then
+				distance = (root.Position - slot.doorCFrame.Position).Magnitude
+			end
+
+			if distance < DOOR_OPEN_DISTANCE then
+				slot.doorOpen = true
+			elseif distance > DOOR_CLOSE_DISTANCE then
+				slot.doorOpen = false
+			end
+
+			local target = if slot.doorOpen then 1 else 0
+			if slot.doorAlpha == target then
+				continue
+			end
+
+			local delta = math.clamp(target - slot.doorAlpha, -DOOR_SPEED * step, DOOR_SPEED * step)
+			slot.doorAlpha = math.clamp(slot.doorAlpha + delta, 0, 1)
+			pushDoor(slot, slot.doorAlpha)
+		end
+	end)
 end
 
 function ClassroomService.Start()
 	for index = 1, SLOT_COUNT do
 		table.insert(slots, buildSlot(index))
 	end
+	startDoors()
 	return SLOT_COUNT
 end
 

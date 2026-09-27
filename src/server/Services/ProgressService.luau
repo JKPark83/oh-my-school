@@ -46,8 +46,34 @@ local SIT_RISE = 1.4
 -- 방해물이 켜지는 반. 1~5반은 순수하게 규칙만 배우는 구간이다.
 local OBSTACLE_FROM_CLASS = 6
 
+--[[
+	고자질하는 학생이 처음 등장하는 반. 방해물(6반)보다 뒤에 둔다 —
+	방해물은 길을 좁힐 뿐이지만 이 학생은 규칙을 하나 더 만든다.
+	새 규칙은 한 번에 하나씩 와야 무엇 때문에 잡혔는지 알 수 있다.
+]]
+local SNITCH_FROM_CLASS = 9
+
+--[[
+	이번 반에 고자질하는 학생을 몇 명 둘 것인가.
+
+	★ 최대 2명이다. 3명이 되는 순간 교실이 "지나갈 수 있는 길"이 아니라
+	  "지나갈 수 없는 벽"이 된다. 이 학생들은 길을 없애는 장치가 아니라
+	  길을 고르게 만드는 장치라, 언제나 우회로가 남아 있어야 한다.
+
+	★ 학년이 오를 때 1명으로 되돌리지 않는다. 방해물·지정석과 같은 규칙이다 —
+	  한 번 배운 것은 계속 있고, 학년은 그 위에 얹는다.
+]]
+local function snitchCount(profile): number
+	if profile.grade == 1 then
+		return if profile.class >= SNITCH_FROM_CLASS then 1 else 0
+	end
+	return if profile.grade >= 4 then 2 else 1
+end
+
 -- 학년 최초 수료 보너스. 반 클리어 12 + 퍼펙트 12 + 이것 3 = 27 이 1학년 전체 예산이고,
 -- 업그레이드 총액 30 보다 적다. 전부 살 수 없어야 선택이 선택이 된다.
+-- 학년이 6개가 된 뒤에도 이 긴장은 1학년 안에서만 성립한다 — 2학년부터는 셋 다 살 수 있다.
+-- 처음 12반이 "무엇을 포기할 것인가"의 구간이고, 그 뒤는 갖춰가는 구간이다.
 local GRADE_BONUS = 3
 
 -- 허브 ↔ 교실 전환에서 화면이 덮여 있는 시간.
@@ -79,12 +105,29 @@ end
 	cleared/perfect 표는 클라가 알 이유가 없고, 크기만 계속 자란다.
 ]]
 local function pushProfile(player: Player, profile)
+	--[[
+		종까지 남은 시간은 "남은 초"로 보낸다. 절대 시각을 보내면 서버와 클라의
+		os.clock() 기준점이 달라 계산이 안 되고, 시각을 맞추려면 핑을 재야 한다.
+		남은 초는 그런 것 없이 그대로 쓸 수 있고, 이 패킷이 반 중간에 다시 나가도
+		그때의 남은 시간이 실려 나가므로 클라 카운트다운이 저절로 다시 맞춰진다.
+
+		★ 초 단위 갱신을 위해 이걸 매초 쏘지 않는다. 카운트다운은 클라가 혼자 세고,
+		  판정은 서버가 자기 시계로 한다. 화면과 판정이 0.1초쯤 어긋나도
+		  실패가 아니라 별 하나가 걸린 문제라 아무도 다치지 않는다.
+	]]
+	local session = ClassroomService.get(player)
+	local bellSeconds = nil
+	if session and session.bellAt then
+		bellSeconds = math.max(0, session.bellAt - os.clock())
+	end
+
 	Remotes.ProfileUpdated:FireClient(player, {
 		grade = profile.grade,
 		class = profile.class,
 		stars = profile.stars,
 		upgrades = profile.upgrades,
 		totalSeconds = profile.totalSeconds,
+		bellSeconds = bellSeconds,
 	})
 end
 
@@ -121,11 +164,41 @@ local function beginClass(player: Player)
 	end
 
 	TeacherAI.reset(session.teacher, applyUpgrades(session, profile))
-	ClassroomService.setObstacles(session, profile.class >= OBSTACLE_FROM_CLASS)
-	ClassroomService.reroll(session)
+
+	--[[
+		교실에 이번 학년의 옷을 입힌다.
+
+		★ 난이도를 바꾸는 줄(위의 TeacherAI.reset) 바로 옆에 둔다. 이 두 줄은
+		  같은 것의 앞뒤다 — 선생님이 얼마나 빨리 도는지가 난이도이고,
+		  칠판 문구와 벽 색과 아이들 체구는 그 난이도의 얼굴이다.
+		  떨어뜨려 놓으면 한쪽만 고치는 커밋이 반드시 생기고, 그때 플레이어는
+		  3학년 교실에서 5학년 선생님을 만난다.
+	]]
+	ClassroomService.setGrade(session, profile.grade, profile.class)
+
+	-- 방해물은 1학년 6반에서 처음 켜고 그 뒤로는 끄지 않는다.
+	-- 학년마다 1반에서 다시 꺼버리면 2학년 1반이 방금 깬 1학년 12반보다 쉬워진다.
+	ClassroomService.setObstacles(session, profile.grade > 1 or profile.class >= OBSTACLE_FROM_CLASS)
+
+	-- 내 자리가 문에서 멀어지는 속도. 방해물과 같은 규칙이라 학년이 바뀌어도 되돌리지 않는다.
+	-- 1학년 안에서만 1반 문 앞 → 12반 교실 전체로 벌어진다.
+	local reach = if profile.grade > 1 then 1 else (profile.class - 1) / (DifficultyTable.CLASSES_PER_GRADE - 1)
+	ClassroomService.reroll(session, reach)
+	-- reroll 다음이어야 한다. 앉아 있는 자리 중에서 뽑으므로 누가 비었는지가 먼저 정해져야 한다.
+	ClassroomService.setSnitches(session, snitchCount(profile))
 
 	session.caughtInClass = 0
 	session.classStartedAt = os.clock()
+
+	--[[
+		종을 건다. classStartedAt 과 같은 시각에서 출발하지만 둘은 다른 것을 잰다 —
+		classStartedAt 은 잡혀서 다시 시작해도 계속 흐르는 "이 반에 쓴 시간"(랭킹용)이고,
+		bellAt 은 이번 반의 마감이다.
+
+		★ 잡혀도 종은 다시 걸지 않는다. 다시 걸면 일부러 잡혀서 시계를 되돌리는 길이 열린다.
+		  그리고 어차피 한 번 잡히면 퍼펙트는 이미 날아간 뒤라 종을 되돌릴 이유도 없다.
+	]]
+	session.bellAt = os.clock() + DifficultyTable.bellTime(profile.grade, profile.class)
 
 	profile.attempts += 1
 	pushProfile(player, profile)
@@ -199,7 +272,18 @@ local function award(session, profile): (number, boolean)
 		gained += 1
 	end
 
-	local perfect = session.caughtInClass == 0
+	--[[
+		퍼펙트 = 한 번도 안 잡혔고, 종이 울리기 전에 앉았다.
+
+		★ 별 하나를 새로 만들지 않고 기존 퍼펙트 조건에 얹는 이유는 예산 때문이다.
+		  한 학년의 별은 반 클리어 12 + 퍼펙트 12 + 수료 3 = 27 이고, 업그레이드 총액 30
+		  보다 적어야 "무엇을 포기할 것인가"가 성립한다. 시간 별을 따로 주면 39가 되어
+		  1학년만 돌아도 셋 다 살 수 있게 되고, 그 순간 상점이 상점이 아니게 된다.
+
+		★ 대신 퍼펙트가 어려워진다. 그게 노린 것이다 — 안 잡히는 것만으로 별이 나오면
+		  느리게 갈수록 유리하고, 그러면 살금살금 말고는 아무도 쓰지 않는다.
+	]]
+	local perfect = session.caughtInClass == 0 and (session.bellAt == nil or os.clock() <= session.bellAt)
 	if perfect and not profile.perfect[key] then
 		profile.perfect[key] = true
 		gained += 1
@@ -254,13 +338,30 @@ local function clear(player: Player, session, seat: BasePart)
 		release(player)
 
 		if isLastClass then
-			-- MVP 는 1학년까지다. 다음 학년 난이도표가 생기기 전까지 12반에 머문다.
-			-- 별은 이미 준 반에서 다시 나오지 않으므로 반복해도 이득이 없다.
+			--[[
+				12반을 깼다. 다음 학년 표가 있으면 그 학년 1반으로 올라간다.
+
+				★ 학년을 넘기는 곳은 여기 한 줄뿐이다. 예전에는 이 줄이 없어서
+				  "1학년 수료" 배너만 뜨고 반은 12 에 그대로 남았다 —
+				  수료했다고 말해놓고 같은 12반을 다시 열어주는 상태였다.
+
+				★ 마지막 학년(표에 다음 항목이 없는 학년)이면 그대로 둔다.
+				  별은 이미 준 반에서 다시 나오지 않으므로 반복해도 이득이 없다.
+			]]
+			if DifficultyTable.has(grade + 1) then
+				profile.grade = grade + 1
+				profile.class = 1
+			end
+
 			Remotes.GradeCleared:FireClient(player, {
 				grade = grade,
 				totalSeconds = profile.totalSeconds,
 				stars = profile.stars,
 			})
+			-- 운동장으로 나가는 동안 HUD 가 이미 다음 학년을 가리켜야 한다.
+			-- 다음 pushProfile 은 교실에 다시 들어갈 때라, 그때까지 기다리면
+			-- 운동장에 서 있는 내내 방금 끝낸 반이 좌상단에 남는다.
+			pushProfile(player, profile)
 			DataService.save(player) -- 잃으면 가장 아까운 순간
 
 			-- 수료했으면 운동장으로 내보낸다. 모아둔 별을 쓸 곳이 거기에 있고,
@@ -316,6 +417,23 @@ function ProgressService.onSeatTriggered(player: Player, seat: BasePart)
 	--     ">" 검사만으로는 통과해버린다.
 	local dist = (hrp.Position - seat.Position).Magnitude
 	if dist ~= dist or dist > SIT_RANGE then
+		return
+	end
+
+	--[[
+		(7) 내 자리인가. 여기서 처음으로 "무시"가 아니라 "실패"가 된다.
+
+		★ 거리 검사 뒤에 두는 순서가 중요하다. 앞에 두면 프롬프트를 원격으로 발화시켜
+		  교실 반대편에 서 있는 사람을 실패시킬 수 있다 — 남이 나를 잡는 길이 열린다.
+		  실제로 그 자리 앞까지 걸어간 사람만 이 줄에 닿아야 한다.
+
+		★ 무시하지 않고 실패시키는 이유는 함정이 함정이려면 대가가 있어야 하기 때문이다.
+		  아무 일도 안 일어나면 플레이어는 빈자리를 순서대로 눌러보며 정답을 찾는다 —
+		  관찰이 시행착오로 바뀐다. 프롬프트에 "빈자리"라고 미리 적혀 있으므로
+		  이 실패는 속은 것이 아니라 안 읽은 것이다.
+	]]
+	if not ClassroomService.isAssigned(session, seat) then
+		ProgressService.fail(player, "wrong_seat")
 		return
 	end
 
@@ -435,6 +553,9 @@ function ProgressService.exitToHub(player: Player)
 
 	-- 감지부터 끈다. 화면이 덮인 뒤에 잡히면 사유도 못 보고 죽는다.
 	session.inClass = false
+	-- 운동장에는 울릴 종이 없다. 지워두지 않으면 다음 프로필 갱신에
+	-- 방금 끝낸 반의 남은 시간이 실려 나간다.
+	session.bellAt = nil
 	DetectionService.forget(player)
 	player.RespawnLocation = PlaygroundService.spawn()
 

@@ -36,9 +36,44 @@ local FACADE_H = 44
 local DOOR_HALF_W = 9
 local DOOR_H = 13
 
+--[[
+	── 정면 창문 격자 ──
+
+	★ 창문 위치에 버그가 있었다. y = floor * 13 + 4.5 로 잡혀 있어서 3층 창이
+	  43.5 에 앉았는데, 벽은 44 에서 끝나고 44~47 은 옥상 난간이다.
+	  즉 3층 창문 열 개가 지붕을 뚫고 난간에 박혀 있었다.
+	  층을 나누는 띠(floor * 13 - 1)와도 안 맞아서, 창이 띠 위에 걸쳐 있었다.
+
+	  층은 13 씩이고 띠가 그 경계(12 / 25 / 38)다. 창은 각 층의 한가운데,
+	  즉 floor * 13 - 6.5 에 와야 띠와 띠 사이에 정확히 들어간다.
+
+	★ 칸을 x = i * 13 로 쭉 깔던 것도 바꿨다. 그러면 현관 양옆 칸(x = ±13)이
+	  현관 구멍(±9)과 학교 간판(±17)을 밟는다. 대신 가운데 38 스터드를
+	  계단실 탑으로 비우고, 창은 그 바깥에서 시작한다 —
+	  가운데가 솟고 양 날개에 창이 규칙적으로 늘어선 것은
+	  한국 학교 건물에서 가장 먼저 알아보게 되는 형태다.
+]]
+local WIN_W, WIN_H = 9, 6
+local WIN_COLS = { 25.5, 38.5, 51.5, 64.5 } -- 좌우 대칭. 창틀 바깥이 69.4 라 모서리 기둥이 남는다
+local WIN_ROWS = { 6.5, 19.5, 32.5 }
+
+-- 가운데 계단실. 벽보다 앞으로 나오고 옥상보다 위로 솟는다
+local TOWER_HALF_X = 19
+local TOWER_H = FACADE_H + 4
+
 local LOBBY_Z_END = -124 -- 로비 안쪽 벽. 계단 한 층이 들어갈 만큼 깊어야 한다
 local LOBBY_HALF_X = 32
-local LOBBY_H = 15
+
+--[[
+	로비 천장. 15 였다.
+
+	★ 천장이 아니라 2층 문 때문에 올렸다. 문 높이는 DOOR2F_TOP_Y - STAIR_TOP_Y 인데
+	  천장이 15 면 그 안에 5 밖에 안 남는다 — 사람 키가 5.6 이다.
+	  즉 계단을 다 올라가면 문틀에 머리가 닿는 자리에 서게 되고, 그래도 지나가지긴 하니
+	  버그로 안 잡히고 "왜인지 답답하다"로만 남는다.
+	  20 은 문을 9.5(교실 뒷문과 같은 높이)로 세우고 그 위에 인방을 얹을 수 있는 최소값이다.
+]]
+local LOBBY_H = 20
 
 --[[
 	교실로 올라가는 계단. 이 게임에서 유일하게 "올라가는" 동작이다.
@@ -62,7 +97,15 @@ local STAIR_FRONT_Z = -104 -- 첫 단의 앞 모서리
 local STAIR_BACK_Z = STAIR_FRONT_Z - STAIR_STEPS * STAIR_RUN -- 마지막 단 뒷면
 
 local DOOR2F_HALF_W = 5 -- 2층 복도로 나가는 문
-local DOOR2F_TOP_Y = STAIR_TOP_Y + 5
+
+--[[
+	2층 문 상단. 계단참 바닥에서 9.5 위다 — 교실 뒷문과 같은 높이로 맞췄다.
+
+	★ 5 였다. 계단을 아홉 칸 올라와서 마지막으로 보는 것이 이 문인데,
+	  폭 10 에 높이 5 면 문이 아니라 눕혀놓은 창문이다. 같은 게임 안에서
+	  교실 문과 이 문의 비율이 다르면 둘 중 하나는 문이 아니게 된다.
+]]
+local DOOR2F_TOP_Y = STAIR_TOP_Y + 9.5
 
 local SPAWN_Z = 40 -- 운동장 한가운데. 본관까지 120 스터드 — 건물이 한눈에 들어온다
 
@@ -81,6 +124,8 @@ local C = {
 	floor = Color3.fromRGB(210, 206, 196), -- 로비 타일
 	dark = Color3.fromRGB(48, 48, 52),
 	sign = Color3.fromRGB(28, 60, 108),
+	blind = Color3.fromRGB(236, 228, 208), -- 창마다 다른 높이로 내려온 블라인드
+	room = Color3.fromRGB(56, 60, 68), -- 유리 뒤 교실 속. 이게 없으면 창이 그냥 하늘색 판이다
 }
 
 -- ── 운동장 ────────────────────────────────────────────────────────
@@ -135,6 +180,89 @@ local function buildGround(parent: Instance)
 end
 
 -- ── 본관 ──────────────────────────────────────────────────────────
+--[[
+	창문 한 짝.
+
+	★ 전에는 유리판 하나 + 테두리판 하나, 총 두 장이었다. 정면에서 보면 벽에
+	  하늘색 사각형을 찍어놓은 것과 같아서 "대충 그린 창문"으로 보였다.
+	  창문이 창문으로 읽히는 건 색이 아니라 깊이 때문이다 — 유리는 벽보다
+	  들어가 있고, 창턱은 벽보다 나와 있어서 그 아래 그림자가 생긴다.
+
+	  그래서 한 짝을 앞뒤로 겹친 층으로 짓는다. 벽 앞면(zf)에서부터
+	    속(어두운 교실) → 블라인드 → 유리 → 창살 → 창틀/인방/창턱
+	  순으로 1.9 스터드 안에 쌓인다. 창턱만 벽 밖으로 나오고 나머지는 안쪽이다.
+
+	★ 유리 뒤에 어두운 판을 먼저 깐다. 반투명 유리 뒤가 비어 있으면 하늘이 비쳐서
+	  창이 아니라 구멍으로 보인다. 블라인드 높이를 창마다 다르게 준 것도 같은 이유다 —
+	  전부 똑같으면 사람이 쓰는 건물로 안 보인다.
+
+	★ 전부 collide = false 다. 탐지는 X/Z 평면에서만 일어나므로 벽에서 2 스터드
+	  튀어나온 창턱이 판정에 끼어들 일은 없지만, 굳이 플레이어가 걸릴 이유도 없다.
+]]
+local function buildWindowUnit(
+	parent: Instance,
+	name: string,
+	cx: number,
+	cy: number,
+	w: number,
+	h: number,
+	zf: number,
+	blindRatio: number
+)
+	local half = w / 2
+
+	part(parent, `{name}Room`, Vector3.new(w, h, 0.2), Vector3.new(cx, cy, zf + 0.1), {
+		color = C.room,
+		collide = false,
+		cast = false,
+	})
+
+	if blindRatio > 0.05 then
+		local bh = h * blindRatio
+		part(
+			parent,
+			`{name}Blind`,
+			Vector3.new(w - 0.3, bh, 0.16),
+			Vector3.new(cx, cy + h / 2 - bh / 2, zf + 0.3),
+			{ color = C.blind, collide = false, cast = false }
+		)
+	end
+
+	part(parent, `{name}Glass`, Vector3.new(w, h, 0.24), Vector3.new(cx, cy, zf + 0.52), {
+		color = C.glass,
+		material = Enum.Material.Glass,
+		transparency = 0.4,
+		collide = false,
+		cast = false,
+	})
+
+	-- 창살. 세로 하나 + 위쪽 가로 하나. 이 두 줄이 유리판을 "여닫는 창"으로 만든다
+	local sash = { color = C.line, material = Enum.Material.Metal, collide = false, cast = false }
+	part(parent, `{name}Mullion`, Vector3.new(0.35, h, 0.28), Vector3.new(cx, cy, zf + 0.78), sash)
+	part(parent, `{name}Transom`, Vector3.new(w, 0.3, 0.28), Vector3.new(cx, cy + h * 0.28, zf + 0.78), sash)
+
+	-- 창틀. 벽 두께를 파고들어 창이 벽 안에 앉은 것처럼 보이게 한다
+	local frame = { color = C.line, material = Enum.Material.Metal, collide = false, cast = false }
+	for _, sign in { -1, 1 } do
+		part(
+			parent,
+			`{name}Jamb{sign}`,
+			Vector3.new(0.6, h + 1.4, 1.6),
+			Vector3.new(cx + sign * (half + 0.3), cy, zf + 0.8),
+			frame
+		)
+	end
+	part(parent, `{name}Lintel`, Vector3.new(w + 1.8, 0.7, 1.9), Vector3.new(cx, cy + h / 2 + 0.35, zf + 0.85), frame)
+
+	-- 창턱. 벽 밖으로 1.9 나온다 — 정면에서 그림자 선을 만드는 건 사실상 이 파트 하나다
+	part(parent, `{name}Sill`, Vector3.new(w + 2.2, 0.5, 2.0), Vector3.new(cx, cy - h / 2 - 0.25, zf + 0.9), {
+		color = C.concrete,
+		material = Enum.Material.Concrete,
+		collide = false,
+		cast = false,
+	})
+end
+
 local function buildFacade(parent: Instance)
 	local wall = { color = C.wall, material = Enum.Material.Brick }
 
@@ -162,8 +290,9 @@ local function buildFacade(parent: Instance)
 		part(
 			parent,
 			`FacadeBand{floor}`,
-			Vector3.new(FACADE_HALF_X * 2, 1.2, 2.6),
-			Vector3.new(0, floor * 13 - 1, FACADE_Z),
+			-- 벽기둥(앞면 -78.1)보다 앞으로 나와야 기둥 앞을 지나가는 띠로 보인다
+			Vector3.new(FACADE_HALF_X * 2, 1.2, 3.2),
+			Vector3.new(0, floor * 13 - 1, FACADE_Z + 0.6),
 			{
 				color = C.trim,
 				material = Enum.Material.Concrete,
@@ -172,36 +301,158 @@ local function buildFacade(parent: Instance)
 		)
 	end
 
-	-- 창문 격자. 3층 x 좌우 5칸씩
-	for floor = 1, 3 do
-		local y = floor * 13 + 4.5
-		for i = -5, 5 do
-			if i == 0 then
-				continue -- 현관 위는 비워둔다
+	--[[
+		★ 창문·창틀·간판은 벽의 +Z 쪽에 붙는다. 운동장이 +Z 이기 때문이다.
+		  벽은 두께 2 로 FACADE_Z 에 중심이 있으니 앞면이 FACADE_Z + 1 이다.
+		  전에는 셋 다 -Z 였다 — 즉 건물 뒤통수에 붙어 있어서 운동장에서는
+		  민무늬 콘크리트 벽 한 장만 보였다.
+	]]
+	local zf = FACADE_Z + 1
+
+	-- 기단. 건물이 땅에 박힌 게 아니라 땅 위에 앉아 보이게 하는 한 줄이다.
+	-- 현관 구멍(±DOOR_HALF_W)은 비운다 — 안 그러면 문 앞에 2.4 짜리 턱이 생긴다
+	local plinthW = FACADE_HALF_X - DOOR_HALF_W
+	for _, sign in { -1, 1 } do
+		part(
+			parent,
+			`Plinth{sign}`,
+			Vector3.new(plinthW, 2.4, 3.4),
+			Vector3.new(sign * (DOOR_HALF_W + plinthW / 2), 1.2, FACADE_Z + 0.7),
+			{ color = C.concrete, material = Enum.Material.Concrete }
+		)
+	end
+
+	--[[
+		창문 격자. 3층 x 좌우 4칸씩 = 24 짝.
+
+		블라인드 높이는 고정 시드로 뽑는다. 매번 같은 모습이어야 하고 —
+		서버가 짓는 지형이 접속마다 달라지면 그건 그냥 버그다 —
+		그러면서도 24 짝이 서로 달라야 사람이 쓰는 건물로 보인다.
+	]]
+	local blindRng = Random.new(70801)
+	local blindSteps = { 0, 0.22, 0.45, 0, 0.62, 0.3, 0.5, 0 }
+	for floor, cy in WIN_ROWS do
+		for col, dx in WIN_COLS do
+			for _, sign in { -1, 1 } do
+				buildWindowUnit(
+					parent,
+					`Window{floor}_{sign}{col}`,
+					sign * dx,
+					cy,
+					WIN_W,
+					WIN_H,
+					zf,
+					blindSteps[blindRng:NextInteger(1, #blindSteps)]
+				)
 			end
-			--[[
-				★ 창문·창틀·간판은 벽의 +Z 쪽에 붙는다. 운동장이 +Z 이기 때문이다.
-				  벽은 두께 2 로 FACADE_Z 에 중심이 있으니 앞면이 FACADE_Z + 1 이고,
-				  거기서 조금 더 나와야 벽에 파묻히지 않는다.
-				  전에는 셋 다 -Z 였다 — 즉 건물 뒤통수에 붙어 있어서 운동장에서는
-				  민무늬 콘크리트 벽 한 장만 보였다.
-			]]
-			local x = i * 13
-			part(parent, `Window{floor}_{i}`, Vector3.new(9, 6, 0.4), Vector3.new(x, y, FACADE_Z + 1.1), {
-				color = C.glass,
-				material = Enum.Material.Glass,
-				transparency = 0.35,
-				collide = false,
-				cast = false,
-			})
-			part(parent, `WindowFrame{floor}_{i}`, Vector3.new(9.8, 6.8, 0.3), Vector3.new(x, y, FACADE_Z + 0.9), {
-				color = C.line,
-				material = Enum.Material.Metal,
-				collide = false,
-				cast = false,
-			})
 		end
 	end
+
+	--[[
+		벽기둥과 모서리 기둥.
+
+		창틀 바깥끼리는 2.8 이 남는다. 거기 얇은 기둥을 세우면 창이 "뚫린 자리"가
+		아니라 "기둥과 기둥 사이"가 된다. 이게 없으면 창을 아무리 정교하게 만들어도
+		벽 한 장에 스티커를 붙인 것으로 보인다.
+
+		★ 깊이 순서를 하나로 정해두고 거기 맞춘다. 운동장이 +Z 쪽이므로 z 가 클수록 앞이다:
+		    벽 -79 → 기둥 -78.1 → 층띠 -77.8 → 기단 -77.6 → 창틀 -77.4 → 창턱 -77.1
+		    → 계단실 탑 -76 → 간판 -75.25 → 캐노피 -70
+		  기둥이 층띠보다 뒤에 있어야 층띠가 기둥 앞을 가로질러 지나가고, 그래야
+		  가로선(층)과 세로선(기둥)이 격자로 읽힌다. 둘의 앞뒤가 뒤집히면
+		  기둥이 띠를 토막 내서 3층짜리 건물이 아니라 벽 세 조각으로 보인다.
+	]]
+	local pier = { color = C.trim, material = Enum.Material.Concrete, collide = false }
+	for _, sign in { -1, 1 } do
+		for _, x in { 32, 45, 58 } do
+			part(
+				parent,
+				`Pilaster{sign}{x}`,
+				Vector3.new(2.6, FACADE_H - 3.2, 2.8),
+				Vector3.new(sign * x, 2.4 + (FACADE_H - 3.2) / 2, FACADE_Z + 0.5),
+				pier
+			)
+		end
+		-- 모서리는 두껍게. 창틀 바깥이 69.6 이므로 69~80 이 통째로 남는다
+		part(
+			parent,
+			`CornerPier{sign}`,
+			Vector3.new(11, FACADE_H - 0.8, 2.8),
+			Vector3.new(sign * 74.5, (FACADE_H - 0.8) / 2, FACADE_Z + 0.5),
+			pier
+		)
+	end
+
+	-- 처마. 난간 바로 아래에서 벽보다 앞으로 나와 지붕선에 그림자를 만든다
+	part(parent, "Cornice", Vector3.new(FACADE_HALF_X * 2, 1.6, 3.4), Vector3.new(0, FACADE_H - 0.8, FACADE_Z + 0.7), {
+		color = C.trim,
+		material = Enum.Material.Concrete,
+		collide = false,
+	})
+
+	--[[
+		── 가운데 계단실 ──
+
+		한국 학교 건물을 한눈에 알아보게 하는 건 창문이 아니라 이 덩어리다.
+		가운데가 앞으로 나오고 옥상보다 위로 솟아 있고, 그 아래가 현관이고,
+		그 위에 학교 이름이 붙어 있고, 그 위로 계단참 통유리가 3층까지 올라간다.
+
+		WIN_COLS 를 25.5 부터 시작하게 만든 이유가 여기다 — 가운데 38 스터드는
+		처음부터 이 탑 자리로 비워둔 것이다.
+	]]
+	local towerZ = FACADE_Z + 1.5
+	local tzf = FACADE_Z + 4 -- 탑 앞면. 벽보다 3 앞이다
+	local tower = { color = C.wall, material = Enum.Material.Brick }
+	for _, sign in { -1, 1 } do
+		part(
+			parent,
+			`TowerPier{sign}`,
+			Vector3.new(TOWER_HALF_X - DOOR_HALF_W, TOWER_H, 5),
+			Vector3.new(sign * (DOOR_HALF_W + (TOWER_HALF_X - DOOR_HALF_W) / 2), TOWER_H / 2, towerZ),
+			tower
+		)
+	end
+	part(
+		parent,
+		"TowerHeader",
+		Vector3.new(DOOR_HALF_W * 2, TOWER_H - DOOR_H, 5),
+		Vector3.new(0, DOOR_H + (TOWER_H - DOOR_H) / 2, towerZ),
+		tower
+	)
+	part(parent, "TowerCap", Vector3.new(TOWER_HALF_X * 2 + 3, 1.8, 6.2), Vector3.new(0, TOWER_H + 0.9, towerZ), {
+		color = C.trim,
+		material = Enum.Material.Concrete,
+	})
+
+	-- 계단참 통유리. 간판 위(22)에서 3층 창 윗선(37)까지 한 장으로 올라간다
+	buildWindowUnit(parent, "Stairwell", 0, 29.5, 13, 15, tzf, 0)
+	for _, y in { 25, 34 } do
+		part(parent, `StairwellTransom{y}`, Vector3.new(13, 0.3, 0.28), Vector3.new(0, y, tzf + 0.78), {
+			color = C.line,
+			material = Enum.Material.Metal,
+			collide = false,
+			cast = false,
+		})
+	end
+
+	-- 시계. 탑 꼭대기에 하나. 원기둥 축은 로컬 X 라 Y 로 90도 돌려야 정면을 본다
+	part(parent, "TowerClock", Vector3.new(0.7, 7, 7), Vector3.new(0, 42, tzf + 0.35), {
+		color = Color3.fromRGB(248, 246, 240),
+		shape = Enum.PartType.Cylinder,
+		cframe = CFrame.Angles(0, math.rad(90), 0),
+		collide = false,
+		cast = false,
+	})
+	part(parent, "ClockHandHour", Vector3.new(0.35, 2, 0.25), Vector3.new(0, 42.9, tzf + 0.75), {
+		color = C.dark,
+		collide = false,
+		cast = false,
+	})
+	part(parent, "ClockHandMinute", Vector3.new(2.6, 0.35, 0.25), Vector3.new(-1.2, 42, tzf + 0.75), {
+		color = C.dark,
+		collide = false,
+		cast = false,
+	})
 
 	-- 옥상 난간
 	part(parent, "Parapet", Vector3.new(FACADE_HALF_X * 2, 3, 2.4), Vector3.new(0, FACADE_H + 1.5, FACADE_Z), {
@@ -233,8 +484,9 @@ local function buildFacade(parent: Instance)
 		})
 	end
 
-	-- 학교 간판. 첫 시야에서 읽혀야 하는 유일한 글자다
-	local sign = part(parent, "SchoolSign", Vector3.new(34, 5, 0.5), Vector3.new(0, DOOR_H + 5.5, FACADE_Z + 1.3), {
+	-- 학교 간판. 첫 시야에서 읽혀야 하는 유일한 글자다.
+	-- 이제 벽이 아니라 계단실 탑 앞면(tzf = FACADE_Z + 4)에 붙는다 — 예전 z 였다면 탑 속에 묻힌다
+	local sign = part(parent, "SchoolSign", Vector3.new(34, 5, 0.5), Vector3.new(0, DOOR_H + 5.5, tzf + 0.5), {
 		color = Color3.fromRGB(248, 246, 240),
 		collide = false,
 		cast = false,
@@ -385,7 +637,13 @@ local function buildLobby(parent: Instance): ({ BasePart }, BasePart)
 		{ color = Color3.fromRGB(58, 92, 66), collide = false, cast = false }
 	)
 	-- Back(+Z)이 로비 쪽이다. 안쪽 벽이라 현관에서 들어온 사람은 +Z 에 서 있다
-	surfaceText(wayfind, Enum.NormalId.Back, "<b>↑ 2층 1학년 교실</b>", Color3.fromRGB(238, 244, 238), 0.8)
+	--[[
+		★ 학년을 안 적는다. 로비는 열두 명이 같이 쓰는 한 곳인데 학년은 사람마다 다르다.
+		  여기에 "1학년"이라고 박아두면 6학년 플레이어는 매 판 자기 학년이 아닌
+		  안내판을 지나 교실로 들어간다. 학년은 자기 교실 안에서만 말한다 —
+		  문패·칠판·급훈·안내판이 전부 교실 쪽에 있는 것이 그 때문이다.
+	]]
+	surfaceText(wayfind, Enum.NormalId.Back, "<b>↑ 2층 교실</b>", Color3.fromRGB(238, 244, 238), 0.8)
 	for _, sign in { -1, 1 } do
 		part(
 			parent,
@@ -526,7 +784,7 @@ local function buildLobby(parent: Instance): ({ BasePart }, BasePart)
 		Vector3.new(-DOOR2F_HALF_W - 1.4, STAIR_TOP_Y + 2.2, hallZ - 2),
 		{ color = C.wood, material = Enum.Material.WoodPlanks, collide = false, cast = false }
 	)
-	surfaceText(classDoor, Enum.NormalId.Right, "<b>1-1</b>", Color3.fromRGB(60, 50, 40), 1.2)
+	surfaceText(classDoor, Enum.NormalId.Right, "<b>교실</b>", Color3.fromRGB(60, 50, 40), 1.2)
 
 	local hallLamp = part(
 		parent,
@@ -673,7 +931,7 @@ local function buildLobby(parent: Instance): ({ BasePart }, BasePart)
 			collide = false,
 			cast = false,
 		})
-	surfaceText(rackSign, Enum.NormalId.Right, "<b>1학년 신발장</b>", Color3.fromRGB(45, 45, 50), 0.9)
+	surfaceText(rackSign, Enum.NormalId.Right, "<b>신발장</b>", Color3.fromRGB(45, 45, 50), 0.9)
 
 	--[[
 		── 문구점 매대 (오른쪽 벽) ──

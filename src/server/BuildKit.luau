@@ -54,8 +54,18 @@ end
 --[[
 	SurfaceGui 로 글자를 넣는다. 텍스처 에셋 없이 한글을 표시하는 유일한 방법이고,
 	"한국 초등학교"라는 인상은 결국 벽에 붙은 글자에서 나온다.
+
+	@return 만들어진 TextLabel. 학년이 바뀔 때 칠판·급훈·시간표의 글자를 갈아끼워야 해서
+	        돌려준다. 나중에 target 을 뒤져 찾는 것보다 지을 때 받아두는 편이 확실하다 —
+	        찾는 쪽은 이름이 어긋나도 조용히 nil 을 받고, 그러면 글자만 1학년에 남는다.
 ]]
-function BuildKit.surfaceText(target: BasePart, face: Enum.NormalId, text: string, color: Color3, scale: number)
+function BuildKit.surfaceText(
+	target: BasePart,
+	face: Enum.NormalId,
+	text: string,
+	color: Color3,
+	scale: number
+): TextLabel
 	local gui = Instance.new("SurfaceGui")
 	gui.Face = face
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
@@ -76,6 +86,8 @@ function BuildKit.surfaceText(target: BasePart, face: Enum.NormalId, text: strin
 	label.RichText = true
 	label.Text = text
 	label.Parent = gui
+
+	return label
 end
 
 return BuildKit

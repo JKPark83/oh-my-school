@@ -29,9 +29,21 @@ local FAIL_FLASH = 0.4 -- 붉게 멈춰 있는 시간
 local FAIL_TO_BLACK = 0.35
 local FAIL_BLACK_HOLD = 1.05 -- 서버가 문 앞으로 되돌리는 시점
 local FAIL_FADE_OUT = 0.4
+local FAIL_ZOOM = 10 -- 적발 순간 즉시 좁히는 화각(도). 시선이 나한테 꽂히는 느낌
+local FAIL_ZOOM_OUT = 0.3 -- 좁힌 화각이 제자리로 풀리는 시간
 
+local TITLE_SIZE = 56
+local FAIL_TITLE_PUNCH = 18 -- 제목이 이만큼 큰 채로 나타나 제자리로 줄어든다(픽셀)
+
+--[[
+	실패 사유. 서버는 키만 보내고 문장은 여기서 만든다.
+
+	★ 문장이 왜 잡혔는지를 정확히 말해야 한다. "들켰다"로 뭉뚱그리면 같은 실수를
+	  반복하게 된다 — 무엇을 고쳐야 하는지가 사유 안에 들어 있어야 다음 판이 달라진다.
+]]
 local REASONS = {
 	moved_in_sight = "선생님이 보는 앞에서 움직였다",
+	wrong_seat = "남의 자리에 앉았다",
 }
 
 local player = Players.LocalPlayer
@@ -83,7 +95,7 @@ local function buildGui()
 	title.AnchorPoint = Vector2.new(0.5, 0.5)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 56
+	title.TextSize = TITLE_SIZE
 	title.TextTransparency = 1
 	title.TextStrokeTransparency = 1
 	title.Text = ""
@@ -165,9 +177,19 @@ function FeedbackController.onCaught(reason: string)
 	overlay.BackgroundColor3 = Color3.fromRGB(120, 20, 20)
 	overlay.BackgroundTransparency = 0.5
 
+	-- 화각도 즉시 좁히고 천천히 푼다. 줌인은 한 프레임, 복귀는 0.3초 —
+	-- 맞는 쪽이 빠르고 풀리는 쪽이 느려야 "맞았다"가 된다.
+	local camera = Workspace.CurrentCamera
+	if camera then
+		camera.FieldOfView = CameraController.FIELD_OF_VIEW - FAIL_ZOOM
+	end
+	setFov(CameraController.FIELD_OF_VIEW, FAIL_ZOOM_OUT)
+
 	title.Text = "야! 너 뭐야!"
 	title.TextColor3 = Color3.fromRGB(255, 225, 225)
 	title.TextTransparency = 0
+	title.TextSize = TITLE_SIZE + FAIL_TITLE_PUNCH
+	tween(title, 0.1, { TextSize = TITLE_SIZE })
 	subtitle.Text = REASONS[reason] or reason
 	subtitle.TextTransparency = 0.1
 

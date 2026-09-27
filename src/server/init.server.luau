@@ -7,12 +7,16 @@
 
 	순서가 중요한 이유:
 	  DataService  — 플레이어가 들어오기 전에 스토어가 있어야 한다
+	  Character    — 사람 메시를 내려받는다. 교실 슬롯이 선생님을 여기서 복제한다
 	  Classroom    — 슬롯 12개가 다 지어진 뒤에야 배정할 수 있다
 	  Playground   — 첫 스폰 지점이다. Progress 가 RespawnLocation 으로 쓰므로 먼저 서야 한다
 	  Progress     — 여기서 PlayerAdded 를 잡는다. 위 셋이 준비된 뒤여야 한다
 	  Detection    — 매 프레임 세션 표를 읽는다. 마지막에 켠다
 ]]
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local DataService = require(script.Services.DataService)
 local ClassroomService = require(script.Services.ClassroomService)
 local DetectionService = require(script.Services.DetectionService)
@@ -20,6 +24,7 @@ local PlaygroundService = require(script.Services.PlaygroundService)
 local ProgressService = require(script.Services.ProgressService)
 
 DataService.Start()
+CharacterBuilder.preload()
 
 local slotCount = ClassroomService.Start()
 PlaygroundService.Start()
