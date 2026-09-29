@@ -111,6 +111,7 @@ local function buyFloor(player: Player, profile: Types.Profile, n: number, price
 	profile.coins -= price
 	profile.towerFloors += 1
 	PlotService.refreshWorld(player)
+	Metrics.floorBuilt(player, n)
 	DataService.markDirty(player)
 	-- 프로필을 먼저 보내야 FloorBuilt 가 부르는 클라 PadController·HudController 새로고침이 새 층 수·용돈을 본다
 	DataService.syncNow(player)
@@ -181,6 +182,7 @@ local function respawnSticker(player: Player, plotId: number, part: BasePart)
 		part:SetAttribute(Keys.ATTR_GOLD, gold)
 		part:SetAttribute(Keys.ATTR_COLLECTED, false)
 		part.CanTouch = true
+		Metrics.stickerSpawned(player, part)
 	end)
 end
 
@@ -236,7 +238,7 @@ local function onSticker(player: Player, part: BasePart)
 
 	addCoins(profile, value)
 	profile.stats.totalStickers += 1
-	Metrics.stickerCollected(player)
+	Metrics.stickerCollected(player, part)
 	profile.stickerBoard += 1
 	if combo.count % EconomyConfig.COMBO_BONUS_EVERY == 0 then
 		profile.stickerBoard += 1

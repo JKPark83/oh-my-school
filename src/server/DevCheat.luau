@@ -1,12 +1,13 @@
 --!strict
 --[[
 	Studio 전용 치트. 계획서 §0 수치 검증용. Studio 가 아니면 아무것도 하지 않는다.
-	ServerScriptService.DevCheat 폴더에 BindableFunction 5개를 둔다.
+	ServerScriptService.DevCheat 폴더에 BindableFunction 6개를 둔다.
 	  FastForward(player, seconds)  초당 수입 × seconds 만큼 용돈 지급. 지급액을 돌려준다
 	  GiveCoins(player, n)          용돈 n. 지급 후 보유 용돈을 돌려준다
 	  GiveDecor(player, itemId, n)  꾸미기 보관함 n 개(아이템당 MAX_OWNED 까지). 넣은 뒤 보관함 수를 돌려준다
 	  GiveFloors(player, n)         탑 층 수를 n(0..MAX-2)으로 맞춘다. 강당이 있어야 보인다. 맞춘 층 수를 돌려준다
 	  RideElevator(player, prompt)  엘리베이터 프롬프트(Up/Down)를 누른 것처럼 서버 판정을 돌린다. 옮겼으면 true
+	  MetricsNow(player)            세션을 끝내지 않고 [Metrics] 「지금까지 요약」 줄을 찍는다. 세션이 있으면 true
 	MCP execute_luau 예:
 	  game.ServerScriptService.DevCheat.FastForward:Invoke(game.Players:GetPlayers()[1], 600)
 ]]
@@ -20,6 +21,7 @@ local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local DataService = require(script.Parent.Services.DataService)
 local DecorService = require(script.Parent.Services.DecorService)
 local EconomyService = require(script.Parent.Services.EconomyService)
+local Metrics = require(script.Parent.Metrics)
 local PlotService = require(script.Parent.Services.PlotService)
 
 local DevCheat = {}
@@ -30,6 +32,7 @@ local GIVE_COINS = "GiveCoins"
 local GIVE_DECOR = "GiveDecor"
 local GIVE_FLOORS = "GiveFloors"
 local RIDE_ELEVATOR = "RideElevator"
+local METRICS_NOW = "MetricsNow"
 
 --- seconds 초 동안의 수입을 한 번에 지급. 지급액 반환
 function DevCheat.fastForward(player: Player, seconds: number): number
@@ -135,9 +138,21 @@ function DevCheat.Start()
 	end
 	rideElevator.Parent = folder
 
+	-- 5분·30분 타이머는 실시간이라 Studio 게이트가 기다릴 수 없어 요약을 바로 찍는다
+	local metricsNow = Instance.new("BindableFunction")
+	metricsNow.Name = METRICS_NOW
+	metricsNow.OnInvoke = function(player: any): boolean
+		if not isPlayer(player) then
+			warn(`[DevCheat] {METRICS_NOW}(player) 인자가 틀렸다`)
+			return false
+		end
+		return Metrics.summaryNow(player)
+	end
+	metricsNow.Parent = folder
+
 	folder.Parent = ServerScriptService
 	print(
-		`[DevCheat] {FOLDER_NAME}.{FAST_FORWARD} / {GIVE_COINS} / {GIVE_DECOR} / {GIVE_FLOORS} / {RIDE_ELEVATOR} 준비`
+		`[DevCheat] {FOLDER_NAME}.{FAST_FORWARD} / {GIVE_COINS} / {GIVE_DECOR} / {GIVE_FLOORS} / {RIDE_ELEVATOR} / {METRICS_NOW} 준비`
 	)
 end
 

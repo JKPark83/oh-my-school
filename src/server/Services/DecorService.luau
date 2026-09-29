@@ -24,6 +24,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local StudentService = require(script.Parent.StudentService)
+local Metrics = require(script.Parent.Parent.Metrics)
 local RemoteGuard = require(script.Parent.Parent.RemoteGuard)
 
 local DecorService = {}
@@ -172,6 +173,7 @@ local function place(player: Player, itemId: string, cx: number, cz: number, rot
 	table.insert(profile.decorPlaced, placement)
 	DecorService.refreshAttribute(player)
 	Remotes.event(player, "DecorPlaced", placedPacket(#profile.decorPlaced, placement, false))
+	Metrics.decorPlaced(player)
 	DataService.markDirty(player)
 	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
 end

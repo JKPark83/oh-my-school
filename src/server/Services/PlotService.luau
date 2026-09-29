@@ -79,10 +79,12 @@ local stickerTouched = Instance.new("BindableEvent")
 local starTouched = Instance.new("BindableEvent")
 local padTouched = Instance.new("BindableEvent")
 local teleported = Instance.new("BindableEvent")
+local elevatorRode = Instance.new("BindableEvent")
 PlotService.StickerTouched = stickerTouched.Event -- (player: Player, part: BasePart)
 PlotService.StarTouched = starTouched.Event -- (player: Player, plotId: number, part: BasePart)
 PlotService.PadTouched = padTouched.Event -- (player: Player, pad: BasePart). 주인·활성 패드만
 PlotService.Teleported = teleported.Event -- (player: Player). PivotTo 직후
+PlotService.ElevatorRode = elevatorRode.Event -- (player: Player). 엘리베이터로 옮긴 직후(탄 사람, 방문객 포함). Metrics 용
 
 local function playerFromPart(part: BasePart): Player?
 	local character = part.Parent
@@ -573,6 +575,7 @@ local function rideElevator(prompt: ProximityPrompt, player: Player): boolean
 	lastRide[player] = now
 	PlotService.teleport(player, Tower.arrival(cframes[plotId], target), false)
 	Remotes.event(player, "ElevatorRide", { plot = plotId, floor = target })
+	elevatorRode:Fire(player)
 	return true
 end
 

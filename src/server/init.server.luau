@@ -5,7 +5,7 @@
 	모듈 최상위에서는 아무것도 하지 않는다. require 는 값만 반환하고 실제 작업은 Start() 에서 한다.
 
 	순서:
-	  Remotes.init       RemoteEvents 폴더 + 이벤트 10개. 가장 먼저
+	  Remotes.init       RemoteEvents 폴더 + 이벤트 11개. 가장 먼저
 	  DataService        플레이어가 들어오기 전에 스토어가 있어야 한다
 	  RemoteGuard        SetSetting 핸들러 + 위반 카운트 정리
 	  CharacterBuilder   메시 원형 내려받기(task.spawn, 부팅을 막지 않는다)

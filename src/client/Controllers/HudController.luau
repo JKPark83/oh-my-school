@@ -179,6 +179,7 @@ local codexDot: Frame
 local missionButton: TextButton
 local missionBadge: TextLabel
 local decorButton: TextButton
+local decorTapMarked = false -- UiMark "decorTap" 을 이미 보냈나
 local decorDot: Frame
 local decorStroke: UIStroke
 local decorScale: UIScale
@@ -835,6 +836,11 @@ local function buildGui()
 	corner(decorDot, 6)
 	decorButton.Visible = false
 	decorButton.Activated:Connect(function()
+		-- W9 지표: 세션(이 클라)당 첫 탭만 서버에 알린다(Metrics 「버튼 첫 탭」)
+		if not decorTapMarked then
+			decorTapMarked = true
+			Remotes.UiMark:FireServer("decorTap")
+		end
 		decorNew = false
 		decorDot.Visible = false
 		openPanel(PANEL_DECOR)
