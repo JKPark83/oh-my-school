@@ -1,7 +1,7 @@
 --!nonstrict
 --[[
 	부지 12개 + 광장. 기획서 §7.1·§7.5·§11.4, 계획서 §3.2·§3.5.
-	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 6개)를 만든다.
+	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 7개)를 만든다.
 	  - 접속 순서로 번호가 가장 작은 빈 부지를 준다. 나가면 즉시 비운다.
 	  - 시설 모델은 buildPart 가 부품 단위로 넣는다(개선계획 §3.4). Geometry/<id>.build 로 전체를 임시로 짓고
 	    PartIndex == k 인 파트만 실제 모델로 옮긴다. 어트리뷰트 FacilityId/Parts/BuiltAt, 마지막 부품이면 Built.
@@ -24,6 +24,7 @@ local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
+local DecorCodec = require(ReplicatedStorage.Shared.DecorCodec)
 local DataService = require(script.Parent.DataService)
 
 local GeometryFolder = script.Parent.Parent.Geometry
@@ -163,6 +164,7 @@ local function resetState(plotId: number)
 	folder:SetAttribute(Keys.ATTR_FACILITIES, "")
 	folder:SetAttribute(Keys.ATTR_STUDENTS, "")
 	folder:SetAttribute(Keys.ATTR_INCOME, 0)
+	folder:SetAttribute(Keys.ATTR_DECOR, "")
 	setGateSign(plotId, "")
 end
 
@@ -644,7 +646,7 @@ function PlotService.state(plotId: number): Folder
 	return stateFolders[plotId]
 end
 
---- 프로필 → PlotState 어트리뷰트 6개 + 교문 현판
+--- 프로필 → PlotState 어트리뷰트 7개 + 교문 현판. 꾸미기(Decor)는 졸업과 상관없어 DecorService 가 잠금 중에도 따로 쓴다
 function PlotService.syncAttributes(player: Player)
 	local plotId = plotOf[player]
 	local profile: Types.Profile? = DataService.get(player)
@@ -663,6 +665,7 @@ function PlotService.syncAttributes(player: Player)
 	folder:SetAttribute(Keys.ATTR_FACILITIES, FacilityConfig.toCsv(profile.facilities))
 	folder:SetAttribute(Keys.ATTR_STUDENTS, StudentConfig.toCsv(profile.students))
 	folder:SetAttribute(Keys.ATTR_INCOME, math.floor(EconomyConfig.incomePerSecond(profile)))
+	folder:SetAttribute(Keys.ATTR_DECOR, DecorCodec.encode(profile.decorPlaced))
 	setGateSign(plotId, player.DisplayName)
 end
 

@@ -5,6 +5,7 @@
 	  - 형태가 바뀌면 SCHEMA_VERSION 을 올리고 MIGRATIONS[이전 버전] 에 변환을 적는다.
 	  - 저장 시점: 졸업·미션 완료·퇴장은 save(), 구매·스티커는 saveDebounced(player, 30).
 	  - ProfileSync: markDirty() 로 예약하면 1초 틱이 모아서 보낸다(≤1Hz, seq 단조 증가). syncNow() 는 즉시.
+	    decorPlaced 는 빼고 보낸다. 40개면 1.6KB 라 2KB 예산을 넘고, 클라는 PlotState Decor 어트리뷰트로 읽는다.
 	Studio 에서는 "_Dev" 스토어 + Mock 이다. 실제 DataStore 를 쓰려면
 	ServerScriptService 에 UseLiveDataStore = true 어트리뷰트를 둔다.
 ]]
@@ -18,6 +19,7 @@ local ProfileStore = require(ServerScriptService.ServerPackages.ProfileStore)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Types = require(ReplicatedStorage.Shared.Types)
+local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
 local Migrations = require(script.Parent.Parent.Migrations)
 
 local DataService = {}
@@ -39,8 +41,11 @@ local TEMPLATE: Types.Profile = {
 	missions = { day = 0, stickers = 0, built = 0, chair = false, done = { false, false, false } },
 	settings = { shake = true, sfx = true, haptic = true },
 	stats = { totalCoins = 0, totalStickers = 0, playSeconds = 0 },
+	-- 빈 표로 둔다. 중첩 키를 두면 Reconcile 이 0 이 되어 지워진 키를 로드마다 다시 채운다(ProfileStore ReconcileTable)
 	decorOwned = {},
 	decorPlaced = {},
+	decorPaid = {},
+	decorStarter = false, -- load 가 false 면 튜토리얼 화분을 넣고 true 로 바꾼다
 	towerFloors = 0,
 }
 
@@ -74,7 +79,10 @@ local function push(player: Player)
 		return
 	end
 	seqs[player] = (seqs[player] or 0) + 1
-	Remotes.ProfileSync:FireClient(player, { seq = seqs[player], profile = profile.Data })
+	local data = table.clone(profile.Data)
+	data.decorPlaced = nil -- Decor 어트리뷰트가 같은 내용을 짧게 싣는다(≤2KB 예산)
+	data.decorPaid = nil -- 환불 계산용. 서버만 쓴다(≤2KB 예산)
+	Remotes.ProfileSync:FireClient(player, { seq = seqs[player], profile = data })
 end
 
 function DataService.Start()
@@ -113,6 +121,17 @@ function DataService.load(player: Player): Types.Profile?
 	profile:AddUserId(player.UserId)
 	profile:Reconcile()
 	migrate(profile.Data)
+	-- 튜토리얼 ④ 화분(새 프로필·옛 프로필 한 번씩). 산 값이 없으니 돌려줘도 0
+	local data = profile.Data
+	if not data.decorStarter then
+		local item = DecorConfig.TUTORIAL_ITEM
+		local room = DecorConfig.MAX_OWNED - DecorConfig.heldCount(data.decorOwned, data.decorPlaced, item)
+		local add = math.clamp(DecorConfig.TUTORIAL_FREE, 0, math.max(room, 0))
+		if add > 0 then
+			data.decorOwned[item] = (data.decorOwned[item] or 0) + add
+		end
+		data.decorStarter = true
+	end
 
 	profile.OnSessionEnd:Connect(function()
 		profiles[player] = nil

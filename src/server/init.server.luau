@@ -5,12 +5,12 @@
 	모듈 최상위에서는 아무것도 하지 않는다. require 는 값만 반환하고 실제 작업은 Start() 에서 한다.
 
 	순서:
-	  Remotes.init       RemoteEvents 폴더 + 이벤트 5개. 가장 먼저
+	  Remotes.init       RemoteEvents 폴더 + 이벤트 10개. 가장 먼저
 	  DataService        플레이어가 들어오기 전에 스토어가 있어야 한다
 	  RemoteGuard        SetSetting 핸들러 + 위반 카운트 정리
 	  CharacterBuilder   메시 원형 내려받기(task.spawn, 부팅을 막지 않는다)
 	  PlotService        부지 12 + 광장 + PlotState. 뒤 서비스가 Workspace.Plots 를 읽는다
-	  Economy → Mission → Graduation → Leaderboard → Metrics → DevCheat(Studio). StudentService 는 grant 만 있어 Start 가 없다
+	  Economy → Decor → Mission → Graduation → Leaderboard → Metrics → DevCheat(Studio). StudentService 는 grant 만 있어 Start 가 없다
 	  PlayerAdded        이미 들어온 플레이어도 처리
 ]]
 
@@ -24,6 +24,7 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local DataService = require(script.Services.DataService)
+local DecorService = require(script.Services.DecorService)
 local DevCheat = require(script.DevCheat)
 local EconomyService = require(script.Services.EconomyService)
 local GraduationService = require(script.Services.GraduationService)
@@ -39,6 +40,7 @@ RemoteGuard.Start()
 task.spawn(CharacterBuilder.preload)
 PlotService.Start()
 EconomyService.Start()
+DecorService.Start()
 MissionService.Start()
 GraduationService.Start()
 LeaderboardService.Start()

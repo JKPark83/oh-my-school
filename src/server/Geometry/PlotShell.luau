@@ -43,15 +43,15 @@ local FENCE_T = 0.6
 local FENCE_X = PLOT_HALF - 0.1 -- 담장 중심. 바깥으로 0.2 내민다
 
 local GATE_Z = PlotLayout.GATE_Z
-local GATE_W = 12 -- 기둥 안쪽 면 사이
+local GATE_W = PlotLayout.GATE_W -- 기둥 안쪽 면 사이
 local GATE_H = 8
-local PILLAR = 1.5
+local PILLAR = PlotLayout.GATE_PILLAR
 local LEAF_W = 5.8
 local LEAF_OPEN = math.rad(75) -- 문짝이 바깥(+Z)으로 열린 각도
 
 local SPAWN = PlotLayout.SPAWN
-local SIGNPOST = Vector3.new(-12.5, 0, 62.5)
-local ADMISSION = Vector3.new(15, 0, 57.5)
+local SIGNPOST = PlotLayout.SIGNPOST
+local ADMISSION = PlotLayout.ADMISSION
 
 local WALL_T = 1
 local WALL_H = PlotLayout.WALL_H
@@ -60,11 +60,11 @@ local DOOR_W = 8
 local DOOR_H = 8
 
 -- 현관 (0,-5) 30×25. 남문 (0,7.5), 북문 (0,-17.5)
-local ENTRANCE = Vector3.new(0, 0, -5)
-local ENTRANCE_SIZE = Vector3.new(30, WALL_H, 25)
+local ENTRANCE = PlotLayout.ENTRANCE
+local ENTRANCE_SIZE = PlotLayout.ENTRANCE_SIZE
 -- 교실1 (-60,-47.5) 30×30. 남문 (-60,-32.5)
-local CLASS1 = Vector3.new(-60, 0, -47.5)
-local CLASS1_SIZE = Vector3.new(30, WALL_H, 30)
+local CLASS1 = PlotLayout.CLASS1
+local CLASS1_SIZE = PlotLayout.CLASS1_SIZE
 
 -- 2층 계단·착지대(값은 PlotLayout). 착지대는 동·북 벽 윗면(y=18)과 겹치지 않게 벽 안쪽 면(x=14, z=-16.5)까지만
 local STAIR_X0, STAIR_X1 = PlotLayout.STAIR_X0, PlotLayout.STAIR_X1
@@ -92,8 +92,8 @@ local STAR_SPOTS = PlotLayout.STAR_SPOTS
 local PAD_SIZE = Vector3.new(4, 0.4, 4)
 local PAD_LIFT = 0.2
 
-local TREES = { Vector2.new(37.5, 50), Vector2.new(-10, 12.5) }
-local FLAGPOLE = Vector3.new(-12.5, 0, 57.5)
+local TREES = PlotLayout.TREES
+local FLAGPOLE = PlotLayout.FLAGPOLE
 
 -- ── 색 (WorldPalette 역할 색) ─────────────────────────────────────
 local P = WorldPalette

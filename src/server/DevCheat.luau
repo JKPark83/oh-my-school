@@ -1,9 +1,10 @@
 --!strict
 --[[
 	Studio 전용 치트. 계획서 §0 수치 검증용. Studio 가 아니면 아무것도 하지 않는다.
-	ServerScriptService.DevCheat 폴더에 BindableFunction 2개를 둔다.
+	ServerScriptService.DevCheat 폴더에 BindableFunction 3개를 둔다.
 	  FastForward(player, seconds)  초당 수입 × seconds 만큼 용돈 지급. 지급액을 돌려준다
 	  GiveCoins(player, n)          용돈 n. 지급 후 보유 용돈을 돌려준다
+	  GiveDecor(player, itemId, n)  꾸미기 보관함 n 개(아이템당 MAX_OWNED 까지). 넣은 뒤 보관함 수를 돌려준다
 	MCP execute_luau 예:
 	  game.ServerScriptService.DevCheat.FastForward:Invoke(game.Players:GetPlayers()[1], 600)
 ]]
@@ -14,6 +15,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local DataService = require(script.Parent.Services.DataService)
+local DecorService = require(script.Parent.Services.DecorService)
 local EconomyService = require(script.Parent.Services.EconomyService)
 
 local DevCheat = {}
@@ -21,6 +23,7 @@ local DevCheat = {}
 local FOLDER_NAME = "DevCheat"
 local FAST_FORWARD = "FastForward"
 local GIVE_COINS = "GiveCoins"
+local GIVE_DECOR = "GiveDecor"
 
 --- seconds 초 동안의 수입을 한 번에 지급. 지급액 반환
 function DevCheat.fastForward(player: Player, seconds: number): number
@@ -77,8 +80,21 @@ function DevCheat.Start()
 	end
 	giveCoins.Parent = folder
 
+	local giveDecor = Instance.new("BindableFunction")
+	giveDecor.Name = GIVE_DECOR
+	giveDecor.OnInvoke = function(player: any, itemId: any, n: any): number
+		if not isPlayer(player) or typeof(itemId) ~= "string" or typeof(n) ~= "number" then
+			warn(`[DevCheat] {GIVE_DECOR}(player, itemId, n) 인자가 틀렸다`)
+			return 0
+		end
+		local owned = DecorService.give(player, itemId, n)
+		DataService.syncNow(player)
+		return owned
+	end
+	giveDecor.Parent = folder
+
 	folder.Parent = ServerScriptService
-	print(`[DevCheat] {FOLDER_NAME}.{FAST_FORWARD} / {GIVE_COINS} 준비`)
+	print(`[DevCheat] {FOLDER_NAME}.{FAST_FORWARD} / {GIVE_COINS} / {GIVE_DECOR} 준비`)
 end
 
 return DevCheat

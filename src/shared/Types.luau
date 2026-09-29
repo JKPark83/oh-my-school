@@ -54,6 +54,8 @@ export type Profile = {
 	stats: Stats,
 	decorOwned: { [string]: number }, -- 꾸미기 아이템 id → 보관함 수
 	decorPlaced: { DecorPlacement },
+	decorPaid: { [string]: { number } }, -- 아이템 id → 산 값 스택(돌려주기는 맨 뒤 값). 비면 키 없음. 무료로 받은 것은 없다
+	decorStarter: boolean, -- 튜토리얼 화분을 받았는지(한 번만 준다)
 	towerFloors: number,
 }
 
@@ -71,14 +73,48 @@ export type GameEventKind =
 	| "StickerCollected"
 	| "GiftOpened"
 	| "Deny"
+	| "DecorPlaced"
+	| "DecorStored"
+	| "DecorBought"
+	| "DecorReturned"
 
 -- 선물판 40칸이 차서 선물 1개를 받음. 본인에게만
 export type GiftOpened = {
 	giftIndex: number,
-	kind: "coins",
+	kind: "coins" | "item", -- item 이면 보관함에 1개 들어가고 coins 는 0
 	coins: number,
 	boardCells: number,
+	item: string?, -- kind == "item" 일 때 DecorConfig id
 }
+
+-- 꾸미기(W5). 전부 본인에게만. slot 은 decorPlaced 순번
+export type DecorPlaced = {
+	slot: number,
+	item: string,
+	cx: number,
+	cz: number,
+	rot: number,
+	f: number,
+	moved: boolean, -- true = MoveDecor(자리 옮김), false = PlaceDecor(보관함에서 꺼냄)
+}
+
+export type DecorStored = {
+	slot: number, -- 빠진 순번. 뒤 순번은 하나씩 당겨진다
+	item: string,
+}
+
+export type DecorBought = {
+	item: string,
+	coins: number, -- 낸 코인
+	student: string?, -- 친구 아이템으로 새로 온 학생
+}
+
+export type DecorReturned = {
+	item: string,
+	coins: number, -- 돌려받은 코인
+}
+
+export type DenyReason = "coins" | "cooldown" | "owner" | "cell" | "limit" | "owned" | "locked"
 
 export type SettingKey = "shake" | "sfx" | "haptic"
 

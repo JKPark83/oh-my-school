@@ -13,6 +13,7 @@
 	      그 밖(뽑기로 온 s14~s24)은 지운다. W5 부터 꾸미기로 만난다.
 	  - stickerBoard 는 그대로 둔다. 옛 판(60칸)이 40칸 이상이면 다음 스티커 때 GiftBoard 가 선물로 바꾼다.
 	  - giftIndex 0 · decorOwned {} · decorPlaced {} · towerFloors 0 (Reconcile 이 이미 채웠으면 그대로).
+	    튜토리얼 화분은 여기서 주지 않는다. DataService.load 가 decorStarter 로 한 번만 준다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

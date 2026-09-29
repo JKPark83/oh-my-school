@@ -5,6 +5,8 @@
 §5.7 다이얼을 돌린 뒤 시뮬과 Config 를 같이 고쳤는지 이 한 줄로 다시 확인한다.
 Luau 는 정규식으로 숫자만 읽는다. 표 모양(키 = 값)이 바뀌면 여기 정규식도 같이 고친다.
 CONTRIB·학생 등급은 sim-parts.py 에 없어 대조하지 않는다(뽑기는 W4 스키마 v2 에서 지웠다).
+꾸미기 27개 가격은 DecorConfig.luau 의 `id = "planter"` 행 뒤 첫 `price = 123` 을 sim 의 DECOR_PRICES 와 대조한다.
+DecorConfig.luau 가 없으면 「DecorConfig 없음」 으로 FAIL 하고 나머지는 끝까지 본다.
 """
 import importlib.util
 import re
@@ -50,6 +52,21 @@ facilities = [
 ]
 
 
+def decor_prices():
+    """DecorConfig.luau 의 {id: price}. 파일이 없으면 None. 각 `id = "…"` 부터 다음 id 전까지에서 price 를 찾는다."""
+    path = CFG / "DecorConfig.luau"
+    if not path.exists():
+        return None
+    src = path.read_text(encoding="utf-8")
+    ids = list(re.finditer(r'\bid = "(\w+)"', src))
+    out = {}
+    for i, m in enumerate(ids):
+        end = ids[i + 1].start() if i + 1 < len(ids) else len(src)
+        pm = re.search(r"\bprice = (\d+)", src[m.end():end])
+        out[m.group(1)] = int(pm.group(1)) if pm else None
+    return out
+
+
 def cum_spawns(adds, base=0):
     out, n = [], base
     for a in adds:
@@ -70,6 +87,8 @@ rows += [
     ("시설별 부품 수", [f[4] for f in sim.FACILITIES], [len(f[1]) for f in facilities]),
     ("부품 가격(50개)", list(sim.PRICES), [p for f in facilities for p in f[1]]),
 ]
+decor = decor_prices()
+rows.append(("꾸미기 가격(27개)", dict(sim.DECOR_PRICES), decor if decor is not None else "DecorConfig 없음"))
 
 
 def show(v):

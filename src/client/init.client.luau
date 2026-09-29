@@ -2,7 +2,7 @@
 --[[
 	클라이언트 부트스트랩. 컨트롤러 시작 순서와 리모트 배선을 아는 유일한 곳이다(구현계획 §3.7).
 
-	  ★ 순서: Remotes.wait() → Hud → Panel → Pad → StudentRender → Feedback → Tutorial → Camera → Sound → Transition.
+	  ★ 순서: Remotes.wait() → Hud → Panel → Pad → StudentRender → Feedback → Tutorial → Camera → Decor → Sound → Transition.
 	    Hud 가 프로필 캐시를 들고 있으므로 가장 먼저, Panel 은 Hud 를 읽으므로 바로 다음이다.
 	  ★ 컨트롤러 Start 는 각각 pcall 이다. 하나가 죽어도 나머지는 뜬다 — 검정 화면보다 반쪽 HUD 가 낫다.
 	  ★ ProfileSync 는 HudController.setProfile 하나로만 들어간다(seq 필터도 거기). GameEvent 는 kind 별 표로
@@ -53,6 +53,7 @@ local StudentRenderController = load("StudentRenderController")
 local FeedbackController = load("FeedbackController")
 local TutorialController = load("TutorialController")
 local CameraController = load("CameraController")
+local DecorController = load("DecorController")
 local SoundController = load("SoundController")
 local TransitionController = load("TransitionController")
 
@@ -87,6 +88,7 @@ start(StudentRenderController, "StudentRenderController")
 start(FeedbackController, "FeedbackController")
 start(TutorialController, "TutorialController")
 start(CameraController, "CameraController")
+start(DecorController, "DecorController")
 start(SoundController, "SoundController")
 start(TransitionController, "TransitionController")
 
@@ -192,9 +194,33 @@ local dispatch: { [string]: { Handler } } = {
 			call(PadController, "PadController", "confirmSticker", payload)
 		end,
 	},
+	-- 꾸미기(본인에게만 온다). 모드 끝내기·보관함 되돌리기는 DecorController 가 판단한다
+	DecorPlaced = {
+		function(payload)
+			call(DecorController, "DecorController", "onEvent", payload)
+		end,
+	},
+	DecorStored = {
+		function(payload)
+			call(DecorController, "DecorController", "onEvent", payload)
+		end,
+	},
+	DecorBought = {
+		function(payload)
+			call(DecorController, "DecorController", "onEvent", payload)
+		end,
+	},
+	DecorReturned = {
+		function(payload)
+			call(DecorController, "DecorController", "onEvent", payload)
+		end,
+	},
 	Deny = {
 		function(payload)
 			call(FeedbackController, "FeedbackController", "play", "deny", payload)
+		end,
+		function(payload)
+			call(DecorController, "DecorController", "onEvent", payload)
 		end,
 	},
 }

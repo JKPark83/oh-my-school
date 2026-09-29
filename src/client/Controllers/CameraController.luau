@@ -4,6 +4,7 @@
 
 	평소에는 로블록스 기본 카메라(Custom)를 그대로 쓴다. 줌 8~40, FOV 65.
 	직접 CFrame 으로 굴리는 것은 연출 중(panTo/orbit/cutTo)뿐이고, restore() 로 Custom 에 돌아온다.
+	꾸미기 모드의 lockPitch/unlockPitch 는 Custom 을 두고 피치만 매 프레임 덮어쓴다.
 
 	★ 흔들림은 트라우마 모델이다. shake(t) 는 트라우마를 더하고, 실제 흔들림 크기는 트라우마² 다.
 	  작은 충격은 거의 안 보이고 큰 충격은 확 보인다. 트라우마는 초당 DECAY 만큼 줄어든다.
@@ -183,6 +184,69 @@ local function orbitCFrame(state: Orbit, now: number): CFrame
 	return CFrame.lookAt(pos, state.center)
 end
 
+--[[
+	피치 고정(꾸미기 모드, 개선계획 §3.5 #10). 기본 카메라(Custom)는 그대로 두고 매 프레임 피치만 덮어쓴다.
+	요(yaw)·줌·초점은 기본 카메라 것을 쓴다. 기본 카메라는 다음 프레임 우리 CFrame 에서 이어서 계산하므로
+	드래그 회전은 그대로 먹고 피치만 다시 눌린다. 연출(scripted) 중에는 건드리지 않는다.
+]]
+type PitchLock = { from: number, to: number, t0: number, seconds: number, release: boolean }
+local pitchLock: PitchLock? = nil
+local savedPitch = 0 -- lockPitch 직전 각도. unlockPitch 가 여기로 돌아간다
+
+--- 내려다보는 각도(라디안, 아래가 +)
+local function currentPitch(cam: Camera): number
+	return math.asin(math.clamp(-cam.CFrame.LookVector.Y, -1, 1))
+end
+
+local function applyPitch(cam: Camera, lock: PitchLock, now: number)
+	local alpha = math.clamp((now - lock.t0) / lock.seconds, 0, 1)
+	local pitch = lock.from + (lock.to - lock.from) * (1 - (1 - alpha) ^ 2)
+	local focus = cam.Focus.Position
+	local dist = (cam.CFrame.Position - focus).Magnitude
+	local look = cam.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	if flat.Magnitude < 1e-3 then
+		local up = cam.CFrame.UpVector
+		flat = Vector3.new(up.X, 0, up.Z)
+		if flat.Magnitude < 1e-3 then
+			flat = Vector3.new(0, 0, -1)
+		end
+	end
+	local dir = flat.Unit * math.cos(pitch) - Vector3.yAxis * math.sin(pitch)
+	cam.CFrame = CFrame.lookAt(focus - dir * dist, focus)
+	if lock.release and alpha >= 1 then
+		pitchLock = nil
+	end
+end
+
+--- 피치를 deg 로 seconds 동안 옮긴 뒤 unlockPitch 전까지 붙잡는다
+function CameraController.lockPitch(deg: number, seconds: number)
+	local cam = camera()
+	if not cam then
+		return
+	end
+	local now = currentPitch(cam)
+	if not pitchLock or pitchLock.release then
+		savedPitch = if pitchLock then pitchLock.to else now
+	end
+	pitchLock = { from = now, to = math.rad(deg), t0 = os.clock(), seconds = math.max(seconds, 0.01), release = false }
+end
+
+--- lockPitch 직전 각도로 seconds 동안 돌아간 뒤 기본 카메라에 맡긴다
+function CameraController.unlockPitch(seconds: number)
+	local cam = camera()
+	if not cam or not pitchLock or pitchLock.release then
+		return
+	end
+	pitchLock = {
+		from = currentPitch(cam),
+		to = savedPitch,
+		t0 = os.clock(),
+		seconds = math.max(seconds, 0.01),
+		release = true,
+	}
+end
+
 local function scriptedCFrame(state: Scripted, now: number): CFrame
 	if state.kind == "pan" then
 		local alpha = math.clamp((now - state.t0) / state.seconds, 0, 1)
@@ -202,6 +266,10 @@ local function updateFx(dt: number)
 	local now = os.clock()
 
 	local state = scripted
+	local lock = pitchLock
+	if lock and not state then
+		applyPitch(cam, lock, now)
+	end
 	local shaking = trauma > 0
 	if state or shaking then
 		local base = if state then scriptedCFrame(state, now) else cam.CFrame

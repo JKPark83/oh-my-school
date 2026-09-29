@@ -18,6 +18,21 @@ PlotLayout.WALL_H = 18
 PlotLayout.FLOOR_T = 1 -- 부지 바닥판 두께. 윗면이 y=0
 PlotLayout.SPAWN = Vector3.new(0, 0, 60)
 PlotLayout.CELL = 5 -- 꾸미기 격자 한 칸(§3.5 격자)
+PlotLayout.GRID = 30 -- 꾸미기 격자 한 변 칸 수. CELL × GRID = 150 = 부지 한 변
+
+-- ── 껍데기 고정물(PlotShell 이 짓고, 꾸미기 정적 마스크가 피한다) ──
+PlotLayout.GATE_W = 12 -- 교문 기둥 안쪽 면 사이. 앞마당 길 폭과 같다
+PlotLayout.GATE_PILLAR = 1.5 -- 교문 기둥 한 변
+PlotLayout.SIGNPOST = Vector3.new(-12.5, 0, 62.5) -- 「우리 학교로」 팻말
+PlotLayout.ADMISSION = Vector3.new(15, 0, 57.5) -- 접수대(몸통 4×4)
+PlotLayout.FLAGPOLE = Vector3.new(-12.5, 0, 57.5)
+PlotLayout.TREES = { Vector2.new(37.5, 50), Vector2.new(-10, 12.5) }
+-- 현관 (0,-5) 30×25(계단·착지대가 안에 있다). 남문 (0,7.5), 북문 (0,-17.5)
+PlotLayout.ENTRANCE = Vector3.new(0, 0, -5)
+PlotLayout.ENTRANCE_SIZE = Vector3.new(30, PlotLayout.WALL_H, 25)
+-- 교실1 (-60,-47.5) 30×30. 남문 (-60,-32.5)
+PlotLayout.CLASS1 = Vector3.new(-60, 0, -47.5)
+PlotLayout.CLASS1_SIZE = Vector3.new(30, PlotLayout.WALL_H, 30)
 
 -- ── 2층 계단·착지대(§3.6 수치: 바꾸지 않는다) ──────────────────
 -- 계단 11단(높이 1.5)을 x 5~14 · z 6 → -10.5 로 두고 12단째를 착지대(y18)로 삼는다
@@ -156,6 +171,63 @@ PlotLayout.HOME_SPOTS = {
 -- 방문객 별 2자리(고정, §7 질문 10). 마당 바닥이라 floorY 0
 PlotLayout.STAR_SPOTS = { Vector2.new(-10, 52.5), Vector2.new(10, 52.5) }
 PlotLayout.STAR_FLOOR_Y = 0
+
+-- ── 꾸미기 격자(§3.5 #4) ────────────────────────────────────────
+--- 칸 (cx, cz) 의 중심(부지 로컬 x, z)
+function PlotLayout.cellCenter(cx: number, cz: number): Vector2
+	local half, cell = PlotLayout.PLOT_HALF, PlotLayout.CELL
+	return Vector2.new(-half + cx * cell + cell / 2, -half + cz * cell + cell / 2)
+end
+
+--- 부지 로컬 x, z → 칸. 부지 밖이면 가장자리 칸으로 붙인다
+function PlotLayout.cellOf(localX: number, localZ: number): (number, number)
+	local half, cell, last = PlotLayout.PLOT_HALF, PlotLayout.CELL, PlotLayout.GRID - 1
+	local cx = math.clamp(math.floor((localX + half) / cell), 0, last)
+	local cz = math.clamp(math.floor((localZ + half) / cell), 0, last)
+	return cx, cz
+end
+
+export type DecorRect = { x0: number, x1: number, z0: number, z1: number }
+
+local TREE_CLEAR = 2.5 -- 나무 줄기 둘레(반폭). 잎 아래 한 칸
+local POLE_CLEAR = 0.5 -- 팻말·국기봉 기둥 둘레(반폭)
+
+-- (x, z) 를 중심으로 반폭 hx·hz 인 사각형
+local function around(x: number, z: number, hx: number, hz: number): DecorRect
+	return { x0 = x - hx, x1 = x + hx, z0 = z - hz, z1 = z + hz }
+end
+
+--[[
+	1층 꾸미기 정적 장애물(PlotShell 고정물만). 부지 로컬 사각형이고 칸과 면적이 조금이라도 겹치면 그 칸을 막는다.
+	건물 14개·패드·스폰·스티커 후보·별·문 앞은 DecorGrid 가 FacilityConfig·위 표에서 따로 계산한다.
+]]
+do
+	local frontZ = PlotLayout.ENTRANCE.Z + PlotLayout.ENTRANCE_SIZE.Z / 2 -- 7.5. 앞마당 길이 시작하는 곳
+	local half = PlotLayout.PLOT_HALF
+	local gateHalf = PlotLayout.GATE_PILLAR / 2
+	PlotLayout.DECOR_STATIC = {
+		-- 교문·현판·남쪽 생울타리 줄(교문 줄 z 67.5)과 그 바깥(담장 밖 인도). 물건이 담장을 뚫지 않게 막는다
+		{ x0 = -half, x1 = half, z0 = PlotLayout.GATE_Z - gateHalf, z1 = half },
+		-- 담장 안쪽 길(교문 → 현관 남문)
+		{ x0 = -PlotLayout.GATE_W / 2, x1 = PlotLayout.GATE_W / 2, z0 = frontZ, z1 = PlotLayout.GATE_Z },
+		-- 팻말·국기봉 기둥
+		around(PlotLayout.SIGNPOST.X, PlotLayout.SIGNPOST.Z, 1.5, POLE_CLEAR), -- 팻말 판 폭 3
+		around(PlotLayout.FLAGPOLE.X, PlotLayout.FLAGPOLE.Z, POLE_CLEAR, POLE_CLEAR),
+		-- 접수대 몸통 4×4 + 앞 배출구
+		around(PlotLayout.ADMISSION.X, PlotLayout.ADMISSION.Z, 2, 2.5),
+		-- 나무 2그루
+		around(PlotLayout.TREES[1].X, PlotLayout.TREES[1].Y, TREE_CLEAR, TREE_CLEAR),
+		around(PlotLayout.TREES[2].X, PlotLayout.TREES[2].Y, TREE_CLEAR, TREE_CLEAR),
+		-- 현관(계단·착지대 포함)·교실1
+		around(
+			PlotLayout.ENTRANCE.X,
+			PlotLayout.ENTRANCE.Z,
+			PlotLayout.ENTRANCE_SIZE.X / 2,
+			PlotLayout.ENTRANCE_SIZE.Z / 2
+		),
+		around(PlotLayout.CLASS1.X, PlotLayout.CLASS1.Z, PlotLayout.CLASS1_SIZE.X / 2, PlotLayout.CLASS1_SIZE.Z / 2),
+	} :: { DecorRect }
+end
 
 local SAME_SPOT = 0.01
 

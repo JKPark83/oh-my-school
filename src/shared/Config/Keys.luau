@@ -43,6 +43,7 @@ Keys.ATTR_GRADUATIONS = "Graduations" -- number
 Keys.ATTR_FACILITIES = "Facilities" -- CSV "desk,board"
 Keys.ATTR_STUDENTS = "Students" -- CSV "s01,s02"
 Keys.ATTR_INCOME = "Income" -- number, 초당 수입
+Keys.ATTR_DECOR = "Decor" -- DecorCodec 문자열. 빈 부지는 ""
 
 -- 파트·모델 어트리뷰트
 Keys.ATTR_BUILT = "Built" -- 시설 모델: 마지막 부품을 넣어 완공될 때 true

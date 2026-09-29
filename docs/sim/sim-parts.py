@@ -20,6 +20,21 @@
   - 졸업 = 강당 마지막 부품(50번째) 완공 즉시. 다음 회차 시작 용돈 10 × 1.35^N.
   - 원서·뽑기·선물판 없음. 선물판 보상 0, 꾸미기 지출 0(W3 게이트 가정). 「수입 20% 를 꾸미기」는 참고 행.
 
+■ 꾸미기 가격표(W5, decor_prices → DECOR_PRICES, DecorConfig.LIST 의 price)
+  1회차(졸업 0) 기준 정수. 코드가 priceOf 로 × 1.35^졸업 을 곱한다. 「초당수입」은 활동형 1회차 궤적에서
+  그 시각까지 산 부품 기준 시설 수입 + 스티커 기대 수입. 모두 nice_price 반올림.
+  - general 12 = 3단계 4개씩. 싼 것(planter·flowerbed·signpost·mailbox) = 3:00 초당수입 × 20초,
+    중간(bench·lamp·tree·bikerack) = 6:00 × 30초, 큰 것(swing·slide·fountain·pond) = 10:00 × 45초.
+  - friend 9 = unlock 0(bookcart·telescope·rocket) = 8:00 × 60초. unlock n ≥ 1 은 졸업 n 회 회차의 완공
+    시점(부품 50개) 초당수입 × 60초 ÷ 1.35^n(1회차 기준으로 되돌린 값).
+  - gift 6 = 0(상점에 없음. 선물판 순번 1·2·3·5·8·12 에서만 받는다, GIFT_ORDER).
+
+■ 참고 행 「수입 20% 를 꾸미기」(W5, simulate(decor=...))
+  수입(시설·스티커·코인 선물)의 20% 를 꾸미기 지갑에 모아 general 12 를 싼 것부터(같은 값이면 LIST 순) 한 번씩 산다.
+  12개를 다 사면 지갑에 남은 코인은 부품 지갑으로 돌리고 그 뒤로는 떼지 않는다.
+  선물판: 스티커 누적 기대 장수 40장마다 선물 1개(미션 +20칸·콤보 칸은 무시). 순번이 GIFT_ORDER 에 있으면
+  소품(코인 0), 아니면 코인 GIFT_COIN_VALUE × 1.35^N. 기본 표(17:18)는 이 경로를 쓰지 않는다.
+
 ■ 선물판 코인 선물(W4, gift_coin_basis)
   선물판 BOARD_CELLS 40칸 = 선물 1개, 미션 완료 = REWARD_CELLS 20칸. 1회차 코인 선물 GIFT_COIN_VALUE 는
   활동형 1회차 궤적에서 스티커 누적 기대 장수(초당 스폰/15 × 회수율)가 40장이 되는 시각까지 스티커로 번 코인
@@ -62,6 +77,41 @@ BOARD_CELLS = 40         # 선물판 40칸 = 선물 1개(EconomyConfig.BOARD_CEL
 REWARD_CELLS = 20        # 미션 완료 = 선물판 +20칸(MissionConfig.REWARD_CELLS)
 GIFT_COIN_VALUE = 5700   # 1회차 코인 선물(EconomyConfig.GIFT_COIN_VALUE). 근거는 gift_coin_basis()
 GOLD_EV = ((GOLD_EVERY - 1) + GOLD_MULT) / GOLD_EVERY
+DECOR_SPEND = 0.2        # 참고 행: 수입 중 꾸미기 지갑으로 떼는 비율
+
+# 꾸미기 27개(DecorConfig.LIST 순서): (id, 이름, 종류, unlock, 가격 근거)
+# 근거 = ("time", 초, 곱할 초) | ("done", 졸업 수, 곱할 초) | ("gift",)
+DECOR_ITEMS = [
+    ("planter",   "화분",       "general", 0, ("time", 180, 20)),
+    ("bench",     "벤치",       "general", 0, ("time", 360, 30)),
+    ("lamp",      "가로등",     "general", 0, ("time", 360, 30)),
+    ("mailbox",   "우체통",     "general", 0, ("time", 180, 20)),
+    ("fountain",  "분수",       "general", 0, ("time", 600, 45)),
+    ("tree",      "나무",       "general", 0, ("time", 360, 30)),
+    ("flowerbed", "꽃밭",       "general", 0, ("time", 180, 20)),
+    ("signpost",  "표지판",     "general", 0, ("time", 180, 20)),
+    ("bikerack",  "자전거대",   "general", 0, ("time", 360, 30)),
+    ("swing",     "그네",       "general", 0, ("time", 600, 45)),
+    ("slide",     "미끄럼틀",   "general", 0, ("time", 600, 45)),
+    ("pond",      "연못",       "general", 0, ("time", 600, 45)),
+    ("balloons",  "풍선",       "gift",    0, ("gift",)),
+    ("trophy",    "트로피",     "gift",    0, ("gift",)),
+    ("teddy",     "곰인형",     "gift",    0, ("gift",)),
+    ("rainbow",   "무지개깃발", "gift",    0, ("gift",)),
+    ("starlamp",  "별조명",     "gift",    0, ("gift",)),
+    ("cake",      "케이크",     "gift",    0, ("gift",)),
+    ("bookcart",  "책수레",     "friend",  0, ("time", 480, 60)),
+    ("telescope", "망원경",     "friend",  0, ("time", 480, 60)),
+    ("rocket",    "로켓모형",   "friend",  0, ("time", 480, 60)),
+    ("ballbin",   "공바구니",   "friend",  2, ("done", 2, 60)),
+    ("easel",     "이젤",       "friend",  3, ("done", 3, 60)),
+    ("globe",     "지구본",     "friend",  4, ("done", 4, 60)),
+    ("piano",     "피아노",     "friend",  6, ("done", 6, 60)),
+    ("labtable",  "실험탁자",   "friend",  7, ("done", 7, 60)),
+    ("tiger",     "호랑이석상", "friend",  8, ("done", 8, 60)),
+]
+assert len(DECOR_ITEMS) == 27
+GIFT_ORDER = {1: "balloons", 2: "trophy", 3: "teddy", 5: "rainbow", 8: "starlamp", 12: "cake"}
 
 # (id, 이름, 초당 수입, 스티커 스폰 추가, 부품 수). 수입·스폰은 FacilityConfig.luau 와 같다.
 # 책상의 spawns 3 은 Config 에서 책상에 붙어 있지만 여기서는 처음부터 있는 BASE_SPAWNS 로 본다.
@@ -149,8 +199,58 @@ TABLE = price_table()
 PRICES = [r[4] for r in TABLE]
 
 
-def simulate(grads=0, collect=COLLECT_ACTIVE, spend=0.0, tutorial=False, curve=False):
-    """한 회차를 1초 틱으로 돈다. spend = 수입 중 꾸미기로 빠지는 비율(참고 행용)."""
+def active_income(parts, grads=0):
+    """부품 parts 개를 산 뒤 활동형 초당수입(시설 × (1+졸업) + 스티커 기대값)."""
+    _, base, spawns = state_after(parts)
+    inc = base * (1 + GRAD_STEP * grads)
+    return inc + sticker_flow(inc, spawns, grads, COLLECT_ACTIVE)
+
+
+def active_buy_times():
+    """활동형 1회차(졸업 0) 부품 구매 시각. simulate 와 같은 그리디(꾸미기·선물 없음)."""
+    t, coins, bought, times = 0, float(START_COINS), 0, []
+    while True:
+        if coins >= PRICES[bought] - 1e-9:   # 1초 틱에 1개
+            coins -= PRICES[bought]
+            bought += 1
+            times.append(t)
+        if bought == len(PARTS):
+            return times
+        t += 1
+        coins += active_income(bought)
+
+
+def decor_prices():
+    """꾸미기 27개 가격(1회차 기준). {id: (가격, 반올림 전, 근거 문구)}."""
+    times = active_buy_times()
+    out = {}
+    for iid, _, kind, unlock, basis in DECOR_ITEMS:
+        if basis[0] == "gift":
+            out[iid] = (0, 0.0, "선물판 전용(상점 없음)")
+        elif basis[0] == "time":
+            sec, mult = basis[1], basis[2]
+            parts = sum(1 for x in times if x <= sec)
+            inc = active_income(parts)
+            raw = inc * mult
+            out[iid] = (nice_price(raw), raw, f"활동형 1회차 {sec // 60}:{sec % 60:02d} 초당 {inc:,.1f} × {mult}초")
+        else:
+            n, mult = basis[1], basis[2]
+            inc = active_income(len(PARTS), n)
+            raw = inc * mult / PRICE_SCALE ** n
+            out[iid] = (nice_price(raw), raw,
+                        f"{n + 1}회차(졸업 {n}) 완공 초당 {inc:,.1f} × {mult}초 ÷ 1.35^{n}")
+    return out
+
+
+DECOR_TABLE = decor_prices()
+DECOR_PRICES = {k: v[0] for k, v in DECOR_TABLE.items()}
+# 참고 행이 사는 순서: general 12 를 싼 것부터, 같은 값이면 LIST 순
+DECOR_BUY_ORDER = sorted((i[0] for i in DECOR_ITEMS if i[2] == "general"), key=lambda x: DECOR_PRICES[x])
+
+
+def simulate(grads=0, collect=COLLECT_ACTIVE, spend=0.0, tutorial=False, curve=False, decor=False):
+    """한 회차를 1초 틱으로 돈다. spend = 수입 중 꾸미기로 빠지는 비율(참고 행용).
+    decor=True 면 뗀 몫을 꾸미기 지갑에 모아 DECOR_BUY_ORDER 를 한 번씩 사고, 선물판(GIFT_ORDER)도 돈다."""
     grad_mult = 1 + GRAD_STEP * grads
     prices = [scaled(p, grads) for p in PRICES]
     coins = float(scaled(START_COINS, 0) if grads == 0 else scaled(START_COINS, grads))
@@ -162,6 +262,10 @@ def simulate(grads=0, collect=COLLECT_ACTIVE, spend=0.0, tutorial=False, curve=F
     sticker_coins = 0.0   # 스티커로 번 코인 합
     board_at = None       # 누적 장수가 BOARD_CELLS 에 닿은 시각
     board_coins = None    # 그때까지 스티커로 번 코인
+    wallet = 0.0          # 꾸미기 지갑(decor)
+    decor_times = []      # (시각, id)
+    gifts = []            # (시각, 순번, id 또는 None=코인)
+    gift_coin = scaled(GIFT_COIN_VALUE, grads)
 
     def income_now():
         _, base, spawns = state_after(bought)
@@ -196,12 +300,33 @@ def simulate(grads=0, collect=COLLECT_ACTIVE, spend=0.0, tutorial=False, curve=F
             sticker_coins += round(sticker_value(inc, grads))
         if board_at is None and stickers >= BOARD_CELLS:
             board_at, board_coins = t, sticker_coins
-        coins += gain * (1 - spend)
+        if decor:
+            while stickers >= BOARD_CELLS * (len(gifts) + 1):
+                idx = len(gifts) + 1
+                item = GIFT_ORDER.get(idx)
+                gifts.append((t, idx, item))
+                if item is None:
+                    gain += gift_coin
+            if len(decor_times) < len(DECOR_BUY_ORDER):
+                wallet += gain * spend
+                coins += gain * (1 - spend)
+                nxt = DECOR_BUY_ORDER[len(decor_times)]
+                if wallet >= scaled(DECOR_PRICES[nxt], grads) - 1e-9:
+                    wallet -= scaled(DECOR_PRICES[nxt], grads)
+                    decor_times.append((t, nxt))
+                    if len(decor_times) == len(DECOR_BUY_ORDER):
+                        coins += wallet
+                        wallet = 0.0
+            else:
+                coins += gain
+        else:
+            coins += gain * (1 - spend)
         try_buy()
         if curve and t % 60 == 0:
             snap()
     return dict(buy_times=buy_times, done=buy_times[-1] if bought == len(PARTS) else None,
-                snaps=snaps, coins=coins, bought=bought, board_at=board_at, board_coins=board_coins)
+                snaps=snaps, coins=coins, bought=bought, board_at=board_at, board_coins=board_coins,
+                decor_times=decor_times, gifts=gifts)
 
 
 def gift_coin_basis():
@@ -256,6 +381,7 @@ def main():
     at = active["buy_times"]
     it = idle["buy_times"]
 
+    assert active_buy_times() == at, "active_buy_times 가 simulate 궤적과 다르다"
     board_at, board_coins, gift = gift_coin_basis()
     assert gift == GIFT_COIN_VALUE, f"GIFT_COIN_VALUE {GIFT_COIN_VALUE} ≠ 근거 {gift}"
 
@@ -291,8 +417,8 @@ def main():
     p5i, f5i = count_at(it, 300)
     r2 = simulate(grads=1)
     r10 = simulate(grads=9)
-    da = simulate(spend=0.2)
-    di = simulate(collect=COLLECT_IDLE, tutorial=True, spend=0.2)
+    da = simulate(spend=DECOR_SPEND, decor=True)
+    di = simulate(collect=COLLECT_IDLE, tutorial=True, spend=DECOR_SPEND, decor=True)
     print("\n## 요약\n")
     print("「개선계획 목표」는 개선계획 §3.4 표의 수치다(재현 스크립트 없이 적힌 값). 다르면 규칙대로 낸 이 출력을 기준으로 문서를 고친다.\n")
     print("| 지표 | 값 | 개선계획 목표 |")
@@ -323,12 +449,46 @@ def main():
     print_curve("1회차 활동형(55%)", active)
     print_curve("1회차 방치형(0%, 튜토리얼 스티커 3장만)", idle)
 
-    print("\n## 참고: 수입 20% 를 꾸미기에 쓴다(게이트 아님)\n")
-    print(f"- 1회차 활동형: {clock(da['done'])}")
-    print(f"- 1회차 방치형: {clock(di['done'])}")
+    print_decor_ref(da, di)
+    print_decor_prices()
 
     if "--tower" in sys.argv:
         print_tower(active)
+
+
+def print_decor_ref(da, di):
+    print("\n## 참고: 수입 20% 를 꾸미기에 쓴다(게이트 아님)\n")
+    print(f"수입(시설·스티커·코인 선물)의 {DECOR_SPEND:.0%} 를 꾸미기 지갑에 모아 일반 소품 12개를 싼 것부터 한 번씩 산다"
+          f"(순서: {' → '.join(DECOR_BUY_ORDER)}, 합계 {sum(DECOR_PRICES[x] for x in DECOR_BUY_ORDER):,}). "
+          "12개를 다 사면 남은 지갑은 부품 쪽으로 돌리고 더 떼지 않는다. "
+          f"선물판은 스티커 누적 기대 {BOARD_CELLS}장마다 선물 1개(미션 +{REWARD_CELLS}칸·콤보 칸 무시), "
+          f"순번 {'·'.join(str(k) for k in sorted(GIFT_ORDER))} 은 소품, 나머지는 코인 {GIFT_COIN_VALUE:,}.\n")
+    print("| 궤적 | 강당 완공 | 일반 12개 다 산 시각 | 첫 선물 | 선물 수(완공까지) | 그중 코인 선물 |")
+    print("|---|---:|---:|---:|---:|---:|")
+    for label, r in (("1회차 활동형(55%)", da), ("1회차 방치형(0%)", di)):
+        dt = r["decor_times"]
+        d_done = clock(dt[-1][0]) if len(dt) == len(DECOR_BUY_ORDER) else f"미완료({len(dt)}/{len(DECOR_BUY_ORDER)})"
+        gs = [g for g in r["gifts"] if r["done"] is None or g[0] <= r["done"]]
+        first = clock(gs[0][0]) if gs else "없음"
+        coin_n = sum(1 for g in gs if g[2] is None)
+        print(f"| {label} | **{clock(r['done'])}** | {d_done} | {first} | {len(gs)} | {coin_n} |")
+    print("\n활동형 소품 구매 시각: " + " · ".join(f"{iid} {clock(t)}" for t, iid in da["decor_times"]))
+    print("\n활동형 선물: " + " · ".join(f"{idx}번 {clock(t)} {iid or '코인'}" for t, idx, iid in da["gifts"]
+                                   if da["done"] is None or t <= da["done"]))
+
+
+def print_decor_prices():
+    print("\n## 꾸미기 가격표(1회차 기준, DecorConfig.LIST price)\n")
+    print("N회 졸업 뒤 가격 = 표 × 1.35^N 반올림(DecorConfig.priceOf). 선물 소품은 0(상점 없음).\n")
+    print("| # | id | 이름 | 종류 | 진열(졸업) | 가격 | 반올림 전 | 근거 |")
+    print("|---:|---|---|---|---:|---:|---:|---|")
+    for i, (iid, name, kind, unlock, _) in enumerate(DECOR_ITEMS, 1):
+        price, raw, why = DECOR_TABLE[iid]
+        print(f"| {i} | {iid} | {name} | {kind} | {unlock} | {fmt(price)} | {raw:,.1f} | {why} |")
+    gen = sum(DECOR_PRICES[i[0]] for i in DECOR_ITEMS if i[2] == "general")
+    fr = sum(DECOR_PRICES[i[0]] for i in DECOR_ITEMS if i[2] == "friend")
+    print(f"\n합계: 일반 12개 {gen:,} · 친구 9개 {fr:,} · 전부 1회 구매 {gen + fr:,}(1회차 기준)")
+    print("\nConfig 옮김용: `" + ", ".join(f"{i[0]} = {DECOR_PRICES[i[0]]}" for i in DECOR_ITEMS) + "`")
 
 
 def tower_price(n, grads, completed_income, step):

@@ -916,7 +916,11 @@ function HudController.hold(on: boolean)
 end
 
 --- 서버 GiftOpened(본인에게만). 판 칩이 보일 때만 코인이 날아간다. 졸업식 중에는 HUD 가 숨어 있어 건너뛴다
-function HudController.onGift(_payload: any)
+function HudController.onGift(payload: any)
+	-- 꾸미기 아이템 선물이면 코인이 날지 않는다(아이템 연출은 W6 꾸미기 시트)
+	if typeof(payload) == "table" and typeof(payload.item) == "string" then
+		return
+	end
 	if not built or held or not boardChip.Visible then
 		return
 	end
