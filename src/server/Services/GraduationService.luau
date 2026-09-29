@@ -20,6 +20,7 @@ local LeaderboardService = require(script.Parent.LeaderboardService)
 local PlotService = require(script.Parent.PlotService)
 local StudentService = require(script.Parent.StudentService)
 local RemoteGuard = require(script.Parent.Parent.RemoteGuard)
+local Metrics = require(script.Parent.Parent.Metrics)
 
 local GraduationService = {}
 
@@ -66,6 +67,7 @@ local function graduate(player: Player)
 	if newStudent then
 		StudentService.grant(player, newStudent.id, false)
 	end
+	Metrics.graduated(player)
 
 	-- ProfileStore Save() 는 비동기라 성공 여부를 돌려주지 않는다. 요청이 거절되는 건 세션이 없을 때뿐이고,
 	-- 그러면 이 졸업은 저장되지 않으니 리더보드에도 올리지 않는다. 일시 오류는 ProfileStore 자동 저장이 다시 시도한다

@@ -10,7 +10,7 @@
 	  RemoteGuard        SetSetting 핸들러 + 위반 카운트 정리
 	  CharacterBuilder   메시 원형 내려받기(task.spawn, 부팅을 막지 않는다)
 	  PlotService        부지 12 + 광장 + PlotState. 뒤 서비스가 Workspace.Plots 를 읽는다
-	  Economy → Student → Mission → Graduation → Leaderboard → DevCheat(Studio)
+	  Economy → Student → Mission → Graduation → Leaderboard → Metrics → DevCheat(Studio)
 	  PlayerAdded        이미 들어온 플레이어도 처리
 ]]
 
@@ -28,6 +28,7 @@ local DevCheat = require(script.DevCheat)
 local EconomyService = require(script.Services.EconomyService)
 local GraduationService = require(script.Services.GraduationService)
 local LeaderboardService = require(script.Services.LeaderboardService)
+local Metrics = require(script.Metrics)
 local MissionService = require(script.Services.MissionService)
 local PlotService = require(script.Services.PlotService)
 local RemoteGuard = require(script.RemoteGuard)
@@ -43,6 +44,7 @@ StudentService.Start()
 MissionService.Start()
 GraduationService.Start()
 LeaderboardService.Start()
+Metrics.Start()
 if RunService:IsStudio() then
 	DevCheat.Start()
 end
@@ -70,11 +72,13 @@ local function onPlayerAdded(player: Player)
 		player:Kick(Keys.KICK_RELOAD)
 		return
 	end
+	Metrics.begin(player)
 	DataService.syncNow(player)
 	task.spawn(logPolicy, player)
 end
 
 local function onPlayerRemoving(player: Player)
+	Metrics.finish(player)
 	GraduationService.flush(player)
 	PlotService.release(player)
 	DataService.save(player)

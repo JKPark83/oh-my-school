@@ -18,6 +18,7 @@ local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local RemoteGuard = require(script.Parent.Parent.RemoteGuard)
+local Metrics = require(script.Parent.Parent.Metrics)
 
 local StudentService = {}
 
@@ -75,6 +76,7 @@ function StudentService.roll(player: Player): Types.GachaResult?
 		settleBoard(profile)
 	end
 	StudentService.grant(player, result.studentId, true)
+	Metrics.gachaRolled(player, isDupe)
 
 	seqs[player] = (seqs[player] or 0) + 1
 	local packet: Types.GachaResult = {

@@ -18,6 +18,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Types = require(ReplicatedStorage.Shared.Types)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
+local Metrics = require(script.Parent.Parent.Metrics)
 
 local MissionService = {}
 
@@ -62,6 +63,7 @@ local function complete(player: Player, profile: Types.Profile, index: number)
 	profile.tickets += MissionConfig.REWARD_TICKETS
 	DataService.save(player)
 	Remotes.event(player, "MissionDone", { index = index })
+	Metrics.missionDone(player)
 	DataService.markDirty(player)
 end
 

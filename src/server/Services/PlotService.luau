@@ -7,6 +7,7 @@
 	  - 패드 상태·실루엣·스티커 스폰 수는 프로필의 facilities 에서 파생해 refresh 한다.
 	  - 스티커·별 Touched 는 여기서 받아 BindableEvent 로 넘긴다(EconomyService 가 구독). 이 모듈은 Economy 를 모른다.
 	  - 패드 판정은 Touched 대신 occupants() 가 주인 캐릭터의 HRP 위치로 직접 계산한다(1Hz, 활성 패드 1개뿐).
+	    패드 Touched 는 W7 측정(Metrics 의 패드 체류)에만 쓴다. 주인이 자기 활성 패드에 닿으면 PadTouched 로 넘긴다.
 ]]
 
 local Players = game:GetService("Players")
@@ -62,8 +63,10 @@ local characterConns: { [Player]: RBXScriptConnection } = {}
 
 local stickerTouched = Instance.new("BindableEvent")
 local starTouched = Instance.new("BindableEvent")
+local padTouched = Instance.new("BindableEvent")
 PlotService.StickerTouched = stickerTouched.Event -- (player: Player, part: BasePart)
 PlotService.StarTouched = starTouched.Event -- (player: Player, plotId: number, part: BasePart)
+PlotService.PadTouched = padTouched.Event -- (player: Player, pad: BasePart). 주인·활성 패드만
 
 local function playerFromPart(part: BasePart): Player?
 	local character = part.Parent
@@ -308,12 +311,16 @@ local function onPartTouched(part: BasePart, hit: BasePart)
 		stickerTouched:Fire(player, part)
 	elseif part:HasTag(Keys.STAR_TAG) then
 		starTouched:Fire(player, plotId, part)
+	elseif part:HasTag(Keys.PAD_TAG) then
+		if owners[plotId] == player and part:GetAttribute(Keys.ATTR_PAD_STATE) == "active" then
+			padTouched:Fire(player, part)
+		end
 	end
 end
 
 local function wireTouches(plotId: number)
 	local model = plotModels[plotId]
-	for _, folderName in { Keys.STICKERS_FOLDER, Keys.STARS_FOLDER } do
+	for _, folderName in { Keys.STICKERS_FOLDER, Keys.STARS_FOLDER, Keys.PADS_FOLDER } do
 		local folder = model:FindFirstChild(folderName)
 		if folder then
 			for _, part in folder:GetChildren() do
@@ -583,6 +590,13 @@ function PlotService.isLocked(player: Player): boolean
 	return locked[player] == true
 end
 
+--- HRP 가 패드 위에 있나(수평 PAD_RADIUS, 높이 -1 ~ PAD_HEIGHT)
+local function isOver(root: BasePart, pad: BasePart): boolean
+	local offset = root.Position - pad.Position
+	local flat = Vector3.new(offset.X, 0, offset.Z).Magnitude
+	return flat <= PAD_RADIUS and offset.Y >= -1 and offset.Y <= PAD_HEIGHT
+end
+
 --- 주인 캐릭터가 지금 밟고 있는 패드. 활성 패드만 센다
 function PlotService.occupants(player: Player): { [string]: boolean }
 	local result = {}
@@ -597,15 +611,18 @@ function PlotService.occupants(player: Player): { [string]: boolean }
 		return result
 	end
 	for _, pad in pads:GetChildren() do
-		if pad:IsA("BasePart") and pad:GetAttribute(Keys.ATTR_PAD_STATE) == "active" then
-			local offset = root.Position - pad.Position
-			local flat = Vector3.new(offset.X, 0, offset.Z).Magnitude
-			if flat <= PAD_RADIUS and offset.Y >= -1 and offset.Y <= PAD_HEIGHT then
-				result[pad.Name] = true
-			end
+		if pad:IsA("BasePart") and pad:GetAttribute(Keys.ATTR_PAD_STATE) == "active" and isOver(root, pad) then
+			result[pad.Name] = true
 		end
 	end
 	return result
+end
+
+--- 이 패드가 아직 활성이고 캐릭터가 그 위에 있나. occupants 와 같은 기준으로 패드 1개만 본다(Metrics 용)
+function PlotService.standsOn(player: Player, pad: BasePart): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return root ~= nil and pad:GetAttribute(Keys.ATTR_PAD_STATE) == "active" and isOver(root, pad)
 end
 
 --- 켜져 있는 스티커 파트 목록(스폰 수만큼). EconomyService 리스폰용

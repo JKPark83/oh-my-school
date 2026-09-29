@@ -23,6 +23,7 @@ local PlotService = require(script.Parent.PlotService)
 local StudentService = require(script.Parent.StudentService)
 local MissionService = require(script.Parent.MissionService)
 local RemoteGuard = require(script.Parent.Parent.RemoteGuard)
+local Metrics = require(script.Parent.Parent.Metrics)
 
 local EconomyService = {}
 
@@ -66,6 +67,7 @@ local function buy(player: Player, profile: Types.Profile, row: FacilityConfig.F
 	profile.tickets += 1
 	local plotId = PlotService.plotOf(player)
 	PlotService.buildFacility(player, row.id)
+	Metrics.facilityBuilt(player, row.spawns)
 	Remotes.event(nil, "FacilityBuilt", { plot = plotId, facilityId = row.id })
 
 	-- 이미 데리고 있던 학생 중 이 시설에 자리가 있는 아이들이 걸어 들어온다
@@ -190,6 +192,7 @@ local function onSticker(player: Player, part: BasePart)
 
 	addCoins(profile, value)
 	profile.stats.totalStickers += 1
+	Metrics.stickerCollected(player)
 	profile.stickerBoard += 1
 	if combo.count % EconomyConfig.COMBO_BONUS_EVERY == 0 then
 		profile.stickerBoard += 1
