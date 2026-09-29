@@ -4,21 +4,22 @@
 
 	서버가 만든 부지 인스턴스(Workspace.Plots.PlotNN)를 읽고 로컬 연출만 얹는다. 상태의 출처는 언제나 어트리뷰트다.
 	- 구매 패드: PadState 로 보이기·색을 정하고, 내 부지의 활성 패드 위에 빌보드(이름·가격·진행 링)를 띄운다
-	- 칭찬스티커: Collected 로 보이기를 정하고, 금 스티커엔 빛기둥. 3 스터드 안이면 먼저 숨기는 클라 예측(0.5초 안에
-	  확정이 없으면 되돌림)
+	- 칭찬스티커: 서버 파트는 보이지 않는 히트박스(3.4×3×3.4)다. 내 부지면 그 바닥에 3×0.1×3 표시판(별·하트·꽃·스마일)과
+	  세로 빛·반짝 소리를 로컬로 붙인다(개선계획 §3.2 #2·#3·#9). 금 스티커엔 빛기둥. 수평 2.2·높이 4 안이면 먼저 숨기는
+	  클라 예측(0.5초 안에 확정이 없으면 되돌림)
 	- 칭찬스티커판: 내 부지 현관 벽 판의 SurfaceGui 에 60칸을 그리고 프로필 stickerBoard 만큼 채운다
 	- 시설 등장: Built=true 모델이 들어오면 파트를 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장)
 	- 스킨 팻말(페인트 롤러 팻말)·졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
 	- 다른 부지의 접수대 프롬프트는 로컬에서 끄고, 「우리 학교로」 팻말 프롬프트는 반대로 내 부지에서만 끈다
-	- 방문객 별(하늘색)은 내 부지 것만 로컬로 숨긴다
+	- 방문객 별(하늘색)도 히트박스 + 로컬 표시판이다. 남의 부지에서만 판을 그린다(내 별은 안 보임, §7.5)
 
-	패드·스티커 파트는 서버가 Transparency 1 로 만들어 두므로(PlotShell) 여기서는 Transparency 를 직접 쓴다.
+	패드 파트는 서버가 Transparency 1 로 만들어 두므로(PlotShell) 여기서는 Transparency 를 직접 쓴다.
+	스티커·별 히트박스는 늘 투명하고 여기서도 건드리지 않는다. 보이는 것은 fxFolder 아래 로컬 판뿐이다.
 	클라가 바꾼 속성은 복제되지 않고, 서버는 이 속성을 다시 건드리지 않는다.
 	스트리밍: 파트는 들어왔다 나가므로 ChildAdded/ChildRemoved 로만 붙잡는다. 모듈 최상위 부작용은 없다.
 	이 모듈은 FeedbackController·TutorialController 를 require 하지 않는다(순환 방지). 위치 조회 API 만 내준다.
 ]]
 
-local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -31,7 +32,9 @@ local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
+local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
+local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 -- 계획 §3.4 계약. 형제 컨트롤러는 다른 작업자가 쓰고 있어 형태만 선언하고 any 로 받는다
 type HudApi = {
@@ -44,6 +47,8 @@ type PanelApi = {
 local HudController = (require(script.Parent.HudController) :: any) :: HudApi
 local PanelController = (require(script.Parent.PanelController) :: any) :: PanelApi
 local SoundController = require(script.Parent.SoundController)
+-- isLowSpec() 만 쓴다. FeedbackController 와 같이 any 로 받는다(순환 없음: 그쪽은 SoundController 만 require)
+local StudentRenderController = require(script.Parent.StudentRenderController) :: any
 
 local PadController = {}
 
@@ -81,13 +86,33 @@ local TAP_SIZE = 56 -- px (§8.1 터치 최소)
 local NEXT_PAD_ALPHA = 0.6
 local PAD_SINK = 0.5 -- 스터드
 local PAD_SINK_SECONDS = 0.2
-local PICKUP_RADIUS = 3 -- 스터드
+local PICKUP_RADIUS = 2.2 -- 스터드, 수평(§3.2 #6)
+local PICKUP_DY = 4 -- 스터드, 히트박스 중심과 캐릭터 루트의 높이 차
 local PICKUP_REVERT = 0.5 -- 초
-local POP_SCALE = 1.4
-local POP_SECONDS = 0.12
-local GOLD_POP_SCALE = 1.8
-local GOLD_POP_SECONDS = 0.18
 local PILLAR_HEIGHT = 12
+-- 스티커·별 표시판(§3.2 #2). 판 중심 = 바닥 윗면 + 0.01 → 판 윗면 = 바닥 + 0.06
+local PLATE_SIZE = Vector3.new(3, 0.1, 3)
+local PLATE_LIFT = 0.01
+local PLATE_TOP_GAP = 0.06
+local PLATE_PIXELS = 50 -- SurfaceGui 스터드당 픽셀 → 150×150 캔버스
+local SHAPE_STAR = 1
+local SHAPE_HEART = 2
+local SHAPE_FLOWER = 3
+local SHAPE_SMILE = 4
+local SHAPE_COUNT = SHAPE_SMILE -- 모양 번호는 1..SHAPE_COUNT
+local SPIN_SECONDS = 3 -- 1바퀴(§3.2 #3)
+local GOLD_SPIN_SECONDS = 1.5
+local EMIT_INTERVAL = 2.4
+local EMIT_COUNT = 2
+local APPEAR_POP_SCALE = 1.15 -- 0 → 1.15 → 1
+local APPEAR_POP_UP = 0.15
+local APPEAR_POP_DOWN = 0.1
+local FLY_SECONDS = 0.18 -- 줍기: 캐릭터 쪽으로 날아가며 사라짐
+local BEAM_HEIGHT = 8 -- 찾기 표식(§3.2 #9)
+local CHIME_INTERVAL = 3
+local COLOR_STICKER = WorldPalette.sticker
+local COLOR_STAR = WorldPalette.star
+local COLOR_FLOWER_CORE = Color3.fromRGB(251, 146, 60)
 local APPEAR_DROP = 6 -- 스터드
 local APPEAR_SECONDS = 0.5
 local APPEAR_STAGGER = 0.05
@@ -130,11 +155,24 @@ type StickerEntry = {
 	part: BasePart,
 	plotId: number,
 	id: string,
-	baseColor: Color3,
-	baseMaterial: Enum.Material,
 	pillar: BasePart?,
+	plate: Part?, -- 로컬 표시판. 주인 화면에서 보일 때만 있다
+	plateGold: boolean, -- 판을 만들 때의 금 여부(바뀌면 다시 만든다)
+	shape: number, -- SHAPE_*. 리스폰마다 새로 뽑는다
+	spin: number, -- 라디안
+	emitClock: number,
+	chimeClock: number,
 	pendingAt: number?,
 	hold: boolean, -- confirmSticker 뒤 Collected 가 올 때까지 숨긴 채 둔다
+	conns: { RBXScriptConnection },
+}
+
+type StarEntry = {
+	part: BasePart,
+	plotId: number,
+	plate: Part?, -- 남의 부지에서만 있다
+	gui: SurfaceGui?,
+	spin: number,
 	conns: { RBXScriptConnection },
 }
 
@@ -165,6 +203,7 @@ local plotModels: { [number]: Model } = {}
 local plotConns: { [Model]: { RBXScriptConnection } } = {}
 local pads: { [BasePart]: PadEntry } = {}
 local stickers: { [BasePart]: StickerEntry } = {}
+local stars: { [BasePart]: StarEntry } = {}
 -- 스티커 콤보 5음계(예측 단계 = 마지막 서버 combo + 1)
 local STICKER_PITCH = { 1.0, 1.122, 1.26, 1.498, 1.682, 2.0 }
 local lastStickerCombo = 0
@@ -498,22 +537,192 @@ local function destroyPillar(entry: StickerEntry)
 	end
 end
 
+--- 히트박스 아랫면(= 구역 바닥 윗면) 위 판 중심. 서버 계약: 히트박스 Position.Y = 바닥 + Size.Y/2
+local function platePosition(hitbox: BasePart): Vector3
+	local position = hitbox.Position
+	return Vector3.new(position.X, position.Y - hitbox.Size.Y / 2 + PLATE_LIFT, position.Z)
+end
+
+local function shapeFrame(
+	parent: Instance,
+	width: number,
+	height: number,
+	x: number,
+	y: number,
+	color: Color3,
+	round: boolean,
+	rotation: number,
+	z: number
+): Frame
+	local frame = Instance.new("Frame")
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.new(0.5, x, 0.5, y)
+	frame.Size = UDim2.fromOffset(width, height)
+	frame.BackgroundColor3 = color
+	frame.BorderSizePixel = 0
+	frame.Rotation = rotation
+	frame.ZIndex = z
+	if round then
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0.5, 0)
+		corner.Parent = frame
+	end
+	frame.Parent = parent
+	return frame
+end
+
+--- 판 윗면에 동그란 바탕 + 흰 모양. 이미지 에셋 없이 Frame 으로 그린다(권리·검열 걱정 없음)
+local function drawShape(root: Frame, shape: number, back: Color3)
+	shapeFrame(root, 140, 140, 0, 0, back, true, 0, 1)
+	if shape == SHAPE_STAR then
+		-- 정사각형 두 장을 45° 엇갈려 8각 별
+		shapeFrame(root, 72, 72, 0, 0, COLOR_WHITE, false, 0, 2)
+		shapeFrame(root, 72, 72, 0, 0, COLOR_WHITE, false, 45, 2)
+	elseif shape == SHAPE_HEART then
+		-- 45° 돌린 정사각형 + 위쪽 두 변 가운데에 지름 = 변 길이인 원 두 개
+		shapeFrame(root, 46, 46, 0, 6, COLOR_WHITE, false, 45, 2)
+		shapeFrame(root, 46, 46, -16, -10, COLOR_WHITE, true, 0, 2)
+		shapeFrame(root, 46, 46, 16, -10, COLOR_WHITE, true, 0, 2)
+	elseif shape == SHAPE_FLOWER then
+		shapeFrame(root, 40, 40, 0, -24, COLOR_WHITE, true, 0, 2)
+		shapeFrame(root, 40, 40, 0, 24, COLOR_WHITE, true, 0, 2)
+		shapeFrame(root, 40, 40, -24, 0, COLOR_WHITE, true, 0, 2)
+		shapeFrame(root, 40, 40, 24, 0, COLOR_WHITE, true, 0, 2)
+		shapeFrame(root, 30, 30, 0, 0, COLOR_FLOWER_CORE, true, 0, 3)
+	else
+		-- 얼굴 + 눈 두 개 + 반원 입(원 위쪽 절반을 얼굴색으로 덮는다)
+		shapeFrame(root, 96, 96, 0, 0, COLOR_WHITE, true, 0, 2)
+		shapeFrame(root, 14, 14, -17, -14, COLOR_BOARD_TEXT, true, 0, 3)
+		shapeFrame(root, 14, 14, 17, -14, COLOR_BOARD_TEXT, true, 0, 3)
+		shapeFrame(root, 44, 44, 0, 10, COLOR_BOARD_TEXT, true, 0, 3)
+		shapeFrame(root, 50, 23, 0, -1, COLOR_WHITE, false, 0, 4)
+	end
+end
+
+--- 로컬 표시판. 판 자체는 투명하고 윗면 SurfaceGui 가 모양을 그린다. 충돌·터치·조회·그림자 없음, FADE 태그 없음
+local function newPlate(name: string, hitbox: BasePart, shape: number, back: Color3): (Part, SurfaceGui, UIScale)
+	local plate = newLocalPart(name, PLATE_SIZE, CFrame.new(platePosition(hitbox)), back)
+	plate.Transparency = 1
+	plate.Material = Enum.Material.SmoothPlastic
+	-- 개발용 확인(한 곳): 판 윗면 − 바닥 윗면 = 0.06(§3.2 #2)
+	local floorY = hitbox.Position.Y - hitbox.Size.Y / 2
+	assert(
+		math.abs(plate.Position.Y + plate.Size.Y / 2 - floorY - PLATE_TOP_GAP) < 1e-3,
+		"스티커 판 높이가 바닥 +0.06 이 아니다"
+	)
+
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Shape"
+	gui.Face = Enum.NormalId.Top
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = PLATE_PIXELS
+	gui.LightInfluence = 0
+	gui.ClipsDescendants = false
+	gui.Parent = plate
+	local root = Instance.new("Frame")
+	root.Name = "Root"
+	root.Size = UDim2.fromScale(1, 1)
+	root.BackgroundTransparency = 1
+	root.Parent = gui
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0
+	scale.Parent = root
+	drawShape(root, shape, back)
+	return plate, gui, scale
+end
+
+--- 등장 팝 0 → 1.15 → 1
+local function popIn(scale: UIScale)
+	local up = TweenService:Create(
+		scale,
+		TweenInfo.new(APPEAR_POP_UP, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Scale = APPEAR_POP_SCALE }
+	)
+	up.Completed:Once(function()
+		TweenService
+			:Create(
+				scale,
+				TweenInfo.new(APPEAR_POP_DOWN, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ Scale = 1 }
+			)
+			:Play()
+	end)
+	up:Play()
+end
+
+local function destroyPlate(entry: StickerEntry)
+	if entry.plate then
+		entry.plate:Destroy() -- 파티클·Beam·반짝 소리는 판의 자식이라 같이 지워진다
+		entry.plate = nil
+	end
+end
+
+--- 주인 화면 전용 판 + 파티클 + 세로 빛 + 반짝 소리
+local function buildPlate(entry: StickerEntry, gold: boolean)
+	local back = if gold then COLOR_GOLD else COLOR_STICKER
+	local plate, _, scale = newPlate("StickerPlate", entry.part, entry.shape, back)
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Rate = 0
+	emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Lifetime = NumberRange.new(0.6, 1)
+	emitter.Speed = NumberRange.new(2, 4)
+	emitter.SpreadAngle = Vector2.new(30, 30)
+	emitter.Size = NumberSequence.new(0.5, 0)
+	emitter.Color = ColorSequence.new(back)
+	emitter.LightEmission = 1
+	emitter.Parent = plate
+
+	-- 멀리서 찾는 가는 세로 빛(저사양에서도 켠다). 회전축 위에 있어 판이 돌아도 그대로 서 있다
+	local bottom = Instance.new("Attachment")
+	bottom.Position = Vector3.new(0, PLATE_SIZE.Y / 2, 0)
+	bottom.Parent = plate
+	local top = Instance.new("Attachment")
+	top.Position = Vector3.new(0, BEAM_HEIGHT, 0)
+	top.Parent = plate
+	local beam = Instance.new("Beam")
+	beam.Attachment0 = bottom
+	beam.Attachment1 = top
+	beam.FaceCamera = true
+	beam.Segments = 1
+	beam.Width0 = 0.35
+	beam.Width1 = 0.1
+	beam.LightEmission = 1
+	beam.Color = ColorSequence.new(back)
+	beam.Transparency = NumberSequence.new(0.35, 1)
+	beam.Parent = plate
+
+	-- 3D 소리. 판에 붙어 거리로 줄어든다(SoundConfig sparkle 의 rollOff)
+	SoundConfig.create("sparkle").Parent = plate
+
+	entry.plate = plate
+	entry.plateGold = gold
+	entry.emitClock = 0
+	entry.chimeClock = math.random() * CHIME_INTERVAL -- 여러 개가 한꺼번에 울리지 않게
+	popIn(scale)
+end
+
 local function applySticker(entry: StickerEntry)
 	local part = entry.part
 	local collected = part:GetAttribute(Keys.ATTR_COLLECTED) == true
 	local gold = part:GetAttribute(Keys.ATTR_GOLD) == true
-	local hidden = collected or entry.pendingAt ~= nil or entry.hold
+	-- 주인 화면에서만 그린다. myPlotId 는 서버가 정한 player.Plot(= 그 부지 OwnerId 가 나)
+	local hidden = entry.plotId ~= myPlotId or collected or entry.pendingAt ~= nil or entry.hold
 	if hidden then
-		part.Transparency = 1
+		destroyPlate(entry)
 		destroyPillar(entry)
 		return
 	end
-	part.Transparency = 0
-	part.Color = if gold then COLOR_GOLD else entry.baseColor
-	part.Material = if gold then Enum.Material.Neon else entry.baseMaterial
+	if entry.plate and entry.plateGold ~= gold then
+		destroyPlate(entry)
+	end
+	if not entry.plate then
+		buildPlate(entry, gold)
+	end
 	if gold then
 		if not entry.pillar then
-			local cframe = CFrame.new(part.Position + Vector3.new(0, PILLAR_HEIGHT / 2, 0))
+			local cframe = CFrame.new(platePosition(part) + Vector3.new(0, PILLAR_HEIGHT / 2, 0))
 			local pillar = newLocalPart("GoldPillar", Vector3.new(0.6, PILLAR_HEIGHT, 0.6), cframe, COLOR_GOLD)
 			pillar.Transparency = 0.6
 			entry.pillar = pillar
@@ -523,48 +732,37 @@ local function applySticker(entry: StickerEntry)
 	end
 end
 
---- 줍는 순간의 스케일 팝. 원본은 손대지 않고 로컬 복제본을 키웠다 지운다
-local function popGhost(part: BasePart, gold: boolean)
-	local ghost = part:Clone()
-	for _, tag in CollectionService:GetTags(ghost) do
-		CollectionService:RemoveTag(ghost, tag)
+--- 줍기 0.18초: 판을 떼어 캐릭터 쪽으로 날리며 줄여 지운다
+local function flyAway(entry: StickerEntry, target: Vector3)
+	local plate = entry.plate
+	if not plate then
+		return
 	end
-	for name in ghost:GetAttributes() do
-		ghost:SetAttribute(name, nil)
+	entry.plate = nil
+	for _, child in plate:GetChildren() do
+		if not child:IsA("SurfaceGui") then
+			child:Destroy() -- 빛·파티클·소리는 바로 끈다
+		end
 	end
-	ghost.Name = "StickerGhost"
-	ghost.Anchored = true
-	ghost.CanCollide = false
-	ghost.CanQuery = false
-	ghost.CanTouch = false
-	ghost.Transparency = 0
-	ghost.Parent = fxFolder
-	local scale = if gold then GOLD_POP_SCALE else POP_SCALE
-	local seconds = if gold then GOLD_POP_SECONDS else POP_SECONDS
-	local grow = TweenService:Create(
-		ghost,
-		TweenInfo.new(seconds * 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Size = part.Size * scale }
-	)
-	grow.Completed:Once(function()
-		local shrink = TweenService:Create(
-			ghost,
-			TweenInfo.new(seconds * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{ Size = Vector3.new(0.05, 0.05, 0.05), Transparency = 1 }
-		)
-		shrink.Completed:Once(function()
-			ghost:Destroy()
-		end)
-		shrink:Play()
+	local gui = plate:FindFirstChildOfClass("SurfaceGui")
+	local root = if gui then gui:FindFirstChild("Root") else nil
+	local scale = if root then root:FindFirstChildOfClass("UIScale") else nil
+	local info = TweenInfo.new(FLY_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local fly = TweenService:Create(plate, info, { CFrame = plate.CFrame.Rotation + target })
+	if scale then
+		TweenService:Create(scale, info, { Scale = 0 }):Play()
+	end
+	fly.Completed:Once(function()
+		plate:Destroy()
 	end)
-	grow:Play()
+	fly:Play()
 end
 
 -- 예측 시점에 소리(개선계획 §3.2 #6·#7). 서버 왕복을 기다리지 않는다.
--- 예측은 내 부지에서만 돌아서 주인 화면에서만 들린다
-local function predictPickup(entry: StickerEntry)
+-- onHeartbeat 가 내 부지(myPlotId = player.Plot, 서버가 정한 주인)일 때만 부른다
+local function predictPickup(entry: StickerEntry, rootPos: Vector3)
 	entry.pendingAt = os.clock()
-	popGhost(entry.part, entry.part:GetAttribute(Keys.ATTR_GOLD) == true)
+	flyAway(entry, rootPos)
 	applySticker(entry)
 	SoundController.play("sticker", STICKER_PITCH[math.clamp(lastStickerCombo + 1, 1, #STICKER_PITCH)])
 end
@@ -574,7 +772,8 @@ local function unwatchSticker(part: Instance)
 	if not entry then
 		return
 	end
-	disconnectAll(entry.conns)
+	disconnectAll(entry.conns) -- Collected·Gold·Position 구독을 모두 끊는다
+	destroyPlate(entry)
 	destroyPillar(entry)
 	stickers[part :: any] = nil
 end
@@ -587,9 +786,13 @@ local function watchSticker(part: Instance, plotId: number)
 		part = part,
 		plotId = plotId,
 		id = tostring(part:GetAttribute(Keys.ATTR_STICKER_ID)),
-		baseColor = part.Color,
-		baseMaterial = part.Material,
 		pillar = nil,
+		plate = nil,
+		plateGold = false,
+		shape = math.random(1, SHAPE_COUNT),
+		spin = 0,
+		emitClock = 0,
+		chimeClock = 0,
 		pendingAt = nil,
 		hold = false,
 		conns = {},
@@ -601,6 +804,9 @@ local function watchSticker(part: Instance, plotId: number)
 			-- 서버 확정이 왔으니 예측·보류는 끝
 			entry.pendingAt = nil
 			entry.hold = false
+			if part:GetAttribute(Keys.ATTR_COLLECTED) ~= true then
+				entry.shape = math.random(1, SHAPE_COUNT) -- 리스폰마다 모양을 새로
+			end
 			applySticker(entry)
 		end)
 	)
@@ -610,7 +816,72 @@ local function watchSticker(part: Instance, plotId: number)
 			applySticker(entry)
 		end)
 	)
+	-- 서버 moveSticker 는 히트박스 Position 만 바꾼다. 판·빛기둥을 새 자리로 옮긴다
+	table.insert(
+		entry.conns,
+		part:GetPropertyChangedSignal("Position"):Connect(function()
+			local plate = entry.plate
+			if plate then
+				plate.CFrame = CFrame.new(platePosition(part)) * CFrame.Angles(0, entry.spin, 0)
+			end
+			destroyPillar(entry)
+			applySticker(entry)
+		end)
+	)
 	applySticker(entry)
+end
+
+-- ── 방문객 별 ────────────────────────────────────────────────────
+
+local function destroyStarPlate(entry: StarEntry)
+	if entry.plate then
+		entry.plate:Destroy()
+		entry.plate = nil
+		entry.gui = nil
+	end
+end
+
+--- 방문객 별은 주인 화면에서 안 보인다(§7.5). 남의 부지에서만 판을 그린다.
+--- 밟은 방문객에게 60초 숨기기는 FeedbackController 가 히트박스 LocalTransparencyModifier 로 하고, onHeartbeat 가 판에 옮긴다
+local function applyStar(entry: StarEntry)
+	if entry.plotId == myPlotId then
+		destroyStarPlate(entry)
+		return
+	end
+	if not entry.plate then
+		local plate, gui, scale = newPlate("StarPlate", entry.part, SHAPE_STAR, COLOR_STAR)
+		entry.plate = plate
+		entry.gui = gui
+		scale.Scale = 1
+	end
+end
+
+local function unwatchStar(part: Instance)
+	local entry = stars[part :: any]
+	if not entry then
+		return
+	end
+	disconnectAll(entry.conns)
+	destroyStarPlate(entry)
+	stars[part :: any] = nil
+end
+
+local function watchStar(part: Instance, plotId: number)
+	if not part:IsA("BasePart") or stars[part] then
+		return
+	end
+	local entry: StarEntry = { part = part, plotId = plotId, plate = nil, gui = nil, spin = 0, conns = {} }
+	stars[part] = entry
+	table.insert(
+		entry.conns,
+		part:GetPropertyChangedSignal("Position"):Connect(function()
+			local plate = entry.plate
+			if plate then
+				plate.CFrame = CFrame.new(platePosition(part)) * CFrame.Angles(0, entry.spin, 0)
+			end
+		end)
+	)
+	applyStar(entry)
 end
 
 -- ── 칭찬스티커판 ─────────────────────────────────────────────────
@@ -889,13 +1160,6 @@ local function applyPrompt(prompt: ProximityPrompt, plotId: number)
 	end
 end
 
---- 방문객 별은 주인 화면에서 안 보인다(§7.5). 남의 부지 별은 FeedbackController 가 밟은 사람에게만 숨긴다
-local function applyStar(star: BasePart, plotId: number)
-	if plotId == myPlotId then
-		star.LocalTransparencyModifier = 1
-	end
-end
-
 local function onPromptTriggered(prompt: ProximityPrompt)
 	if prompt.Name ~= Keys.ADMISSION_PROMPT then
 		return
@@ -911,10 +1175,6 @@ end
 local function onPlotDescendantAdded(inst: Instance, plotId: number)
 	if inst:IsA("ProximityPrompt") then
 		applyPrompt(inst, plotId)
-		return
-	end
-	if inst:IsA("BasePart") and inst:HasTag(Keys.STAR_TAG) then
-		applyStar(inst, plotId)
 		return
 	end
 	-- 판 파트와 함께 SurfaceGui 도 온다. 판이 스트리밍으로 다시 들어오면 새 인스턴스라 다시 그린다
@@ -962,6 +1222,8 @@ local function onPlotChildAdded(child: Instance, plotId: number, animate: boolea
 		watchFolder(child, plotId, watchPad, unwatchPad)
 	elseif child.Name == Keys.STICKERS_FOLDER then
 		watchFolder(child, plotId, watchSticker, unwatchSticker)
+	elseif child.Name == Keys.STARS_FOLDER then
+		watchFolder(child, plotId, watchStar, unwatchStar)
 	elseif child:IsA("Model") then
 		watchFacility(child, plotId, animate)
 	end
@@ -981,6 +1243,11 @@ local function unwatchPlot(model: Instance)
 	for part, entry in stickers do
 		if entry.part:IsDescendantOf(model) then
 			unwatchSticker(part)
+		end
+	end
+	for part, entry in stars do
+		if entry.part:IsDescendantOf(model) then
+			unwatchStar(part)
 		end
 	end
 	for facility in facilities do
@@ -1032,8 +1299,6 @@ local function watchPlot(model: Instance, animate: boolean)
 	for _, inst in model:GetDescendants() do
 		if inst:IsA("ProximityPrompt") then
 			applyPrompt(inst, plotId)
-		elseif inst:IsA("BasePart") and inst:HasTag(Keys.STAR_TAG) then
-			applyStar(inst, plotId)
 		end
 	end
 	if plotId == myPlotId then
@@ -1048,6 +1313,9 @@ local function refreshAll()
 	for _, entry in stickers do
 		applySticker(entry)
 	end
+	for _, entry in stars do
+		applyStar(entry)
+	end
 	for _, entry in facilities do
 		refreshFacility(entry)
 	end
@@ -1055,8 +1323,6 @@ local function refreshAll()
 		for _, inst in model:GetDescendants() do
 			if inst:IsA("ProximityPrompt") then
 				applyPrompt(inst, plotId)
-			elseif inst:IsA("BasePart") and inst:HasTag(Keys.STAR_TAG) then
-				applyStar(inst, plotId)
 			end
 		end
 	end
@@ -1073,9 +1339,37 @@ local function onHeartbeat(dt: number)
 		rootPos = root.Position
 	end
 	local now = os.clock()
+	-- 저사양이면 회전·파티클만 뺀다. 등장 팝·줍기 날아가기·세로 빛·반짝 소리는 그대로(§3.2 #3·#9)
+	local lowSpec = StudentRenderController.isLowSpec() == true
 	for _, entry in stickers do
 		if entry.plotId ~= myPlotId then
 			continue
+		end
+		local plate = entry.plate
+		if plate then
+			if not lowSpec then
+				local period = if entry.plateGold then GOLD_SPIN_SECONDS else SPIN_SECONDS
+				entry.spin = (entry.spin + dt * 2 * math.pi / period) % (2 * math.pi)
+				entry.emitClock += dt
+				if entry.emitClock >= EMIT_INTERVAL then
+					entry.emitClock = 0
+					local emitter = plate:FindFirstChildOfClass("ParticleEmitter")
+					if emitter then
+						emitter:Emit(EMIT_COUNT)
+					end
+				end
+				-- 저사양이면 회전이 멈추므로 매 프레임 CFrame 을 다시 쓸 이유가 없다. 자리 이동은 Position 신호가 맞춘다
+				plate.CFrame = CFrame.new(platePosition(entry.part)) * CFrame.Angles(0, entry.spin, 0)
+			end
+			entry.chimeClock += dt
+			if entry.chimeClock >= CHIME_INTERVAL then
+				entry.chimeClock = 0
+				local chime = plate:FindFirstChildOfClass("Sound")
+				if chime then
+					chime.TimePosition = 0
+					chime:Play()
+				end
+			end
 		end
 		if entry.pendingAt then
 			-- 0.5초 안에 Collected 도 확정도 없으면 예측을 되돌린다
@@ -1084,10 +1378,25 @@ local function onHeartbeat(dt: number)
 				applySticker(entry)
 			end
 		elseif rootPos and not entry.hold and entry.part:GetAttribute(Keys.ATTR_COLLECTED) ~= true then
-			if (entry.part.Position - rootPos).Magnitude <= PICKUP_RADIUS then
-				predictPickup(entry)
+			-- 수평 2.2·높이 4 안(§3.2 #6). 히트박스 중심 기준
+			local offset = entry.part.Position - rootPos
+			if Vector2.new(offset.X, offset.Z).Magnitude <= PICKUP_RADIUS and math.abs(offset.Y) <= PICKUP_DY then
+				predictPickup(entry, rootPos)
 			end
 		end
+	end
+	for _, entry in stars do
+		local plate = entry.plate
+		local gui = entry.gui
+		if not plate or not gui then
+			continue
+		end
+		if not lowSpec then
+			entry.spin = (entry.spin + dt * 2 * math.pi / SPIN_SECONDS) % (2 * math.pi)
+			plate.CFrame = CFrame.new(platePosition(entry.part)) * CFrame.Angles(0, entry.spin, 0)
+		end
+		-- FeedbackController 가 밟은 방문객에게 히트박스 LTM 1 로 60초 숨긴다
+		gui.Enabled = entry.part.LocalTransparencyModifier < 1
 	end
 
 	ringClock += dt

@@ -133,6 +133,9 @@ local function respawnSticker(player: Player, plotId: number, part: BasePart)
 			return -- 주인이 바뀌었으면 PlotService.release 가 이미 다시 켰다
 		end
 		local profile: Types.Profile? = DataService.get(player)
+		-- 튜토리얼 중(총 스티커 < STICKER_HOME_UNTIL)은 홈 자리, 그 뒤는 무작위(§3.2 #4·#5). 자리를 먼저 옮기고 Collected 를 푼다
+		local home = profile == nil or profile.stats.totalStickers < EconomyConfig.STICKER_HOME_UNTIL
+		PlotService.moveSticker(plotId, part, home)
 		local gold = profile ~= nil and EconomyConfig.isGoldNext(profile.stats.totalStickers) and not goldOut(plotId)
 		part:SetAttribute(Keys.ATTR_GOLD, gold)
 		part:SetAttribute(Keys.ATTR_COLLECTED, false)

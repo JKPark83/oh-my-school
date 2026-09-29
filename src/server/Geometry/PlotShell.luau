@@ -24,6 +24,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
+local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
+local Tree = require(script.Parent.Tree)
 
 local PlotShell = {}
 
@@ -35,25 +38,25 @@ local PAD_STATE_HIDDEN = "hidden"
 local PROMPT_DISTANCE = 8
 
 -- ── 치수 (기획서 §7.2) ────────────────────────────────────────────
-local PLOT_HALF = 75
-local FLOOR_T = 1
+local PLOT_HALF = PlotLayout.PLOT_HALF
+local FLOOR_T = PlotLayout.FLOOR_T
 local FENCE_H = 3
 local FENCE_T = 0.6
 local FENCE_X = PLOT_HALF - 0.1 -- 담장 중심. 바깥으로 0.2 내민다
 
-local GATE_Z = 67.5
+local GATE_Z = PlotLayout.GATE_Z
 local GATE_W = 12 -- 기둥 안쪽 면 사이
 local GATE_H = 8
 local PILLAR = 1.5
 local LEAF_W = 5.8
 local LEAF_OPEN = math.rad(75) -- 문짝이 바깥(+Z)으로 열린 각도
 
-local SPAWN = Vector3.new(0, 0, 60)
+local SPAWN = PlotLayout.SPAWN
 local SIGNPOST = Vector3.new(-12.5, 0, 62.5)
 local ADMISSION = Vector3.new(15, 0, 57.5)
 
 local WALL_T = 1
-local WALL_H = 18
+local WALL_H = PlotLayout.WALL_H
 local ROOF_T = 1
 local DOOR_W = 8
 local DOOR_H = 8
@@ -65,16 +68,15 @@ local ENTRANCE_SIZE = Vector3.new(30, WALL_H, 25)
 local CLASS1 = Vector3.new(-60, 0, -47.5)
 local CLASS1_SIZE = Vector3.new(30, WALL_H, 30)
 
--- 2층 계단·착지대
-local STAIR_X0, STAIR_X1 = 5, 14 -- 현관 동쪽 벽 안쪽 면(x=14)까지
-local STAIR_Z_BOTTOM = 6
-local STAIR_STEPS = 11 -- 1.5 × 12 = 18. 12단째가 착지대
-local STAIR_RISE = 1.5
-local STAIR_RUN = 1.5
--- 착지대 x -5~14 · z -16.5~-10.5. 동·북 벽 윗면(y=18)과 겹치지 않게 벽 안쪽 면(x=14, z=-16.5)까지만
-local LANDING = Vector3.new(4.5, WALL_H, -13.5)
-local LANDING_SIZE = Vector3.new(19, 1, 6)
-local STAIRWELL_Z0 = -10.5 -- 현관 지붕에 뚫는 구멍의 북쪽 끝(x 5~14, 남쪽 끝은 현관 남벽)
+-- 2층 계단·착지대(값은 PlotLayout). 착지대는 동·북 벽 윗면(y=18)과 겹치지 않게 벽 안쪽 면(x=14, z=-16.5)까지만
+local STAIR_X0, STAIR_X1 = PlotLayout.STAIR_X0, PlotLayout.STAIR_X1
+local STAIR_Z_BOTTOM = PlotLayout.STAIR_Z_BOTTOM
+local STAIR_STEPS = PlotLayout.STAIR_STEPS
+local STAIR_RISE = PlotLayout.STAIR_RISE
+local STAIR_RUN = PlotLayout.STAIR_RUN
+local LANDING = PlotLayout.LANDING
+local LANDING_SIZE = PlotLayout.LANDING_SIZE
+local STAIRWELL_Z0 = PlotLayout.STAIRWELL_Z0 -- 현관 지붕 구멍의 북쪽 끝(남쪽 끝은 현관 남벽)
 
 -- 강당 실루엣(2층). FacilityConfig.auditorium 의 center/size 를 쓴다
 local CONSTRUCTION_T = 0.5
@@ -83,20 +85,11 @@ local CONSTRUCTION_ALPHA = 0.7
 local STICKER_BOARD = Vector3.new(-13.85, 5, -5) -- 현관 서쪽 벽 안쪽 면(x=-14)에 붙인다
 local STICKER_BOARD_SIZE = Vector3.new(0.3, 5, 8)
 
--- 스티커 스폰 8 (앞마당 3 · 복도 2 · 운동장 3) · 별 2
-local STICKER_Y = 1
-local STICKER_SPOTS = {
-	Vector2.new(-7.5, 32.5),
-	Vector2.new(0, 45),
-	Vector2.new(25, 37.5),
-	Vector2.new(-55, -25),
-	Vector2.new(55, -25),
-	Vector2.new(-60, 25),
-	Vector2.new(-45, 37.5),
-	Vector2.new(-30, 50),
-}
-local STAR_Y = 1.5
-local STAR_SPOTS = { Vector2.new(-10, 52.5), Vector2.new(10, 52.5) }
+-- 스티커 스폰 8(홈 자리: 앞마당 3 · 복도 2 · 운동장 3) · 별 2. 자리는 PlotLayout
+-- 서버 파트는 보이지 않는 판정 상자다. 아랫면 = 바닥 윗면(중심 y = floorY + 높이/2). 표시 판은 클라가 그린다(개선계획 §3.2 #1)
+local HITBOX_SIZE = Vector3.new(3.4, 3, 3.4)
+local STICKER_SPOTS = PlotLayout.HOME_SPOTS
+local STAR_SPOTS = PlotLayout.STAR_SPOTS
 
 local PAD_SIZE = Vector3.new(4, 0.4, 4)
 local PAD_LIFT = 0.2
@@ -104,37 +97,37 @@ local PAD_LIFT = 0.2
 local TREES = { Vector2.new(37.5, 50), Vector2.new(-10, 12.5) }
 local FLAGPOLE = Vector3.new(-12.5, 0, 57.5)
 
--- ── 색 (사실적 톤) ────────────────────────────────────────────────
+-- ── 색 (WorldPalette 역할 색) ─────────────────────────────────────
+local P = WorldPalette
 local C = {
-	floor = Color3.fromRGB(150, 150, 148),
-	fence = Color3.fromRGB(152, 150, 146),
-	pillar = Color3.fromRGB(122, 120, 116),
-	gateBeam = Color3.fromRGB(88, 90, 96),
-	gateSign = Color3.fromRGB(28, 58, 48),
-	gateText = Color3.fromRGB(245, 245, 240),
-	leaf = Color3.fromRGB(62, 72, 92),
-	wall = Color3.fromRGB(228, 222, 208),
-	roof = Color3.fromRGB(70, 72, 76),
-	stair = Color3.fromRGB(160, 158, 152),
-	landing = Color3.fromRGB(150, 150, 148),
-	post = Color3.fromRGB(96, 70, 44),
-	signBoard = Color3.fromRGB(236, 230, 214),
-	signText = Color3.fromRGB(40, 40, 44),
-	desk = Color3.fromRGB(58, 110, 190),
-	deskDome = Color3.fromRGB(200, 230, 250),
-	deskSlot = Color3.fromRGB(40, 40, 44),
-	deskText = Color3.fromRGB(250, 250, 250),
-	cork = Color3.fromRGB(198, 154, 104),
-	ghost = Color3.fromRGB(190, 192, 196),
-	ghostText = Color3.fromRGB(60, 60, 64),
-	spawn = Color3.fromRGB(176, 176, 174),
-	pad = Color3.fromRGB(52, 211, 153),
-	sticker = Color3.fromRGB(250, 204, 21),
-	star = Color3.fromRGB(135, 206, 250),
-	trunk = Color3.fromRGB(110, 80, 50),
-	leaves = Color3.fromRGB(70, 120, 55),
-	pole = Color3.fromRGB(200, 200, 204),
-	flag = Color3.fromRGB(70, 110, 180),
+	lawn = P.lawn,
+	path = P.path,
+	hedge = P.hedge,
+	pillar = P.stone,
+	gateBeam = P.gateBeam,
+	gateSign = P.gateSign,
+	gateText = P.lightText,
+	leaf = P.gateLeaf,
+	wall = P.wall,
+	roof = P.roof.classroom,
+	stair = P.stone,
+	landing = P.stone,
+	post = P.wood,
+	signBoard = P.signBoard,
+	signText = P.darkText,
+	desk = P.desk,
+	deskDome = P.deskDome,
+	deskSlot = P.darkText,
+	deskText = P.lightText,
+	cork = P.cork,
+	ghost = P.ghost,
+	ghostText = P.ghostText,
+	spawn = P.spawn,
+	pad = P.pad,
+	sticker = P.sticker,
+	star = P.star,
+	pole = P.pole,
+	flag = P.flag,
 }
 
 -- ── 헬퍼 ─────────────────────────────────────────────────────────
@@ -219,41 +212,49 @@ local function roof(parent: Instance, name: string, plotCFrame: CFrame, x0: numb
 end
 
 -- ── Shell 조각들 ──────────────────────────────────────────────────
+-- 바닥 4타일. 건물 줄 뒤(z < 현관 남벽)는 흙마당(path), 앞마당은 잔디 둘 사이로 교문 폭 길(path)이 현관까지 간다.
+-- 타일끼리 옆면만 맞닿고 윗면(y=0)은 겹치지 않는다
 local function buildGround(shell: Model, plotCFrame: CFrame)
-	put(
-		shell,
-		"Floor",
-		Vector3.new(PLOT_HALF * 2, FLOOR_T, PLOT_HALF * 2),
-		plotCFrame * CFrame.new(0, -FLOOR_T / 2, 0),
-		{
-			color = C.floor,
-			material = Enum.Material.Concrete,
-		}
-	)
+	local frontZ = ENTRANCE.Z + ENTRANCE_SIZE.Z / 2 -- 7.5. 현관·교실 줄의 남쪽 끝
+	local pathHalf = GATE_W / 2
+	local function tile(name: string, x0: number, x1: number, z0: number, z1: number, color: Color3, mat: Enum.Material)
+		put(
+			shell,
+			name,
+			Vector3.new(x1 - x0, FLOOR_T, z1 - z0),
+			plotCFrame * CFrame.new((x0 + x1) / 2, -FLOOR_T / 2, (z0 + z1) / 2),
+			{ color = color, material = mat }
+		)
+	end
+	tile("FloorBack", -PLOT_HALF, PLOT_HALF, -PLOT_HALF, frontZ, C.path, Enum.Material.Concrete)
+	tile("FloorYardW", -PLOT_HALF, -pathHalf, frontZ, PLOT_HALF, C.lawn, Enum.Material.Grass)
+	tile("FloorPath", -pathHalf, pathHalf, frontZ, PLOT_HALF, C.path, Enum.Material.Concrete)
+	tile("FloorYardE", pathHalf, PLOT_HALF, frontZ, PLOT_HALF, C.lawn, Enum.Material.Grass)
 
-	local fenceOpts = { color = C.fence, material = Enum.Material.Concrete }
+	-- 담장 자리의 생울타리. 치수는 담장 그대로
+	local hedgeOpts = { color = C.hedge, material = Enum.Material.Grass }
 	local sideLen = GATE_Z + PLOT_HALF -- z -75 ~ 67.5
 	local sideMid = (GATE_Z - PLOT_HALF) / 2
 	put(
 		shell,
-		"FenceN",
+		"HedgeN",
 		Vector3.new(PLOT_HALF * 2 + FENCE_T, FENCE_H, FENCE_T),
 		plotCFrame * CFrame.new(0, FENCE_H / 2, -FENCE_X),
-		table.clone(fenceOpts)
+		table.clone(hedgeOpts)
 	)
 	put(
 		shell,
-		"FenceE",
+		"HedgeE",
 		Vector3.new(FENCE_T, FENCE_H, sideLen),
 		plotCFrame * CFrame.new(FENCE_X, FENCE_H / 2, sideMid),
-		table.clone(fenceOpts)
+		table.clone(hedgeOpts)
 	)
 	put(
 		shell,
-		"FenceW",
+		"HedgeW",
 		Vector3.new(FENCE_T, FENCE_H, sideLen),
 		plotCFrame * CFrame.new(-FENCE_X, FENCE_H / 2, sideMid),
-		table.clone(fenceOpts)
+		table.clone(hedgeOpts)
 	)
 	-- 남쪽 담장은 교문 줄(z=67.5)에 맞춘다. 기둥 바깥 면(x=±7.5)부터 부지 끝까지
 	local southFrom = GATE_W / 2 + PILLAR
@@ -261,17 +262,17 @@ local function buildGround(shell: Model, plotCFrame: CFrame)
 	local southMid = (southFrom + PLOT_HALF) / 2
 	put(
 		shell,
-		"FenceSW",
+		"HedgeSW",
 		Vector3.new(southLen, FENCE_H, FENCE_T),
 		plotCFrame * CFrame.new(-southMid, FENCE_H / 2, GATE_Z),
-		table.clone(fenceOpts)
+		table.clone(hedgeOpts)
 	)
 	put(
 		shell,
-		"FenceSE",
+		"HedgeSE",
 		Vector3.new(southLen, FENCE_H, FENCE_T),
 		plotCFrame * CFrame.new(southMid, FENCE_H / 2, GATE_Z),
-		table.clone(fenceOpts)
+		table.clone(hedgeOpts)
 	)
 end
 
@@ -523,32 +524,11 @@ local function buildConstruction(shell: Model, plotCFrame: CFrame)
 	model.Parent = shell
 end
 
-local function buildYard(shell: Model, plotCFrame: CFrame)
+local function buildYard(shell: Model, plotCFrame: CFrame, plotId: number)
+	-- 시드 = 부지 번호 × 100 + 나무 번호. 부지마다 모양이 다르고, 같은 부지는 다시 지어도 같다
 	for i, spot in TREES do
-		local base = Vector3.new(spot.X, 0, spot.Y)
-		local trunkH, canopyD = 5, 7
-		put(
-			shell,
-			string.format("Tree%02dTrunk", i),
-			Vector3.new(1.2, trunkH, 1.2),
-			plotCFrame * CFrame.new(base + Vector3.new(0, trunkH / 2, 0)),
-			{
-				color = C.trunk,
-				material = Enum.Material.Wood,
-			}
-		)
-		put(
-			shell,
-			string.format("Tree%02dCanopy", i),
-			Vector3.new(canopyD, canopyD, canopyD),
-			plotCFrame * CFrame.new(base + Vector3.new(0, trunkH + canopyD / 2 - 1, 0)),
-			{
-				color = C.leaves,
-				material = Enum.Material.Grass,
-				shape = Enum.PartType.Ball,
-				collide = false,
-			}
-		)
+		local tree = Tree.build(shell, plotCFrame * CFrame.new(spot.X, 0, spot.Y), plotId * 100 + i)
+		tree.Name = string.format("Tree%02d", i)
 	end
 
 	local poleH = 14
@@ -606,25 +586,26 @@ local function buildPads(plot: Model, plotCFrame: CFrame)
 	folder.Parent = plot
 end
 
+local function hitbox(folder: Folder, name: string, cf: CFrame, color: Color3): Part
+	return put(folder, name, HITBOX_SIZE, cf, {
+		color = color,
+		material = Enum.Material.SmoothPlastic,
+		transparency = 1,
+		collide = false,
+		cast = false,
+	})
+end
+
+-- 처음엔 시설이 없어 홈 자리 바닥이 전부 마당(y0)이다. 시설이 서면 PlotService.refreshStickers 가 높이를 맞춘다
 local function buildStickers(plot: Model, plotCFrame: CFrame)
 	local folder = Instance.new("Folder")
 	folder.Name = Keys.STICKERS_FOLDER
-	-- 원반: Cylinder 의 축은 X 라 Z 축으로 90° 눕힌다
-	local flat = CFrame.Angles(0, 0, math.pi / 2)
 	for i, spot in STICKER_SPOTS do
-		local sticker = put(
+		local sticker = hitbox(
 			folder,
 			string.format("Sticker%02d", i),
-			Vector3.new(0.4, 2, 2),
-			plotCFrame * CFrame.new(spot.X, STICKER_Y, spot.Y) * flat,
-			{
-				color = C.sticker,
-				material = Enum.Material.SmoothPlastic,
-				transparency = 1,
-				shape = Enum.PartType.Cylinder,
-				collide = false,
-				cast = false,
-			}
+			plotCFrame * CFrame.new(spot.X, HITBOX_SIZE.Y / 2, spot.Y),
+			C.sticker
 		)
 		sticker.CanTouch = true
 		sticker:SetAttribute(Keys.ATTR_STICKER_ID, i)
@@ -637,20 +618,9 @@ end
 local function buildStars(plot: Model, plotCFrame: CFrame)
 	local folder = Instance.new("Folder")
 	folder.Name = Keys.STARS_FOLDER
+	local y = PlotLayout.STAR_FLOOR_Y + HITBOX_SIZE.Y / 2
 	for i, spot in STAR_SPOTS do
-		local star = put(
-			folder,
-			string.format("Star%02d", i),
-			Vector3.new(1.6, 1.6, 1.6),
-			plotCFrame * CFrame.new(spot.X, STAR_Y, spot.Y),
-			{
-				color = C.star,
-				material = Enum.Material.Neon,
-				shape = Enum.PartType.Ball,
-				collide = false,
-				cast = false,
-			}
-		)
+		local star = hitbox(folder, string.format("Star%02d", i), plotCFrame * CFrame.new(spot.X, y, spot.Y), C.star)
 		star.CanTouch = true
 		star:AddTag(Keys.STAR_TAG)
 	end
@@ -672,7 +642,7 @@ function PlotShell.build(plotCFrame: CFrame, plotId: number): Model
 	buildEntrance(shell, plotCFrame)
 	buildClass1(shell, plotCFrame)
 	buildConstruction(shell, plotCFrame)
-	buildYard(shell, plotCFrame)
+	buildYard(shell, plotCFrame, plotId)
 	shell.Parent = plot
 	-- 클라는 스트리밍으로 파트 일부만 받아도 부지 중심을 알아야 한다(HudController.plotCenter). 피벗은 파트와 달리 늘 복제된다
 	plot.WorldPivot = plotCFrame

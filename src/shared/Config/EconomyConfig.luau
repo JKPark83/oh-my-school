@@ -23,6 +23,7 @@ EconomyConfig.STICKER_SECONDS = 1.2 -- 가치 = max(최소, 초당 수입 × 1.2
 EconomyConfig.GOLD_EVERY = 12 -- 12장마다 금 스티커
 EconomyConfig.GOLD_MULT = 5
 EconomyConfig.RESPAWN = 15 -- 초
+EconomyConfig.STICKER_HOME_UNTIL = 3 -- 총 스티커가 이보다 적으면 리스폰도 홈 자리(튜토리얼 빛기둥 1~3번 수. TutorialController 가 이 값을 읽는다)
 EconomyConfig.BOARD_CELLS = 60 -- 60칸 = 입학원서 1장
 EconomyConfig.COMBO_WINDOW = 6 -- 초. 이 안에 다음 스티커면 콤보 유지
 EconomyConfig.COMBO_BONUS_EVERY = 5 -- 콤보 5마다 스티커판 +1칸

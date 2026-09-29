@@ -18,6 +18,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 
@@ -63,7 +64,7 @@ local FINGER_TEXT = "👇"
 local ARROW_TEXT = "⬇"
 
 -- 단계 문턱(§2.1)
-local STICKER_HINT_COUNT = 3 -- 앞마당 스티커 1~3번
+local STICKER_HINT_COUNT = EconomyConfig.STICKER_HOME_UNTIL -- 앞마당 스티커 1~3번(서버 홈 리스폰 기준과 같은 값)
 local GROW3_FACILITIES = 3
 local GROW4_FACILITIES = 4
 local SKIN_HINT_FACILITIES = 5

@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local auditorium = {}
@@ -27,7 +28,7 @@ local ROLE_SECONDARY = "secondary"
 
 local WALL_T = 1
 local ROOF_T = 1
-local FLOOR_T = 0.2
+local FLOOR_T = PlotLayout.AUDITORIUM_FLOOR_T
 local DOOR_W = 8
 local DOOR_H = 8
 local SIGN_EYE = 4.5
@@ -38,11 +39,11 @@ local STAGE_H = 1.2
 local STAGE_W, STAGE_D = 30, 6
 local BELL_R = 0.8
 
--- 좌석 격자(부지 로컬). 5열 × 5줄 = S01…S25, index = (줄-1)*5 + 열
-local SEAT_COLS = { -17.9, -15.5, -13.1, -10.7, -8.3 }
-local SEAT_ROWS = { -23, -20, -17, -14, -11 }
-local BENCH_W = 12.4
-local BENCH_D = 1.6
+-- 좌석 격자(부지 로컬, PlotLayout). 5열 × 5줄 = S01…S25, index = (줄-1)*5 + 열
+local SEAT_COLS = PlotLayout.AUDITORIUM_SEAT_COLS
+local SEAT_ROWS = PlotLayout.AUDITORIUM_SEAT_ROWS
+local BENCH_W = PlotLayout.AUDITORIUM_BENCH_W
+local BENCH_D = PlotLayout.AUDITORIUM_BENCH_D
 
 local COLOR_WALL = Color3.fromRGB(226, 220, 206)
 local COLOR_ROOF = Color3.fromRGB(62, 64, 68)
@@ -89,12 +90,13 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local southZ = cz + d / 2 - WALL_T / 2
 	local segW = (w - DOOR_W) / 2
 
-	-- 바닥은 세 조각. PlotShell 의 계단(x 5~14, z 6→-10.5)이 올라오는 남동쪽 x 5~14·z -10.5~0 을 비워 둔다
+	-- 바닥은 세 조각. PlotShell 의 계단(x 5~14, z 6→-10.5)이 올라오는 남동쪽 x 5~14·z -10.5~0 을 비워 둔다.
+	-- 벽·지붕처럼 fade: 1층에서 카메라와 캐릭터 사이를 가리면 흐려진다(§3.6 #3)
 	local floorY = row.center.Y + FLOOR_T / 2
-	local floorOpts = { color = COLOR_FLOOR, material = Enum.Material.Fabric }
+	local floorOpts = { color = COLOR_FLOOR, material = Enum.Material.Fabric, fade = true }
 	local x0, x1 = cx - w / 2, cx + w / 2
 	local z0, z1 = cz - d / 2, cz + d / 2
-	local holeX0, holeX1, holeZ0 = 5, 14, -10.5
+	local holeX0, holeX1, holeZ0 = PlotLayout.STAIR_X0, PlotLayout.STAIR_X1, PlotLayout.STAIRWELL_Z0
 	local floor = part(
 		model,
 		"Floor",

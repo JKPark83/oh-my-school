@@ -23,6 +23,7 @@ local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
+local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local DataService = require(script.Parent.DataService)
 
 local GeometryFolder = script.Parent.Parent.Geometry
@@ -61,6 +62,7 @@ local owners: { [number]: Player } = {}
 local plotOf: { [Player]: number } = {}
 local locked: { [Player]: boolean } = {}
 local characterConns: { [Player]: RBXScriptConnection } = {}
+local stickerRngs: { [number]: Random } = {} -- 부지마다 스티커 자리 추첨용 하나
 
 local stickerTouched = Instance.new("BindableEvent")
 local starTouched = Instance.new("BindableEvent")
@@ -239,7 +241,74 @@ local function refreshConstruction(plotId: number, built: { [string]: boolean })
 	end
 end
 
---- 스폰 수(3 → 5 → 8)만큼만 스티커를 켠다. 새로 열리는 스폰은 즉시 보인다
+--- 부지 로컬 수평 자리의 바닥 윗면 y. 지어진 시설(복도·운동장) 발자국 안이면 그 구역 floorY, 아니면 마당 0.
+--- 구역 floorY 는 시설이 있을 때 값이라 안 지은 시설 자리는 0 이다. 홈 자리(복도 2·운동장 3)도 같은 규칙
+local function floorYAt(plotId: number, spot: Vector2): number
+	local model = plotModels[plotId]
+	for _, zone in PlotLayout.STICKER_ZONES do
+		local facilityId = zone.facilityId
+		local row = facilityId and FacilityConfig.BY_ID[facilityId]
+		local facility = facilityId and model:FindFirstChild(facilityId)
+		if row and facility and facility:GetAttribute(Keys.ATTR_BUILT) then
+			local c, size = row.center, row.size
+			if math.abs(spot.X - c.X) <= size.X / 2 and math.abs(spot.Y - c.Z) <= size.Z / 2 then
+				return zone.floorY
+			end
+		end
+	end
+	return 0
+end
+
+--- 히트박스를 부지 로컬 자리 spot 의 바닥에 붙인다(아랫면 = 바닥 윗면). 같은 자리면 쓰지 않는다(복제 줄이기)
+local function placeSticker(plotId: number, part: BasePart, spot: Vector2)
+	local cf = cframes[plotId] * CFrame.new(spot.X, floorYAt(plotId, spot) + part.Size.Y / 2, spot.Y)
+	if (part.Position - cf.Position).Magnitude > 1e-3 then
+		part.CFrame = cf
+	end
+end
+
+local function localXZ(plotId: number, world: Vector3): Vector2
+	local p = cframes[plotId]:PointToObjectSpace(world)
+	return Vector2.new(p.X, p.Z)
+end
+
+--[[
+	스티커 히트박스를 옮긴다(개선계획 §3.2 #4·#5). Position 만 바꾸고 어트리뷰트는 건드리지 않는다.
+	  toHome = true  → StickerId 의 홈 자리(PlotLayout.HOME_SPOTS)
+	  toHome = false → PlotLayout.pickStickerSpot. prev = 지금 자리, ownerPos = 주인 HRP 수평 위치,
+	                   occupied = 같은 부지의 다른 켜진·안 주운 스티커 자리(전부 부지 로컬)
+	높이는 pickStickerSpot 이 돌려준 구역 floorY 대신 floorYAt 으로 정한다(안 지은 시설 자리는 0).
+	리스폰 때 호출자는 이 함수 다음에 Collected=false 를 쓴다(자리와 등장이 같은 프레임에 복제되게).
+]]
+function PlotService.moveSticker(plotId: number, part: BasePart, toHome: boolean)
+	if toHome then
+		local id = part:GetAttribute(Keys.ATTR_STICKER_ID)
+		local spot = if type(id) == "number" then PlotLayout.HOME_SPOTS[id] else nil
+		if spot then
+			placeSticker(plotId, part, spot)
+		end
+		return
+	end
+	local rng = stickerRngs[plotId]
+	if not rng then
+		rng = Random.new()
+		stickerRngs[plotId] = rng
+	end
+	local owner = owners[plotId]
+	local root = owner and owner.Character and owner.Character:FindFirstChild("HumanoidRootPart")
+	local ownerPos = if root and root:IsA("BasePart") then localXZ(plotId, root.Position) else nil
+	local occupied = {}
+	for _, other in PlotService.activeStickers(plotId) do
+		if other ~= part and not other:GetAttribute(Keys.ATTR_COLLECTED) then
+			table.insert(occupied, localXZ(plotId, other.Position))
+		end
+	end
+	local spot = PlotLayout.pickStickerSpot(rng, localXZ(plotId, part.Position), ownerPos, occupied)
+	placeSticker(plotId, part, spot)
+end
+
+--- 스폰 수(3 → 5 → 8)만큼만 스티커를 켠다. 새로 열리는 스폰은 즉시 보인다.
+--- 켜기·끄기 때는 홈 자리로 돌린다. 나머지는 수평 자리를 두고 높이만 바닥에 맞춘다(시설이 서거나 없어지면 바닥이 바뀐다)
 local function refreshStickers(plotId: number, built: { [string]: boolean })
 	local stickers = plotModels[plotId]:FindFirstChild(Keys.STICKERS_FOLDER)
 	if not stickers then
@@ -247,13 +316,19 @@ local function refreshStickers(plotId: number, built: { [string]: boolean })
 	end
 	local count = EconomyConfig.spawnCount(built)
 	for _, part in stickers:GetChildren() do
+		if not part:IsA("BasePart") then
+			continue
+		end
 		local index = part:GetAttribute(Keys.ATTR_STICKER_ID) or 0
 		local enabled = index <= count
 		if part:GetAttribute("Enabled") ~= enabled then
+			PlotService.moveSticker(plotId, part, true) -- 자리 먼저, 어트리뷰트는 그다음
 			part:SetAttribute("Enabled", enabled)
 			part:SetAttribute(Keys.ATTR_COLLECTED, not enabled)
 			part:SetAttribute(Keys.ATTR_GOLD, false)
 			part.CanTouch = enabled
+		else
+			placeSticker(plotId, part, localXZ(plotId, part.Position))
 		end
 	end
 end
