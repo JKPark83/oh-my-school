@@ -28,6 +28,8 @@ PlotLayout.SIGNPOST = Vector3.new(-12.5, 0, 62.5) -- 「우리 학교로」 팻�
 PlotLayout.ADMISSION = Vector3.new(15, 0, 57.5) -- 접수대(몸통 4×4)
 PlotLayout.FLAGPOLE = Vector3.new(-12.5, 0, 57.5)
 PlotLayout.TREES = { Vector2.new(37.5, 50), Vector2.new(-10, 12.5) }
+-- 화단 2(4×2, 교문 기둥 바깥 면 ±7.5 옆). z 65~67 은 DECOR_STATIC 첫 칸(교문 줄)이 이미 막아 둔 자리라 마스크를 안 바꾼다
+PlotLayout.FLOWERBEDS = { Vector2.new(-10, 66), Vector2.new(10, 66) }
 -- 현관 (0,-5) 30×25(계단·착지대가 안에 있다). 남문 (0,7.5), 북문 (0,-17.5)
 PlotLayout.ENTRANCE = Vector3.new(0, 0, -5)
 PlotLayout.ENTRANCE_SIZE = Vector3.new(30, PlotLayout.WALL_H, 25)

@@ -21,7 +21,11 @@ export type Furniture = {
 	color: Color3, -- 클라 렌더 대표색
 }
 
-TowerConfig.MAX = 20 -- 꼭대기 층 번호(잠정, §3.6 #13). towerFloors ≤ MAX - 2
+-- 꼭대기 층 번호(§3.6 #13). towerFloors ≤ MAX - 2.
+-- 2026-09-30 실측 P=386(W8 조형 뒤 시설 14 완공·층 0개 Plot01 서버 파트 388 − 탑 폴더 2), 식 min(20, ⌊(500 − 386 − 3)/2⌋) = min(20, 55) → 확정 20.
+-- 20층(towerFloors 18) 부지 실측 424 ≤ 500
+-- P=386 은 나무 메시 경로(나무 1파트). 메시가 실패하면 Tree.build 폴백(최대 5파트) × 부지 나무 2 → P ≤ 394, 20층 ≤ 432 ≤ 500, 식 min(20, 51) → 20 그대로
+TowerConfig.MAX = 20
 TowerConfig.FIRST_FLOOR = 3
 TowerConfig.SERVER_PARTS_PER_FLOOR = 2 -- 바닥판 1 + 엘리베이터 앵커 1
 TowerConfig.FIXED_PARTS = 3 -- 2층 엘리베이터 앵커 1 + TOWER_PAD 1 + 꼭대기 지붕 1(지붕은 towerFloors ≥ 1 일 때만. 0층이면 2)
@@ -69,13 +73,13 @@ TowerConfig.DEFAULT_FURNITURE = {
 TowerConfig.RENDER = {
 	WALL_T = 0.6, -- 벽 두께. 발자국 안쪽으로 붙인다(바깥 면 = 발자국 변)
 	WALL_H = PlotLayout.FLOOR_STEP - TowerConfig.PLATE_T, -- 18
-	-- 창: 벽마다 SurfaceGui 1개 안 Frame. 긴 벽 40/4 = 짧은 벽 30/3 = 10 스터드 칸이라 두 벽의 창 크기·간격이 같다
+	-- 창(폴백): PropAssets.WINDOW_TEXTURE.id 가 0 일 때만 벽마다 SurfaceGui 1개 안 Frame. id 가 있으면 벽마다 Texture 1장(W8). 긴 벽 40/4 = 짧은 벽 30/3 = 10 스터드 칸이라 두 벽의 창 크기·간격이 같다
 	WINDOW_ROWS = 1,
 	WINDOW_COLS = { LONG = 4, SHORT = 3 },
 	-- 창 한 칸(가로 10 × 세로 WALL_H 18) 안에서 사방 여백 비율. 0.3 이면 창 4 × 7.2 스터드, 창 사이 6 스터드.
 	-- 교문 쪽 벽 가운데(x −3~3) 가 빈다. 한 자리 층 번호(3~9)만 창과 안 겹치고, 두 자리(10~20)는 가운데 두 창 안쪽 끝을 조금 덮는다
 	WINDOW_INSET = 0.3,
-	WINDOW_COLOR = rgb(205, 235, 255), -- 연한 하늘색(텍스처 없음)
+	WINDOW_COLOR = rgb(205, 235, 255), -- 연한 하늘색(SurfaceGui 폴백 창. Texture 창 그림의 유리색과 같다)
 	-- 창은 단색 Frame 이라 해상도가 필요 없다. 캔버스를 작게(긴 벽 40 × 18 스터드 → 80 × 36 px)
 	WINDOW_PIXELS_PER_STUD = 2,
 	-- 창·층 번호 SurfaceGui 를 그리는 카메라 거리 상한(스터드). 멀면 GPU 가 그리지 않는다(PadController 선례)
@@ -103,7 +107,7 @@ TowerConfig.NEAR_COUNT = 3
 -- 자리를 뺏으므로 두 부지 사이 경계에서 매초 지웠다 다시 짓지 않는다(학생 LOD 230/260 의 폭 30 과 같다)
 TowerConfig.NEAR_HYSTERESIS = 30
 -- 클라 탑 파트 상한 = 6 × 18층 × 3부지 = 324. 기획서 §12.1 성능 예산 「클라이언트 탑 파트(W7)」 행.
--- 창·층 번호 SurfaceGui 도 층당 6(창 4 + 번호 2)이라 최악 개수가 같다(324)
+-- SurfaceGui 는 층당 번호 2(+ 창 Texture 4, W8). 창 텍스처 id 가 0 이면 SurfaceGui 창 4 가 더해져 층당 6 → 최악 324
 TowerConfig.MAX_CLIENT_PARTS = TowerConfig.CLIENT_PARTS_PER_FLOOR
 	* (TowerConfig.MAX - TowerConfig.FIRST_FLOOR + 1)
 	* TowerConfig.NEAR_COUNT

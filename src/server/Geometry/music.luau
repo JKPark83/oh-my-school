@@ -106,7 +106,8 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx + (DOOR_W + segW) / 2, wallY, northZ),
 		wallOpts()
 	)
-	part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
+	local wallS =
+		part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
 	part(
 		model,
 		"WallE",
@@ -121,6 +122,8 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx - w / 2 + WALL_T / 2, wallY, cz),
 		wallOpts()
 	)
+	-- 문 없는 바깥 벽 면에 창(§3.1 #8). id 0 이면 안 붙는다 — 서쪽은 현관, 동쪽은 교장실 벽과 맞닿아 남쪽만(맞닿은 면은 가려져 Texture 만 늘고, 페이드 때 벽 속에 비친다)
+	BuildKit.window(wallS, Enum.NormalId.Back)
 	partIndex = 2 -- 상인방 + 지붕
 	local lintel = part(
 		model,
@@ -132,7 +135,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	part(
 		model,
 		"Roof",
-		-- 벽 안쪽만 덮는다. 벽 위에 얹으면 강당 바닥을 뚫고 올라온다
+		-- 벽 안쪽만 덮는다. 벽 위에 얹으면 강당 바닥을 뚫고 올라온다(그래서 박공도 못 얹는다. §3.1 #7)
 		Vector3.new(w - WALL_T * 2, ROOF_T, d - WALL_T * 2),
 		at(plotCFrame, cx, floorTop + h - ROOF_T / 2, cz),
 		{ color = COLOR_ROOF, material = Enum.Material.Slate, fade = true, light = true }

@@ -3,7 +3,7 @@
 	부지 껍데기. 기획서 §7.2, 계획서 §3.5.
 
 	PlotShell.build(plotCFrame, plotId) 가 돌려주는 Model 하나가 Workspace.Plots.PlotNN 이 된다.
-	  Shell (Model)          바닥·담장·교문·현판·팻말·접수대·현관·2층 계단·착지대·스티커판·교실1·「공사 중」 실루엣
+	  Shell (Model)          바닥·담장·교문·화단 2·현판·팻말·접수대·현관·2층 계단·착지대·스티커판·교실1·「공사 중」 실루엣
 	  Spawn (SpawnLocation)  (0,60). Neutral, Enabled=false — 서버가 RespawnLocation 으로 지정한다
 	  Pads (Folder)          시설 14개 구매 패드. 이름 = facilityId, PadState="hidden" 이라 투명으로 시작
 	  Stickers (Folder)      칭찬스티커 스폰 8개. Collected=true + 투명으로 시작(서버가 리스폰 때 켠다)
@@ -26,7 +26,7 @@ local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
-local Tree = require(script.Parent.Tree)
+local PropLibrary = require(script.Parent.PropLibrary)
 
 local PlotShell = {}
 
@@ -517,8 +517,13 @@ end
 local function buildYard(shell: Model, plotCFrame: CFrame, plotId: number)
 	-- 시드 = 부지 번호 × 100 + 나무 번호. 부지마다 모양이 다르고, 같은 부지는 다시 지어도 같다
 	for i, spot in TREES do
-		local tree = Tree.build(shell, plotCFrame * CFrame.new(spot.X, 0, spot.Y), plotId * 100 + i)
+		local tree = PropLibrary.tree(shell, plotCFrame * CFrame.new(spot.X, 0, spot.Y), plotId * 100 + i)
 		tree.Name = string.format("Tree%02d", i)
+	end
+	-- 교문 양옆 화단. 시드는 나무와 겹치지 않게 +50
+	for i, spot in PlotLayout.FLOWERBEDS do
+		local bed = PropLibrary.flowerbed(shell, plotCFrame * CFrame.new(spot.X, 0, spot.Y), plotId * 100 + 50 + i)
+		bed.Name = string.format("Flowerbed%02d", i)
 	end
 
 	local poleH = 14

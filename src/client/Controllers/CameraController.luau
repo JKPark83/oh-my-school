@@ -13,6 +13,16 @@
 
 	★ 가리는 벽을 지운다. 카메라와 나 사이에 낀 Keys.FADE_TAG 구조물만 반투명하게 만든다.
 	  LocalTransparencyModifier 는 클라이언트 전용이라 서버 값을 건드리지 않는다.
+	  Texture·Decal 은 LocalTransparencyModifier 를 따르지 않아 흐린 파트의 자식 Texture/Decal 도 Transparency 를 같이 바꾼다.
+
+	★ 층 컷어웨이(개선계획 §3.6 #12). W8 에 updateFade 를 한 번 고쳤다(§4.1: CameraController 변경은 이것뿐).
+	  "CameraFade" 스텝 안에서 같이 돈다(새 RenderStep 없음).
+	  내가 선 부지(Workspace.Plots.PlotNN 중 피벗 기준 로컬 |x|,|z| ≤ PLOT_HALF, 1초마다 다시 찾는다)의 로컬 좌표로
+	  m = PlotLayout.floorOf(루트 로컬 y). 「m ≥ 3 이거나 루트가 TOWER_FOOTPRINT 안」일 때만 그 부지 Tower 폴더에서
+	  Floor 어트리뷰트 > m 인 서버 파트(바닥판 FloorNN·엘리베이터 앵커 ElevatorNN·꼭대기 Roof)를 LocalTransparencyModifier 1.
+	  조건 밖(마당·광장·캐릭터 없음)이면 모두 0 으로 되돌린다. 숨긴 파트는 가림 페이드(0.88) 목록에서 빼서 1 이 덮이지 않는다.
+	  CanCollide 는 건드리지 않는다. 기본 카메라 Popper 는 전체 투명도가 높은 파트를 가림막으로 보지 않아 천장으로 튀지 않는다.
+	  같은 m 을 TowerRenderController(클라 벽·칸·가구)가 cutawayFloor()/cutawayPlot() 으로 읽는다(Camera+3 스텝이라 같은 프레임).
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -22,6 +32,8 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
+local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 
 local ZOOM_MIN = 8
 local ZOOM_MAX = 40
@@ -44,6 +56,10 @@ local PAN_HOLD = 1.2
 local ORBIT_SWEEP = math.rad(90)
 
 local FADE = 0.88
+
+-- 층 컷어웨이: 내가 선 부지를 다시 찾는 주기(초). 매 프레임은 찾아 둔 부지의 로컬 좌표만 계산한다
+local CUTAWAY_SCAN = 1
+local CUTAWAY_HIDE = 1 -- 위층 서버 파트 LocalTransparencyModifier
 
 local player = Players.LocalPlayer
 
@@ -293,24 +309,134 @@ local function updateFx(dt: number)
 	end
 end
 
+-- ── 층 컷어웨이(§3.6 #12) ────────────────────────────────────────
+
+local FOOT = PlotLayout.TOWER_FOOTPRINT
+
+local standPlot: Instance? = nil -- 내가 선 부지 모델(CUTAWAY_SCAN 마다 다시 찾는다)
+local standPivot = CFrame.identity
+local standPlotId: number? = nil
+local lastScan = -math.huge
+local cutFloor: number? = nil -- 지금 m. 컷어웨이가 꺼져 있으면 nil
+local hidden: { [BasePart]: true } = {} -- LocalTransparencyModifier 1 로 숨긴 서버 파트
+local wantHidden: { [BasePart]: true } = {} -- 매 프레임 비워 다시 쓴다(hidden 과 번갈아 쓴다)
+
+--- 파트 자식 Texture·Decal 투명도(LocalTransparencyModifier 를 따르지 않는다)
+local function setSkin(part: BasePart, transparency: number)
+	for _, child in part:GetChildren() do
+		if child:IsA("Decal") then -- Texture 는 Decal 을 상속한다
+			child.Transparency = transparency
+		end
+	end
+end
+
+--- 로컬 x·z 가 부지 안인가
+local function insidePlot(localPos: Vector3): boolean
+	return math.abs(localPos.X) <= PlotLayout.PLOT_HALF and math.abs(localPos.Z) <= PlotLayout.PLOT_HALF
+end
+
+--- Workspace.Plots 를 돌아 position 이 선 부지를 찾는다(1초에 한 번)
+local function scanPlot(position: Vector3)
+	standPlot = nil
+	standPlotId = nil
+	local plots = Workspace:FindFirstChild(Keys.PLOTS_FOLDER)
+	if not plots then
+		return
+	end
+	for _, model in plots:GetChildren() do
+		local plotId = Keys.plotIdOf(model.Name)
+		if plotId and model:IsA("Model") then
+			local pivot = model:GetPivot()
+			if insidePlot(pivot:PointToObjectSpace(position)) then
+				standPlot = model
+				standPivot = pivot
+				standPlotId = plotId
+				return
+			end
+		end
+	end
+end
+
+--- 이번 프레임 m 을 구하고 위층 서버 파트를 숨기거나 되돌린다
+local function updateCutaway(root: BasePart?)
+	local m: number? = nil
+	local tower: Instance? = nil
+	if root then
+		local now = os.clock()
+		if now - lastScan >= CUTAWAY_SCAN then
+			lastScan = now
+			scanPlot(root.Position)
+		end
+		local plot = standPlot
+		if plot and plot.Parent then
+			local localPos = standPivot:PointToObjectSpace(root.Position)
+			if insidePlot(localPos) then
+				local floor = PlotLayout.floorOf(localPos.Y)
+				local inFoot = localPos.X >= FOOT.x0
+					and localPos.X <= FOOT.x1
+					and localPos.Z >= FOOT.z0
+					and localPos.Z <= FOOT.z1
+				if floor >= TowerConfig.FIRST_FLOOR or inFoot then
+					m = floor
+					tower = plot:FindFirstChild(Keys.TOWER_FOLDER)
+				end
+			else
+				lastScan = -math.huge -- 부지를 벗어났다. 다음 프레임에 다시 찾는다
+			end
+		elseif plot then
+			lastScan = -math.huge -- 선 부지가 사라졌다(재생성·졸업 리셋). 다음 프레임에 다시 찾는다
+		end
+	end
+	cutFloor = m
+
+	table.clear(wantHidden)
+	if m and tower then
+		for _, child in tower:GetChildren() do
+			local n = child:GetAttribute(Keys.ATTR_FLOOR)
+			if child:IsA("BasePart") and type(n) == "number" and n > m then
+				wantHidden[child] = true
+				if not hidden[child] then
+					child.LocalTransparencyModifier = CUTAWAY_HIDE
+					setSkin(child, CUTAWAY_HIDE)
+				end
+			end
+		end
+	end
+	for part in hidden do
+		if not wantHidden[part] and part.Parent then
+			part.LocalTransparencyModifier = 0
+			setSkin(part, 0)
+		end
+	end
+	hidden, wantHidden = wantHidden, hidden
+end
+
 --[[
 	카메라와 나 사이를 막고 선 구조물을 반투명하게 만든다.
 	지운 것을 기억해뒀다가, 다음 프레임 목록에 없으면 되돌린다.
+	컷어웨이로 숨긴 파트(hidden)는 흐리지 않고 목록에서도 뺀다(1 이 0.88 로 덮이지 않게).
 ]]
 local faded: { [BasePart]: true } = {}
 
 local function updateFade()
 	local character = player.Character
 	local head = if character then character:FindFirstChild("Head") else nil
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
 	local cam = camera()
+
+	-- 컷어웨이를 먼저 한다. 되돌린 파트(0)가 이번 프레임에 가리면 아래에서 바로 0.88 이 된다
+	updateCutaway(if root and root:IsA("BasePart") then root else nil)
 
 	local blocking: { [BasePart]: true } = {}
 	if head and head:IsA("BasePart") and cam and character then
 		-- 캐릭터 자신은 제외한다. 안 그러면 내 뒤통수가 나를 가린 것으로 잡힌다.
 		for _, p in cam:GetPartsObscuringTarget({ head.Position }, { character }) do
-			if p:IsA("BasePart") and CollectionService:HasTag(p, Keys.FADE_TAG) then
+			if p:IsA("BasePart") and CollectionService:HasTag(p, Keys.FADE_TAG) and not hidden[p] then
 				blocking[p] = true
 				p.LocalTransparencyModifier = FADE
+				if not faded[p] then
+					setSkin(p, FADE)
+				end
 			end
 		end
 	end
@@ -318,8 +444,10 @@ local function updateFade()
 	for p in faded do
 		if not blocking[p] then
 			-- 스트리밍으로 내려간 파트는 다시 올라올 때 기본값으로 오므로 만지지 않는다.
-			if p.Parent then
+			-- 컷어웨이로 숨은 파트는 updateCutaway 가 맡는다(0 으로 되돌리지 않는다).
+			if p.Parent and not hidden[p] then
 				p.LocalTransparencyModifier = 0
+				setSkin(p, 0)
 			end
 			faded[p] = nil
 		end
@@ -335,6 +463,25 @@ local function onCharacter()
 	if cam then
 		cam.FieldOfView = FIELD_OF_VIEW
 	end
+end
+
+--- 층 컷어웨이의 지금 층 m. 꺼져 있으면(캐릭터 없음·부지 밖·마당) nil. TowerRenderController·게이트가 같이 쓴다
+function CameraController.cutawayFloor(): number?
+	return cutFloor
+end
+
+--- 컷어웨이가 켜진 부지 번호(내가 선 부지). cutawayFloor() 가 nil 이면 nil
+function CameraController.cutawayPlot(): number?
+	return if cutFloor then standPlotId else nil
+end
+
+--- 컷어웨이로 숨긴 서버 파트 수(게이트용)
+function CameraController.cutawayStats(): { hidden: number }
+	local count = 0
+	for _ in hidden do
+		count += 1
+	end
+	return { hidden = count }
 end
 
 function CameraController.Start()

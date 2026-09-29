@@ -1,9 +1,10 @@
 --!strict
 --[[
 	체육관(시설 12) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 21개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 23개(≤25), 전부 BuildKit.part·wedge.
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  별동 30×45, 높이 20. 문은 서쪽(-X, 본관 쪽) 폭 8·높이 9: 서벽을 두 조각 + 상인방으로 비운다. 벽·지붕은 fade.
+	  지붕은 아치(가운데 판 + 양옆 쐐기 = 3파트). 문 없는 북·남·동벽 바깥 면에 창 텍스처(PropAssets, id 0 이면 없음).
 	  코트는 남북(Z) 방향이라 골대 둘이 북·남 끝에 선다. 좌석 없음(Seats 폴더는 비어 있다).
 	  Door = 서문 중심 바닥(LookVector 가 안쪽 +X).
 	  부품 4개(PartIndex): (1) 코트 바닥+벽 (2) 상인방(이름판)+지붕 (3) 코트 선·골대 둘 (4) 매트·뜀틀·공.
@@ -23,7 +24,8 @@ local COLOR_SECONDARY = Color3.fromRGB(150, 110, 60)
 local MATERIAL = Enum.Material.WoodPlanks
 
 local WALL_T = 1
-local ROOF_T = 1
+local ARCH_RISE = 4 -- 아치 지붕: 벽 윗면 → 가운데 판 윗면
+local ARCH_SIDE = 0.25 -- 양옆 쐐기 폭 = 지붕 전체 폭 × 이 비율
 local FLOOR_T = 0.2
 local DOOR_W = 8
 local DOOR_H = 9
@@ -68,7 +70,7 @@ local function wallOpts(): BuildKit.Opts
 	return { color = COLOR_WALL, material = Enum.Material.Concrete, fade = true }
 end
 
---- 벽 4(서벽은 문 양옆 두 조각 + 상인방) · 지붕 = 파트 7개. 상인방을 돌려준다.
+--- 벽 4(서벽은 문 양옆 두 조각 + 상인방) · 아치 지붕 3 = 파트 9개. 상인방을 돌려준다.
 local function buildShell(model: Model, plotCFrame: CFrame, row: FacilityConfig.Facility): Part
 	local cx, cz = row.center.X, row.center.Z
 	local w, h, d = row.size.X, row.size.Y, row.size.Z
@@ -78,9 +80,11 @@ local function buildShell(model: Model, plotCFrame: CFrame, row: FacilityConfig.
 	local segD = (d - DOOR_W) / 2 - WALL_T -- 남북 벽이 모서리를 차지하므로 그만큼 짧다
 
 	partIndex = 1 -- 벽
-	part(model, "WallN", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz - d / 2 + WALL_T / 2), wallOpts())
-	part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
-	part(
+	local wallN =
+		part(model, "WallN", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz - d / 2 + WALL_T / 2), wallOpts())
+	local wallS =
+		part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
+	local wallE = part(
 		model,
 		"WallE",
 		Vector3.new(WALL_T, h, d - 2 * WALL_T),
@@ -101,6 +105,10 @@ local function buildShell(model: Model, plotCFrame: CFrame, row: FacilityConfig.
 		at(plotCFrame, westX, wallY, cz + (DOOR_W + segD) / 2),
 		wallOpts()
 	)
+	-- 문 없는 세 벽 바깥 면에 창(§3.1 #8). id 0 이면 안 붙는다
+	BuildKit.window(wallN, Enum.NormalId.Front)
+	BuildKit.window(wallS, Enum.NormalId.Back)
+	BuildKit.window(wallE, Enum.NormalId.Right)
 	partIndex = 2 -- 상인방 + 지붕
 	local lintel = part(
 		model,
@@ -109,13 +117,32 @@ local function buildShell(model: Model, plotCFrame: CFrame, row: FacilityConfig.
 		at(plotCFrame, westX, floorTop + DOOR_H + (h - DOOR_H) / 2, cz),
 		wallOpts()
 	)
+	-- 아치 지붕(§3.1 #7) = 가운데 판 1 + 양옆 쐐기 2 의 3단. 용마루는 긴 변(Z) 방향, 처마 EAVE.
+	-- 원통 1개를 반만 묻는 쪽이 파트는 적지만, 지름 31 의 아래 반쪽(15.5)이 높이 20 인 체육관 안으로 내려와 골대를 가린다.
+	-- 판·쐐기 밑면이 모두 벽 윗면에 얹혀 방 안에서는 평평한 천장이다. 천장등은 가운데 판에만(조명 수 그대로)
+	local eave = BuildKit.EAVE
+	local span, length = w + eave * 2, d + eave * 2
+	local top = floorTop + h
+	local sideW = span * ARCH_SIDE
+	local roofOpts = function(light: boolean): BuildKit.Opts
+		return { color = COLOR_ROOF, material = Enum.Material.Slate, fade = true, light = light }
+	end
 	part(
 		model,
 		"Roof",
-		Vector3.new(w, ROOF_T, d),
-		at(plotCFrame, cx, floorTop + h + ROOF_T / 2, cz),
-		{ color = COLOR_ROOF, material = Enum.Material.Slate, fade = true, light = true }
+		Vector3.new(span - sideW * 2, ARCH_RISE, length),
+		at(plotCFrame, cx, top + ARCH_RISE / 2, cz),
+		roofOpts(true)
 	)
+	-- 쐐기의 높은 변(로컬 +Z)이 가운데를 보게 돌린다: 서쪽은 +X, 동쪽은 -X
+	for _, side in { { name = "RoofW", dir = -1, yaw = math.pi / 2 }, { name = "RoofE", dir = 1, yaw = -math.pi / 2 } } do
+		local x = cx + side.dir * (span / 2 - sideW / 2)
+		local cf = at(plotCFrame, x, top + ARCH_RISE / 2, cz, CFrame.Angles(0, side.yaw, 0))
+		local opts = roofOpts(false)
+		opts.cframe = cf.Rotation
+		local wedge = BuildKit.wedge(model, side.name, Vector3.new(length, ARCH_RISE, sideW), cf.Position, opts)
+		wedge:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	end
 	return lintel
 end
 

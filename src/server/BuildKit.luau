@@ -6,13 +6,14 @@
 	같은 코드를 쓰는 곳이 둘이 됐고, 그래서 밖으로 뺐다.
 	쓰는 곳이 하나뿐일 때 미리 빼두지 않은 것도 같은 이유다.
 
-	아트 에셋을 쓰지 않는다는 원칙은 그대로다. 전부 파트와 기본 머티리얼이다.
+	파트가 기본이고, 소품 메시·창 텍스처는 PropAssets 를 거쳐 쓴다(id 0 이면 파트 폴백).
 ]]
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 
 local BuildKit = {}
 
@@ -34,10 +35,12 @@ local LIGHT_COLOR = Color3.fromRGB(255, 244, 226)
 local LIGHT_BRIGHTNESS = 1.2
 local LIGHT_RANGE = 16 -- 지붕 아랫면에서 바닥까지 12~14
 
-function BuildKit.part(parent: Instance, name: string, size: Vector3, position: Vector3, opts: Opts): Part
-	local p = Instance.new("Part")
+-- 박공지붕 처마가 벽 바깥으로 나오는 길이
+BuildKit.EAVE = 0.5
+
+--- Part·WedgePart 공통 속성·태그·천장등
+local function finish(p: BasePart, parent: Instance, name: string, size: Vector3, position: Vector3, opts: Opts)
 	p.Name = name
-	p.Shape = opts.shape or Enum.PartType.Block
 	p.Size = size
 	p.CFrame = if opts.cframe then CFrame.new(position) * opts.cframe else CFrame.new(position)
 	p.Color = opts.color
@@ -65,8 +68,78 @@ function BuildKit.part(parent: Instance, name: string, size: Vector3, position: 
 		light.Shadows = false
 		light.Parent = p
 	end
+end
 
+function BuildKit.part(parent: Instance, name: string, size: Vector3, position: Vector3, opts: Opts): Part
+	local p = Instance.new("Part")
+	p.Shape = opts.shape or Enum.PartType.Block
+	finish(p, parent, name, size, position, opts)
 	return p
+end
+
+--- 쐐기 파트. 로컬 +Z 쪽이 높은 변(뒷면 수직), -Z 쪽으로 비탈이 내려간다. opts.shape 는 무시한다
+function BuildKit.wedge(parent: Instance, name: string, size: Vector3, position: Vector3, opts: Opts): WedgePart
+	local p = Instance.new("WedgePart")
+	finish(p, parent, name, size, position, opts)
+	return p
+end
+
+--[[
+	박공지붕 = 쐐기 2개(개선계획 §3.1 #7). 평지붕 1 → 2 라 시설 파트가 1 늘어난다.
+	  top    벽 윗면 중심의 월드 CFrame. 용마루는 top 의 로컬 X 방향(긴 변)이다
+	  length 용마루 방향 길이, span 용마루와 직각인 전체 폭(둘 다 처마 포함)
+	  rise   벽 윗면에서 용마루까지 높이
+	쐐기 밑면이 벽 윗면(y=top)에 얹혀서 방 안에서는 평평한 천장으로 보인다.
+	천장등(opts.light)은 첫 쐐기(-Z 쪽, 이름 name)에만 단다 → 시설마다 조명 수가 그대로다. 둘째는 name .. "2".
+	지붕 윗면·바운딩 박스 꼭대기 = top.Y + rise.
+]]
+function BuildKit.gableRoof(
+	parent: Instance,
+	name: string,
+	top: CFrame,
+	length: number,
+	span: number,
+	rise: number,
+	opts: Opts
+): (WedgePart, WedgePart)
+	local size = Vector3.new(length, rise, span / 2)
+	-- -Z 쪽 쐐기: 높은 변(+Z)이 가운데. +Z 쪽 쐐기는 Y 로 반 바퀴 돌려 높은 변이 가운데를 보게 한다
+	local a = top * CFrame.new(0, rise / 2, -span / 4)
+	local b = top * CFrame.new(0, rise / 2, span / 4) * CFrame.Angles(0, math.pi, 0)
+	local optsA = table.clone(opts)
+	optsA.cframe = a.Rotation
+	local optsB = table.clone(opts)
+	optsB.cframe = b.Rotation
+	optsB.light = false
+	return BuildKit.wedge(parent, name, size, a.Position, optsA),
+		BuildKit.wedge(parent, name .. "2", size, b.Position, optsB)
+end
+
+--[[
+	바깥벽 창(개선계획 §3.1 #8). PropAssets.WINDOW_TEXTURE.id 가 0 이면 아무것도 안 붙이고 nil.
+	Texture 는 파트가 아니라 파트 예산에 들지 않는다. face 는 벽의 바깥 면(옆면 4개 중 하나).
+	칸 폭·세로 위치는 PropAssets.windowTile 이 정한다(탑 클라 렌더와 같은 식): 창 아랫변이 벽 아랫면 + sill.
+]]
+function BuildKit.window(part: BasePart, face: Enum.NormalId): Texture?
+	local spec = PropAssets.WINDOW_TEXTURE
+	if spec.id == 0 then
+		return nil
+	end
+	assert(face ~= Enum.NormalId.Top and face ~= Enum.NormalId.Bottom, "BuildKit.window: 옆면에만 붙인다")
+	local height = part.Size.Y
+	local width = if face == Enum.NormalId.Front or face == Enum.NormalId.Back then part.Size.X else part.Size.Z
+	local tileU, offsetV = PropAssets.windowTile(width, height)
+
+	local t = Instance.new("Texture")
+	t.Name = "Window"
+	t.Face = face
+	t.Texture = "rbxassetid://" .. spec.id
+	t.StudsPerTileU = tileU
+	t.StudsPerTileV = spec.studsPerTile.Y
+	t.OffsetStudsV = offsetV
+	t.Transparency = 0
+	t.Parent = part
+	return t
 end
 
 --[[

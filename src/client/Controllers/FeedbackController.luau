@@ -11,6 +11,8 @@
 	★ 플래시 한도(§8.4): α ≤ 0.7, ≤ 0.08초, 초당 1회. 설정 「흔들림 끔」이면 흔들림·FOV·플래시·히트스톱을 모두 끈다.
 	★ 파티클은 Rate 0 + Emit(n). 동시 살아 있는 입자 ≤ 120(졸업식 ≤ 200). 예산을 넘는 요청은 깎는다.
 	★ 모듈 최상위 부작용 없음. Start() 에서 ScreenGui·폴더를 만든다.
+	★ 완공 지붕 아이콘(W8, 개선계획 §3.1 #8): FacilityBuilt 가 내 부지일 때만 그 시설 모델 윗면 위에 ★ 빌보드 하나가
+	  ROOF_ICON_SECONDS 동안 떠올랐다 사라진다. 파트·파티클 없음, 흔들림·빨강 없음. 방문객 화면에는 없다(§7.5).
 ]]
 
 local HapticService = game:GetService("HapticService")
@@ -141,6 +143,15 @@ local FLOOR_CARD_HOLD = 1.2 -- 「N층!」 큰 숫자 카드
 local FLOOR_CARD_STROKE = 4
 local FLOOR_DUST = 12
 local ELEVATOR_FADE_SECONDS = 0.3 -- 흰 화면 0 → 1 → 0 합
+-- 완공 지붕 아이콘(W8)
+local ROOF_ICON_GLYPH = "★"
+local ROOF_ICON_SECONDS = 2 -- 떠올랐다 사라지는 전체 시간
+local ROOF_ICON_LIFT = 3 -- 모델 윗면에서 처음 높이(스터드)
+local ROOF_ICON_RISE = 3 -- 2초 동안 더 떠오르는 높이(스터드)
+local ROOF_ICON_PX = 96
+local ROOF_ICON_STROKE = 4
+local ROOF_ICON_DELAY = 0.1 -- 마지막 부품 파트가 복제될 틈
+local ROOF_ICON_WAIT = 1 -- 시설 모델이 스트리밍돼 들어오길 기다리는 상한(초). 넘으면 아이콘 없이 넘어간다
 
 type Preset = {
 	color: ColorSequence,
@@ -394,6 +405,67 @@ local function popup(text: string, color: Color3)
 	)
 	TweenService:Create(label, fade, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
 	task.delay(POPUP_SECONDS + 0.1, function()
+		gui:Destroy()
+	end)
+end
+
+--- 완공 지붕 아이콘: 시설 모델 바운딩 박스 윗면 위에 흰 ★(금 테두리)이 떠올랐다 사라진다. 파트를 만들지 않는다
+local function roofIcon(plotId: number, facilityId: string)
+	local plot = PadController.plotModel(plotId)
+	-- 스트리밍으로 시설 모델이 늦게 들어올 수 있어 잠깐 기다린다(task.delay 안이라 yield 해도 된다)
+	local model = if plot then plot:WaitForChild(facilityId, ROOF_ICON_WAIT) else nil
+	if not model or not model:IsA("Model") or not popupFolder then
+		return
+	end
+	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+	if not anchor then
+		return
+	end
+	local box, size = model:GetBoundingBox()
+	local top = box.Position + Vector3.new(0, size.Y / 2 + ROOF_ICON_LIFT, 0)
+	local offset = top - anchor.Position
+
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "RoofIcon"
+	gui.Adornee = anchor
+	gui.Size = UDim2.fromOffset(ROOF_ICON_PX, ROOF_ICON_PX)
+	gui.StudsOffsetWorldSpace = offset
+	gui.AlwaysOnTop = true
+	gui.ResetOnSpawn = false
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = COLOR_WHITE
+	label.Text = ROOF_ICON_GLYPH
+	label.Parent = gui
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = COLOR_GOLD
+	stroke.Thickness = ROOF_ICON_STROKE
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.Parent = label
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.6
+	scale.Parent = label
+	gui.Parent = popupFolder
+
+	TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 })
+		:Play()
+	local rise = TweenInfo.new(ROOF_ICON_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(gui, rise, { StudsOffsetWorldSpace = offset + Vector3.new(0, ROOF_ICON_RISE, 0) }):Play()
+	-- 뒤 절반 동안 사라진다
+	local fade = TweenInfo.new(
+		ROOF_ICON_SECONDS * 0.5,
+		Enum.EasingStyle.Quad,
+		Enum.EasingDirection.In,
+		0,
+		false,
+		ROOF_ICON_SECONDS * 0.5
+	)
+	TweenService:Create(label, fade, { TextTransparency = 1 }):Play()
+	TweenService:Create(stroke, fade, { Transparency = 1 }):Play()
+	task.delay(ROOF_ICON_SECONDS + 0.1, function()
 		gui:Destroy()
 	end)
 end
@@ -775,6 +847,10 @@ handlers.purchase = function(payload: any)
 	end)
 	task.delay(1.2, function()
 		sound(SOUND_PAD)
+	end)
+	-- 완공 지붕 아이콘. 여기는 주인 화면뿐이다(위 mine 판정)
+	task.delay(ROOF_ICON_DELAY, function()
+		roofIcon(plotId :: number, facilityId)
 	end)
 end
 

@@ -20,7 +20,9 @@
 	    가구 1 DecorBuilder 모델(furnitureOf(n)) 을 furnitureCell() 칸 가운데, floorY(n) 에 놓는다(꾸미기와 같은 높이).
 	  층 번호: 교문 쪽(NUMBER_FACE, +Z)을 보는 면 두 곳 — z1 벽 바깥 면, z0 벽 안쪽 면 — 에 SurfaceGui 큰 숫자
 	           (흰 글씨·검정 테두리). 층 안에서 교문 쪽 카메라로 봐도 맞은편 벽에 숫자가 보인다. 파트가 아니다.
-	  창: 벽마다 SurfaceGui 1개 안 Frame WINDOW_COLS 개(연한 하늘색). 저사양 다이얼이 켜지면 창을 떼고 새로 만들지 않는다.
+	  창: PropAssets.WINDOW_TEXTURE.id > 0 이면 벽 바깥 면에 Texture 1장(PropAssets.windowTile, 창 하단이 벽 바닥 + sill).
+	      id 0 이면 벽마다 SurfaceGui 1개 안 Frame WINDOW_COLS 개(연한 하늘색, W7 방식 폴백).
+	      둘 다 이름 "Windows". 저사양 다이얼이 켜지면 창을 떼고 새로 만들지 않는다.
 	  SurfaceGui 는 모두 MaxDistance = GUI_MAX_DISTANCE. 저사양이면 벽 그림자(CastShadow)도 끈다.
 
 	LOD
@@ -32,14 +34,21 @@
 	  RenderStep "TowerFade"(Camera + 3, CameraController "CameraFade" 는 +2)에서 내 HumanoidRootPart → 카메라 쪽으로
 	  레이캐스트(Include TowerFx)를 맞은 곳 너머로 이어 가며, 맞은 파트 전부에 LocalTransparencyModifier = RENDER.FADE.
 	  이전 프레임 목록에 있었는데 이번에 안 맞은 파트는 0 으로 되돌린다(CameraController.updateFade 와 같은 방식).
-	  SurfaceGui(창·층 번호)는 LocalTransparencyModifier 를 따르지 않아 흐린 동안 Enabled false 로 숨긴다.
+	  SurfaceGui(창·층 번호)는 LocalTransparencyModifier 를 따르지 않아 흐린 동안 Enabled false 로 숨기고,
+	  Texture(창)는 Transparency 를 같이 FADE 로 올린다.
 	  ★ Popper 와 함께 도는 법: 기본 카메라 Popper(Camera 우선순위, 이 스텝보다 먼저)는 CanCollide 이고 전체 투명도
 	    < 0.25 인 파트를 가림막으로 보고 카메라를 그 앞으로 당긴다. 당겨진 카메라 → 캐릭터 레이는 벽을 지나지 않으므로
 	    레이는 캐릭터에서 카메라 방향으로 max(지금 거리, CameraMaxZoomDistance) 까지 쏜다(당기기 전 자리까지 닿는다).
 	    흐린 벽(LTM 0.88 → 전체 투명도 0.88)은 Popper 가림막이 아니라 다음 프레임부터 카메라가 제자리로 물러난다.
 	    들어가는 첫 프레임 한 번만 당겨진다. 카메라 뒤쪽 벽까지 흐릴 수 있으나 화면 밖이라 보이지 않는다.
 
-	게이트용 API: setEnabled(on)(끄면 전부 지움. 낙하 귀가 확인용), partCount(plotId), fadeStats().
+	층 컷어웨이(§3.6 #12, W8)
+	  같은 "TowerFade" 스텝에서 페이드보다 먼저 돈다. m 은 CameraController.cutawayFloor()(Camera+2 스텝이 이번 프레임에
+	  계산한 값)을 그대로 읽고 따로 계산하지 않는다. 부지는 CameraController.cutawayPlot(). 층 폴더(FloorNN, Floor 어트리뷰트)
+	  중 Floor > m 인 폴더의 파트(벽·칸 뒤판·가구)를 LocalTransparencyModifier 1, SurfaceGui Enabled false, Texture/Decal
+	  Transparency 1. CanCollide 는 그대로. m 이 nil 이면 전부 되돌린다. 숨긴 파트는 페이드 레이가 지나쳐 가고 흐리지 않는다.
+
+	게이트용 API: setEnabled(on)(끄면 전부 지움. 낙하 귀가 확인용), partCount(plotId), fadeStats(), cutawayStats(plotId).
 ]]
 
 local Players = game:GetService("Players")
@@ -52,6 +61,7 @@ local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 
 -- 형제 컨트롤러는 형태만 선언하고 any 로 받는다(DecorController 와 같은 방식)
@@ -59,14 +69,23 @@ type StudentRenderApi = {
 	isLowSpec: () -> boolean,
 }
 local StudentRenderController = (require(script.Parent.StudentRenderController) :: any) :: StudentRenderApi
+-- CameraController 는 이 모듈을 require 하지 않는다(순환 없음)
+type CameraApi = {
+	cutawayFloor: () -> number?,
+	cutawayPlot: () -> number?,
+}
+local CameraController = (require(script.Parent.CameraController) :: any) :: CameraApi
 
 local TowerRenderController = {}
 
 -- ── 수치(클라 루프 전용. 모양 수치는 TowerConfig.RENDER) ──
 local LOD_INTERVAL = 1
 local FADE_MAX_HITS = 8 -- 한 프레임에 이어 쏘는 레이 수 상한(벽 두 겹 × 층 여럿을 넉넉히)
+local FADE_MAX_SKIPS = 24 -- 컷어웨이로 숨긴 파트에 맞아 건너뛴 레이 수 상한(숨긴 위층 벽·가구를 지나가도 뒤 벽까지 닿게)
 local FADE_STEP = 0.01 -- 맞은 면 바로 안쪽에서 다시 쏜다(원점을 품은 파트는 레이에 안 맞는다)
 local WINDOWS_NAME = "Windows"
+local CUTAWAY_HIDE = 1 -- 위층 클라 파트 LocalTransparencyModifier·Texture 투명도
+local WINDOW_TEXTURE = PropAssets.WINDOW_TEXTURE
 
 local RENDER = TowerConfig.RENDER
 local FOOT = PlotLayout.TOWER_FOOTPRINT
@@ -147,6 +166,9 @@ local watchedStates: { [Instance]: { RBXScriptConnection } } = {}
 local faded: { [BasePart]: true } = {}
 local blocking: { [BasePart]: true } = {} -- updateFade 가 매 프레임 비워 다시 쓴다
 local fadeParams: RaycastParams? = nil
+-- 층 컷어웨이: 숨긴 층 폴더 → 그 안에서 숨긴 파트. hiddenParts 는 페이드 레이가 빨리 거르는 용도
+local hiddenFloors: { [Instance]: { BasePart } } = {}
+local hiddenParts: { [BasePart]: true } = {}
 
 -- ── 부지 읽기 ────────────────────────────────────────────────────
 
@@ -241,7 +263,27 @@ local function surface(
 	return gui
 end
 
+--- 창 Texture 한 장. 칸 폭·세로 위치는 PropAssets.windowTile(시설 벽 BuildKit.window 와 같은 식):
+--- 창 아랫변이 벽 바닥 + WINDOW_TEXTURE.sill
+local function addWindowTexture(part: BasePart, face: Enum.NormalId)
+	local width = if face == Enum.NormalId.Front or face == Enum.NormalId.Back then part.Size.X else part.Size.Z
+	local tileU, offsetV = PropAssets.windowTile(width, RENDER.WALL_H)
+	local texture = Instance.new("Texture")
+	texture.Name = WINDOWS_NAME
+	texture.Texture = "rbxassetid://" .. WINDOW_TEXTURE.id
+	texture.Face = face
+	texture.StudsPerTileU = tileU
+	texture.StudsPerTileV = WINDOW_TEXTURE.studsPerTile.Y
+	texture.OffsetStudsV = offsetV
+	texture.Transparency = 0
+	texture.Parent = part
+end
+
 local function addWindows(part: BasePart, face: Enum.NormalId, cols: number)
+	if WINDOW_TEXTURE.id > 0 then
+		addWindowTexture(part, face)
+		return
+	end
 	local gui = surface(part, WINDOWS_NAME, face, 0, RENDER.WINDOW_PIXELS_PER_STUD)
 	local rows = RENDER.WINDOW_ROWS
 	local inset = RENDER.WINDOW_INSET
@@ -284,6 +326,7 @@ end
 local function buildFloor(parent: Instance, pivot: CFrame, n: number, windows: boolean)
 	local folder = Instance.new("Folder")
 	folder.Name = floorName(n)
+	folder:SetAttribute(Keys.ATTR_FLOOR, n) -- 컷어웨이가 층 번호를 읽는다
 	local bottom = TowerConfig.floorY(n) + TowerConfig.LIFT -- 서버 바닥판 윗면
 	local color = TowerConfig.colorOf(n)
 
@@ -316,11 +359,19 @@ end
 
 -- ── 렌더 ─────────────────────────────────────────────────────────
 
---- 지울 파트를 페이드 목록에서 뺀다(파괴되면 되돌릴 필요가 없다)
+--- 지울 파트를 페이드·컷어웨이 목록에서 뺀다(파괴되면 되돌릴 필요가 없다)
 local function forgetFaded(root: Instance)
 	for part in faded do
 		if part:IsDescendantOf(root) then
 			faded[part] = nil
+		end
+	end
+	for folder, parts in hiddenFloors do
+		if folder == root or folder:IsDescendantOf(root) then
+			for _, part in parts do
+				hiddenParts[part] = nil
+			end
+			hiddenFloors[folder] = nil
 		end
 	end
 end
@@ -388,7 +439,7 @@ end
 local function dropWindows()
 	for _, entry in rendered do
 		for _, node in entry.folder:GetDescendants() do
-			if node:IsA("SurfaceGui") and node.Name == WINDOWS_NAME then
+			if (node:IsA("SurfaceGui") or node:IsA("Texture")) and node.Name == WINDOWS_NAME then
 				node:Destroy()
 			elseif node:IsA("Part") and node.Parent and node.Parent:IsA("Folder") then
 				node.CastShadow = false -- 가구 모델 파트는 Model 아래라 건드리지 않는다
@@ -454,6 +505,62 @@ local function setFaded(part: BasePart, on: boolean)
 	for _, child in part:GetChildren() do
 		if child:IsA("SurfaceGui") then
 			child.Enabled = not on
+		elseif child:IsA("Decal") then -- Texture 는 Decal 을 상속한다
+			child.Transparency = if on then RENDER.FADE else 0
+		end
+	end
+end
+
+-- ── 층 컷어웨이 ──────────────────────────────────────────────────
+
+--- 층 폴더 하나를 숨기거나 되돌린다. 숨길 때는 페이드 목록에서 빼서 0.88 이 1 을 덮지 않게 한다
+local function setFloorHidden(folder: Instance, on: boolean): { BasePart }
+	local parts: { BasePart } = {}
+	for _, node in folder:GetDescendants() do
+		if node:IsA("BasePart") then
+			node.LocalTransparencyModifier = if on then CUTAWAY_HIDE else 0
+			table.insert(parts, node)
+			if on then
+				faded[node] = nil
+				hiddenParts[node] = true
+			else
+				hiddenParts[node] = nil
+			end
+		elseif node:IsA("SurfaceGui") then
+			node.Enabled = not on
+		elseif node:IsA("Decal") then
+			node.Transparency = if on then CUTAWAY_HIDE else 0
+		end
+	end
+	return parts
+end
+
+--- CameraController 가 이번 프레임에 구한 m 으로 내가 선 부지의 Floor > m 층을 숨긴다
+local function updateCutaway()
+	local m = CameraController.cutawayFloor()
+	local plotId = CameraController.cutawayPlot()
+	local entry = if enabled and m and plotId then rendered[plotId] else nil
+	for folder, parts in hiddenFloors do
+		local n = folder:GetAttribute(Keys.ATTR_FLOOR)
+		local keep = entry ~= nil and m ~= nil and folder.Parent == entry.folder and type(n) == "number" and n > m
+		if not keep then
+			if folder.Parent then
+				setFloorHidden(folder, false)
+			else
+				for _, part in parts do
+					hiddenParts[part] = nil
+				end
+			end
+			hiddenFloors[folder] = nil
+		end
+	end
+	if not entry or not m then
+		return
+	end
+	for _, folder in entry.folder:GetChildren() do
+		local n = folder:GetAttribute(Keys.ATTR_FLOOR)
+		if type(n) == "number" and n > m and not hiddenFloors[folder] then
+			hiddenFloors[folder] = setFloorHidden(folder, true)
 		end
 	end
 end
@@ -470,10 +577,12 @@ local function restoreFaded(keep: { [BasePart]: true })
 end
 
 local function updateFade()
-	-- 그린 탑도 흐린 벽도 없으면 할 일이 없다(초반·강당 없는 부지)
-	if next(rendered) == nil and next(faded) == nil then
+	-- 그린 탑도 흐린 벽도 숨긴 층도 없으면 할 일이 없다(초반·강당 없는 부지)
+	if next(rendered) == nil and next(faded) == nil and next(hiddenFloors) == nil then
 		return
 	end
+	-- 컷어웨이 먼저. 숨긴 파트는 아래 레이가 지나쳐 간다
+	updateCutaway()
 	table.clear(blocking)
 	local params = fadeParams
 	local character = player.Character
@@ -487,7 +596,8 @@ local function updateFade()
 			local reach = math.max(away.Magnitude, player.CameraMaxZoomDistance)
 			local finish = target + away.Unit * reach
 			local origin = target
-			for _ = 1, FADE_MAX_HITS do
+			local hits, skips = 0, 0
+			while hits < FADE_MAX_HITS and skips < FADE_MAX_SKIPS do
 				local toFinish = finish - origin
 				if toFinish.Magnitude <= FADE_STEP then
 					break
@@ -497,9 +607,14 @@ local function updateFade()
 					break
 				end
 				local part = hit.Instance
-				blocking[part] = true
-				if not faded[part] then
-					setFaded(part, true)
+				if hiddenParts[part] then
+					skips += 1 -- 컷어웨이로 숨긴 파트는 FADE_MAX_HITS 예산을 쓰지 않는다
+				else
+					hits += 1
+					blocking[part] = true
+					if not faded[part] then
+						setFaded(part, true)
+					end
 				end
 				origin = hit.Position + toFinish.Unit * FADE_STEP
 			end
@@ -570,6 +685,13 @@ function TowerRenderController.setEnabled(on: boolean)
 		return
 	end
 	restoreFaded({})
+	for folder in hiddenFloors do
+		if folder.Parent then
+			setFloorHidden(folder, false)
+		end
+	end
+	table.clear(hiddenFloors)
+	table.clear(hiddenParts)
 	for plotId in rendered do
 		unrenderPlot(plotId)
 	end
@@ -599,6 +721,20 @@ function TowerRenderController.fadeStats(): { faded: number }
 		count += 1
 	end
 	return { faded = count }
+end
+
+--- 그 부지에서 층 컷어웨이로 숨긴 클라 파트 수(게이트용. 가구 모델 파트까지 센다)
+function TowerRenderController.cutawayStats(plotId: number): { hidden: number }
+	local entry = rendered[plotId]
+	local count = 0
+	if entry then
+		for folder, parts in hiddenFloors do
+			if folder.Parent == entry.folder then
+				count += #parts
+			end
+		end
+	end
+	return { hidden = count }
 end
 
 function TowerRenderController.Start()

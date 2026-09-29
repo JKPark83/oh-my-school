@@ -2,7 +2,7 @@
 --[[
 	광장. 기획서 §7.3, 계획서 §3.5.
 
-	Plaza.build() 가 돌려주는 Model 하나가 Workspace.Plaza 가 된다. 파트 ≤81(나무 9그루 × ≤5 포함, 광장 예산 ≤500), 전부 BuildKit.part.
+	Plaza.build() 가 돌려주는 Model 하나가 Workspace.Plaza 가 된다. 파트 ≤89(나무 9그루 × ≤5·화단 2 × 4 포함) + 스토어 모델(≤3 × entry.parts), 광장 예산 ≤500.
 	  Ground        750×750 잔디. 부지 12곳이 전부 이 위에 얹힌다
 	  Boundary ×4   ±375 에 투명 벽(높이 50, CanCollide) — 떨어지지 않게
 	  Pavement      가운데 125×125 포장
@@ -11,7 +11,9 @@
 	  Leaderboard   (0,20) 16×10 판. SurfaceGui(제목·순위)는 LeaderboardService 가 만든다
 	  NoticeBoard   (0,-20) 12×8 판 + 그림문자 4칸(SurfaceGui Frame)
 	  Bench ×4      네 모서리, 중심을 보게 돌려 놓는다
-	  Tree ×9       잔디에 비대칭으로 흩어 놓은 시드 나무(Tree.luau)
+	  Tree ×9       잔디에 비대칭으로 흩어 놓은 시드 나무(PropLibrary.tree, 메시 없으면 Tree.luau)
+	  Flowerbed ×2  알림판 양옆 포장 위 화단(PropLibrary.flowerbed)
+	  Store ×≤3     PropAssets.STORE_MODELS 가 있을 때만 잔디 자리에 비동기로 얹는다(비면 없음)
 	  ClockTower    포장 북서쪽 시계탑(파트 4). 멀리서 방향을 잡는 랜드마크
 
 	★ 지면 윗면은 y=-0.05 다. 부지 바닥(윗면 y=0, 두께 1)이 이 위에 겹치므로 면이 같으면 떨린다.
@@ -22,7 +24,8 @@ local BuildKit = require(script.Parent.Parent.BuildKit)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
-local Tree = require(script.Parent.Tree)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
+local PropLibrary = require(script.Parent.PropLibrary)
 
 local Plaza = {}
 
@@ -61,6 +64,13 @@ local TREE_SPOTS = {
 	Vector2.new(74, -67),
 }
 local TREE_SEED = 900 -- 부지 나무(plotId×100+i, ≤1202)와 겹치지 않게 시드를 띄운다
+
+-- 화단 2. 알림판(0,-20, 폭 12) 양옆 포장 위
+local FLOWERBED_SPOTS = { Vector2.new(-10, -20), Vector2.new(10, -20) }
+local FLOWERBED_SEED = 1300 -- 부지 화단(plotId×100+50+i, ≤1252)과도 겹치지 않게
+
+-- Creator Store 모델 자리 ≤3. 잔디 바깥쪽, 나무·교문 직선과 떨어진 곳
+local STORE_SPOTS = { Vector2.new(145, 138), Vector2.new(-140, 150), Vector2.new(-152, -140) }
 
 -- 시계탑. 포장 북서쪽에 하나만 둬서 어느 쪽이 북서인지 멀리서도 알 수 있다
 local CLOCK_POS = Vector3.new(-38, 0, -42)
@@ -323,8 +333,28 @@ function Plaza.build(): Model
 		buildBench(model, i, c.X * BENCH_R, c.Y * BENCH_R)
 	end
 	for i, spot in TREE_SPOTS do
-		local tree = Tree.build(model, CFrame.new(spot.X, GROUND_TOP, spot.Y), TREE_SEED + i)
+		local tree = PropLibrary.tree(model, CFrame.new(spot.X, GROUND_TOP, spot.Y), TREE_SEED + i)
 		tree.Name = string.format("Tree%02d", i)
+	end
+	for i, spot in FLOWERBED_SPOTS do
+		local bed =
+			PropLibrary.flowerbed(model, CFrame.new(spot.X, GROUND_TOP + PAVEMENT_T, spot.Y), FLOWERBED_SEED + i)
+		bed.Name = string.format("Flowerbed%02d", i)
+	end
+	-- 스토어 모델은 LoadAsset 이 기다리므로 광장 부팅을 막지 않게 따로 돈다. 목록이 비면 아무것도 안 한다
+	if #PropAssets.STORE_MODELS > 0 then
+		task.spawn(function()
+			for i, entry in PropAssets.STORE_MODELS do
+				if i > #STORE_SPOTS then
+					break
+				end
+				local spot = STORE_SPOTS[i]
+				local store = PropLibrary.storeModel(model, entry, CFrame.new(spot.X, GROUND_TOP, spot.Y))
+				if store then
+					store.Name = string.format("Store%02d", i)
+				end
+			end
+		end)
 	end
 
 	return model

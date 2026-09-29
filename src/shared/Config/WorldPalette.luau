@@ -19,6 +19,7 @@ local WorldPalette = {
 	hedge = rgb(80, 160, 80),
 	trunk = rgb(130, 90, 60),
 	blossom = rgb(255, 182, 206),
+	soil = rgb(150, 108, 72), -- 화단 흙판(PropLibrary.flowerbed)
 	-- 잎 3종. Tree 가 시드로 하나를 고른다
 	leaf = {
 		rgb(110, 190, 80),

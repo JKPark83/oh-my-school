@@ -107,14 +107,21 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 			material = Enum.Material.Wood,
 		}
 	)
-	put(model, "WallN", Vector3.new(row.size.X, h, WALL_T), at(plotCFrame, cx, y, cz - hz + WALL_T / 2), wallOpts())
+	local wallN =
+		put(model, "WallN", Vector3.new(row.size.X, h, WALL_T), at(plotCFrame, cx, y, cz - hz + WALL_T / 2), wallOpts())
 	local sideLen = row.size.Z - WALL_T * 2
-	put(model, "WallW", Vector3.new(WALL_T, h, sideLen), at(plotCFrame, cx - hx + WALL_T / 2, y, cz), wallOpts())
-	put(model, "WallE", Vector3.new(WALL_T, h, sideLen), at(plotCFrame, cx + hx - WALL_T / 2, y, cz), wallOpts())
+	local wallW =
+		put(model, "WallW", Vector3.new(WALL_T, h, sideLen), at(plotCFrame, cx - hx + WALL_T / 2, y, cz), wallOpts())
+	local wallE =
+		put(model, "WallE", Vector3.new(WALL_T, h, sideLen), at(plotCFrame, cx + hx - WALL_T / 2, y, cz), wallOpts())
 	local sz = cz + hz - WALL_T / 2
 	local side = (row.size.X - DOOR_W) / 2
 	put(model, "WallSW", Vector3.new(side, h, WALL_T), at(plotCFrame, cx - hx + side / 2, y, sz), wallOpts())
 	put(model, "WallSE", Vector3.new(side, h, WALL_T), at(plotCFrame, cx + hx - side / 2, y, sz), wallOpts())
+	-- 문 없는 세 벽 바깥 면에 창(§3.1 #8). id 0 이면 안 붙는다
+	BuildKit.window(wallN, Enum.NormalId.Front)
+	BuildKit.window(wallW, Enum.NormalId.Left)
+	BuildKit.window(wallE, Enum.NormalId.Right)
 	partIndex = 2 -- 상인방 + 지붕
 	put(
 		model,
@@ -124,6 +131,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		wallOpts()
 	)
 	-- 지붕은 벽 안쪽만 덮는다. 벽 위까지 덮으면 벽 윗면·바깥면과 겹쳐 깜빡인다(z-fighting)
+	-- 평지붕 유지: 파트 25(한도)라 박공 쐐기 1개를 더 넣을 수 없다(§3.1 #7)
 	local roofSize = Vector3.new(row.size.X - WALL_T * 2, ROOF_T, row.size.Z - WALL_T * 2)
 	put(model, "Roof", roofSize, at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
 		color = C.roof,

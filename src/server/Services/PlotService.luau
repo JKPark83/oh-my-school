@@ -264,7 +264,8 @@ local function refreshSilhouette(plotId: number, built: { [string]: boolean }, b
 			part.CastShadow = false
 		elseif part:IsA("Seat") then
 			part.Disabled = true
-		elseif part:IsA("SurfaceGui") or part:IsA("ProximityPrompt") or part:IsA("Light") then
+		-- Decal 은 창 텍스처(Texture)도 잡는다. 반투명 실루엣에 창만 또렷하면 이상하다
+		elseif part:IsA("SurfaceGui") or part:IsA("ProximityPrompt") or part:IsA("Light") or part:IsA("Decal") then
 			part:Destroy()
 		end
 	end

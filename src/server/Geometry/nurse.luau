@@ -1,9 +1,10 @@
 --!strict
 --[[
 	보건실(시설 8) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 23개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 24개(≤25), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
-	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위에 얹는 얇은 판이라
+	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade.
+	  지붕은 박공(쐐기 2, 용마루 X 방향, 처마 0.5). 문 없는 남·동·서벽 바깥 면에 창 텍스처(PropAssets, id 0 이면 없음). 바닥은 Shell 바닥 위에 얹는 얇은 판이라
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
 	  Seats/S01 = 침대 옆 의자. Attachment 위치 = 의자 아래 바닥 중심, LookVector = 학생이 보는 방향(침대 쪽 -X).
 	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z).
@@ -25,7 +26,7 @@ local COLOR_SECONDARY = Color3.fromRGB(200, 220, 240)
 local MATERIAL = Enum.Material.Fabric
 
 local WALL_T = 1 -- 벽 두께
-local ROOF_T = 1
+local ROOF_RISE = 5 -- 박공 벽 윗면 → 용마루
 local FLOOR_T = 0.2 -- Shell 바닥 위에 얹는 방 바닥 판 두께
 local DOOR_W = 8
 local DOOR_H = 8
@@ -76,7 +77,7 @@ local function wallOpts(): BuildKit.Opts
 	return { color = COLOR_WALL, material = Enum.Material.Concrete, fade = true }
 end
 
---- 벽 4(북벽은 문 양옆 두 조각 + 상인방) · 지붕 · 바닥 = 파트 8개. 바닥과 상인방을 돌려준다.
+--- 벽 4(북벽은 문 양옆 두 조각 + 상인방) · 박공 지붕 2 · 바닥 = 파트 9개. 바닥과 상인방을 돌려준다.
 local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.Facility): (Part, Part)
 	local cx, cz = row.center.X, row.center.Z
 	local w, d = row.size.X, row.size.Z
@@ -109,7 +110,8 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx + (DOOR_W + segW) / 2, wallY, northZ),
 		wallOpts()
 	)
-	part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
+	local wallS =
+		part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
 	part(
 		model,
 		"WallE",
@@ -117,13 +119,16 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx + w / 2 - WALL_T / 2, wallY, cz),
 		wallOpts()
 	)
-	part(
+	local wallW = part(
 		model,
 		"WallW",
 		Vector3.new(WALL_T, h, d - 2 * WALL_T),
 		at(plotCFrame, cx - w / 2 + WALL_T / 2, wallY, cz),
 		wallOpts()
 	)
+	-- 문 없는 바깥 벽 면에 창(§3.1 #8). id 0 이면 안 붙는다 — 동쪽은 과학실 벽과 맞닿아 남·서쪽만(맞닿은 면은 가려져 Texture 만 늘고, 페이드 때 벽 속에 비친다)
+	BuildKit.window(wallS, Enum.NormalId.Back)
+	BuildKit.window(wallW, Enum.NormalId.Left)
 	partIndex = 2 -- 상인방 + 지붕
 	local lintel = part(
 		model,
@@ -132,14 +137,13 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx, floorTop + DOOR_H + (h - DOOR_H) / 2, northZ),
 		wallOpts()
 	)
-	part(
-		model,
-		"Roof",
-		-- 벽 안쪽만 덮는다. 벽 위에 얹으면 강당 바닥을 뚫고 올라온다
-		Vector3.new(w - WALL_T * 2, ROOF_T, d - WALL_T * 2),
-		at(plotCFrame, cx, floorTop + h - ROOF_T / 2, cz),
-		{ color = COLOR_ROOF, material = Enum.Material.Slate, fade = true, light = true }
-	)
+	-- 박공지붕(§3.1 #7). 이 방 위에는 강당이 없어 벽 윗면에 얹고 처마를 낸다. 용마루는 긴 변(X) 방향
+	local eave = BuildKit.EAVE
+	local roofTop = at(plotCFrame, cx, floorTop + h, cz)
+	local roofOpts = { color = COLOR_ROOF, material = Enum.Material.Slate, fade = true, light = true }
+	for _, roof in { BuildKit.gableRoof(model, "Roof", roofTop, w + eave * 2, d + eave * 2, ROOF_RISE, roofOpts) } do
+		roof:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	end
 	return floor, lintel
 end
 
