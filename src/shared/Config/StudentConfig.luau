@@ -5,7 +5,7 @@
 	  tint            fallbackVariant 로 그릴 때 몸 전체에 곱하는 색. nil 이면 원본 텍스처
 	  prop            fallbackVariant 로 그릴 때 붙이는 소품 하나(≤1. 전용 메시엔 이미 있다). 등급 표식(완장·메달·파티클)은 tier 가 정하므로 여기 없다
 	  seat            정해진 자리. 그 시설이 없으면 자리 없음(Seats.seatOf)
-	  unlock          kind = "facility" (시설을 지으면) | "graduation" (n회 졸업 확정) | "gacha" (졸업 n회부터 뽑기 풀)
+	  unlock          kind = "facility" (시설을 지으면) | "graduation" (n회 졸업 확정) | "friend" (졸업 n회부터 친구 아이템이 상점에 진열)
 ]]
 
 local Types = require(script.Parent.Parent.Types)
@@ -13,8 +13,8 @@ local Types = require(script.Parent.Parent.Types)
 local StudentConfig = {}
 
 export type Unlock = {
-	kind: "facility" | "graduation" | "gacha",
-	value: string | number, -- facility → 시설 id, graduation/gacha → 졸업 횟수
+	kind: "facility" | "graduation" | "friend",
+	value: string | number, -- facility → 시설 id, graduation/friend → 졸업 횟수
 }
 
 export type Student = {
@@ -66,8 +66,8 @@ local function byGraduation(n: number): Unlock
 	return { kind = "graduation", value = n }
 end
 
-local function byGacha(fromGraduation: number): Unlock
-	return { kind = "gacha", value = fromGraduation }
+local function byFriend(fromGraduation: number): Unlock
+	return { kind = "friend", value = fromGraduation }
 end
 
 local LIST: { Student } = {
@@ -225,7 +225,7 @@ local LIST: { Student } = {
 		tint = C(200, 245, 205),
 		prop = nil,
 		seat = seat("desk", 5),
-		unlock = byGacha(0),
+		unlock = byFriend(0),
 	},
 	{
 		id = "s15",
@@ -236,7 +236,7 @@ local LIST: { Student } = {
 		tint = C(225, 205, 250),
 		prop = nil,
 		seat = seat("class2", 4),
-		unlock = byGacha(2),
+		unlock = byFriend(2),
 	},
 	{
 		id = "s16",
@@ -247,7 +247,7 @@ local LIST: { Student } = {
 		tint = C(250, 215, 180),
 		prop = nil,
 		seat = seat("class2", 5),
-		unlock = byGacha(3),
+		unlock = byFriend(3),
 	},
 	-- 전교1등
 	{
@@ -259,7 +259,7 @@ local LIST: { Student } = {
 		tint = C(215, 195, 245),
 		prop = "goldGlasses",
 		seat = seat("desk", 6),
-		unlock = byGacha(0),
+		unlock = byFriend(0),
 	},
 	{
 		id = "s18",
@@ -281,7 +281,7 @@ local LIST: { Student } = {
 		tint = C(195, 225, 250),
 		prop = "books",
 		seat = seat("cafeteria", 2),
-		unlock = byGacha(4),
+		unlock = byFriend(4),
 	},
 	{
 		id = "s20",
@@ -292,7 +292,7 @@ local LIST: { Student } = {
 		tint = C(195, 240, 200),
 		prop = "goggles",
 		seat = seat("cafeteria", 3),
-		unlock = byGacha(6),
+		unlock = byFriend(6),
 	},
 	{
 		id = "s21",
@@ -303,7 +303,7 @@ local LIST: { Student } = {
 		tint = C(250, 205, 225),
 		prop = "violin",
 		seat = seat("cafeteria", 4),
-		unlock = byGacha(7),
+		unlock = byFriend(7),
 	},
 	-- 전설
 	{
@@ -315,7 +315,7 @@ local LIST: { Student } = {
 		tint = C(215, 220, 230),
 		prop = "helmet",
 		seat = seat("class2", 1),
-		unlock = byGacha(0),
+		unlock = byFriend(0),
 	},
 	{
 		id = "s23",
@@ -337,7 +337,7 @@ local LIST: { Student } = {
 		tint = C(245, 245, 245),
 		prop = "tigerEars",
 		seat = seat("library", 2),
-		unlock = byGacha(8),
+		unlock = byFriend(8),
 	},
 }
 

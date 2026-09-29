@@ -31,8 +31,6 @@ local Tree = require(script.Parent.Tree)
 local PlotShell = {}
 
 local TEXT_HOME = "우리 학교로"
-local TEXT_ADMISSION = "입학 접수"
-local TEXT_ADMISSION_DESK = "입학 접수대"
 local TEXT_CONSTRUCTION = "공사 중"
 local PAD_STATE_HIDDEN = "hidden"
 local PROMPT_DISTANCE = 8
@@ -118,7 +116,6 @@ local C = {
 	desk = P.desk,
 	deskDome = P.deskDome,
 	deskSlot = P.darkText,
-	deskText = P.lightText,
 	cork = P.cork,
 	ghost = P.ghost,
 	ghostText = P.ghostText,
@@ -374,20 +371,13 @@ end
 
 local function buildAdmissionDesk(shell: Model, plotCFrame: CFrame)
 	local bodySize = Vector3.new(4, 6, 4)
-	local body = put(
-		shell,
-		Keys.ADMISSION_DESK,
-		bodySize,
-		plotCFrame * CFrame.new(ADMISSION + Vector3.new(0, bodySize.Y / 2, 0)),
-		{
-			color = C.desk,
-			material = Enum.Material.SmoothPlastic,
-		}
-	)
-	BuildKit.surfaceText(body, Enum.NormalId.Back, TEXT_ADMISSION, C.deskText, 0.6)
-	makePrompt(body, Keys.ADMISSION_PROMPT, TEXT_ADMISSION, TEXT_ADMISSION_DESK)
+	put(shell, Keys.ADMISSION_DESK, bodySize, plotCFrame * CFrame.new(ADMISSION + Vector3.new(0, bodySize.Y / 2, 0)), {
+		color = C.desk,
+		material = Enum.Material.SmoothPlastic,
+	})
+	-- 프롬프트·글자는 W4 에서 뺐다. 장식 건물만 남고, 용도는 W5·W6 에서 정한다
 
-	-- 뽑기 기계 느낌: 위에 유리 돔, 앞에 배출구
+	-- 장식 기계 느낌: 위에 유리 돔, 앞에 배출구
 	local domeD = 3.2
 	put(
 		shell,
@@ -448,7 +438,7 @@ local function buildEntrance(shell: Model, plotCFrame: CFrame)
 	})
 	-- TODO(통합): 강당(auditorium) 바닥은 착지대 윗면 y=18 과 같은 높이여야 하고, 계단 위 x 5~14 · z -10.5~6.5 는 비워 둬야 머리가 안 걸린다
 
-	-- 칭찬스티커판. 서쪽 벽 안쪽 면. 60칸은 클라(PadController)가 이 SurfaceGui 에 그린다
+	-- 칭찬스티커판. 서쪽 벽 안쪽 면. 40칸(BOARD_CELLS)은 클라(PadController)가 이 SurfaceGui 에 그린다
 	local board = put(shell, Keys.STICKER_BOARD, STICKER_BOARD_SIZE, plotCFrame * CFrame.new(STICKER_BOARD), {
 		color = C.cork,
 		material = Enum.Material.Fabric,

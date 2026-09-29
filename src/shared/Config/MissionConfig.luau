@@ -17,7 +17,7 @@ local LIST: { Mission } = {
 	{ id = "chair", text = "교장 의자 앉기", target = 1 },
 }
 MissionConfig.LIST = LIST
-MissionConfig.REWARD_TICKETS = 1
+MissionConfig.REWARD_CELLS = 20 -- 미션 완료 = 선물판 +20칸
 MissionConfig.KST_OFFSET = 9 * 3600
 MissionConfig.CHECK_INTERVAL = 60 -- 초. 날짜 바뀜 확인 주기
 MissionConfig.ALL_DONE_TEXT = "오늘 미션 다 했어요!"

@@ -4,7 +4,7 @@
 실행: python3 docs/sim/check-config.py      (어디서 돌려도 된다. 하나라도 다르면 종료 코드 1)
 §5.7 다이얼을 돌린 뒤 시뮬과 Config 를 같이 고쳤는지 이 한 줄로 다시 확인한다.
 Luau 는 정규식으로 숫자만 읽는다. 표 모양(키 = 값)이 바뀌면 여기 정규식도 같이 고친다.
-뽑기(GachaConfig)·CONTRIB·학생 등급·BOARD_CELLS 는 sim-parts.py 에 없어 대조하지 않는다(W4 스키마 v2 에서 지운다).
+CONTRIB·학생 등급은 sim-parts.py 에 없어 대조하지 않는다(뽑기는 W4 스키마 v2 에서 지웠다).
 """
 import importlib.util
 import re
@@ -39,7 +39,7 @@ def block(src, name):
     return m.group(1) if m else ""
 
 
-eco, fac = read("EconomyConfig.luau"), read("FacilityConfig.luau")
+eco, fac, mis = read("EconomyConfig.luau"), read("FacilityConfig.luau"), read("MissionConfig.luau")
 
 # 시설: 순서대로 (id, [부품 가격…], income, spawns)
 facilities = [
@@ -59,8 +59,10 @@ def cum_spawns(adds, base=0):
 
 
 rows = [(k, getattr(sim, k), scalar(eco, "EconomyConfig", k)) for k in
-        ("START_COINS", "GRAD_STEP", "STICKER_MIN", "STICKER_SECONDS", "GOLD_EVERY", "GOLD_MULT", "RESPAWN")]
+        ("START_COINS", "GRAD_STEP", "STICKER_MIN", "STICKER_SECONDS", "GOLD_EVERY", "GOLD_MULT", "RESPAWN",
+         "BOARD_CELLS", "GIFT_COIN_VALUE")]
 rows += [
+    ("REWARD_CELLS", sim.REWARD_CELLS, scalar(mis, "MissionConfig", "REWARD_CELLS")),
     ("PRICE_SCALE", sim.PRICE_SCALE, scalar(fac, "FacilityConfig", "PRICE_SCALE")),
     ("시설 순서(id)", [f[0] for f in sim.FACILITIES], [f[0] for f in facilities]),
     ("시설 초당 수입", [f[2] for f in sim.FACILITIES], [f[2] for f in facilities]),

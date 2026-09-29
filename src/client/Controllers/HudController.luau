@@ -44,7 +44,6 @@ local PANEL = Color3.fromRGB(31, 41, 55)
 local PANEL_ALPHA = 0.15 -- α0.85
 local YELLOW = Color3.fromRGB(251, 191, 36)
 local GREEN = Color3.fromRGB(52, 211, 153)
-local BLUE = Color3.fromRGB(96, 165, 250)
 local GOLD = Color3.fromRGB(245, 158, 11)
 local WHITE = Color3.fromRGB(255, 255, 255)
 local MUTED = Color3.fromRGB(209, 213, 219)
@@ -87,9 +86,8 @@ local TEXT_GO_HOME = "우리 학교로"
 local TEXT_GO_HOME_SUB = "탭하면 돌아가요"
 local TEXT_BOARD = "스티커판"
 
--- TODO(통합): 아이콘 이미지(용돈·원서·스티커·도감·미션·설정·집). 지금은 글리프로 대신한다
+-- TODO(통합): 아이콘 이미지(용돈·스티커·도감·미션·설정·집). 지금은 글리프로 대신한다
 local GLYPH_COINS = "💰"
-local GLYPH_TICKET = "🎫"
 local GLYPH_HOME = "🏠"
 local GLYPH_SETTINGS = "⚙️"
 local GLYPH_CODEX = "📖"
@@ -134,13 +132,10 @@ local coinsChip: Frame
 local coinsLabel: TextLabel
 local coinsDelta: TextLabel
 local coinsValue: NumberValue
+local coinsScale: UIScale
 local incomeChip: Frame
 local incomeLabel: TextLabel
 local incomeScale: UIScale
-local ticketChip: TextButton
-local ticketLabel: TextLabel
-local ticketStroke: UIStroke
-local ticketScale: UIScale
 local card: TextButton
 local cardCaption: TextLabel
 local cardName: TextLabel
@@ -307,19 +302,17 @@ local function rootLocal(gui: GuiObject): Vector2
 	return (center - root.AbsolutePosition) / scale
 end
 
---- 스티커판이 찼을 때 원서 아이콘이 원서 칩으로 날아간다(§8.2)
-local function flyTicket()
+--- 스티커판 40칸 = 선물. 코인 글리프가 판 칩에서 용돈 칩으로 날아가고 도착하면 용돈 칩이 펀치
+local function flyGift()
 	local from = rootLocal(boardChip)
-	local to = rootLocal(ticketChip)
+	local to = rootLocal(coinsChip)
 	flyer.Position = UDim2.fromOffset(from.X, from.Y)
 	flyer.TextTransparency = 0
 	flyer.Visible = true
 	local t = tween(flyer, FLY_SECONDS, { Position = UDim2.fromOffset(to.X, to.Y) }, Enum.EasingStyle.Quad)
 	t.Completed:Once(function()
 		flyer.Visible = false
-		if ticketChip.Visible then
-			punch(ticketScale)
-		end
+		punch(coinsScale)
 	end)
 end
 
@@ -463,28 +456,11 @@ local function renderIncome(profile: Profile, prev: Profile?)
 	end
 end
 
-local function renderTickets(profile: Profile, prev: Profile?)
-	local visible = profile.tickets > 0 or profile.stats.totalPulls > 0
-	ticketChip.Visible = visible
-	if not visible then
-		pulse(ticketStroke, false)
-		return
-	end
-	ticketLabel.Text = `{GLYPH_TICKET} {profile.tickets}장`
-	pulse(ticketStroke, profile.tickets >= 1)
-	if prev and profile.tickets > prev.tickets then
-		punch(ticketScale)
-	end
-end
-
-local function renderBoard(profile: Profile, prev: Profile?)
+-- 판이 찬 순간은 GiftOpened 가 알려 준다(onGift)
+local function renderBoard(profile: Profile)
 	boardChip.Visible = unlocked(profile)
 	boardLabel.Text = `{profile.stickerBoard}/{EconomyConfig.BOARD_CELLS}`
 	boardFill.Size = UDim2.fromScale(math.clamp(profile.stickerBoard / EconomyConfig.BOARD_CELLS, 0, 1), 1)
-	-- 칸이 줄었다 = 60칸을 채워 원서가 됐다(졸업은 판을 유지하므로 다른 이유가 없다)
-	if prev and boardChip.Visible and profile.stickerBoard < prev.stickerBoard then
-		flyTicket()
-	end
 end
 
 local function renderMultiplier(profile: Profile, prev: Profile?)
@@ -574,8 +550,7 @@ end
 local function render(profile: Profile, prev: Profile?)
 	renderCoins(profile, prev)
 	renderIncome(profile, prev)
-	renderTickets(profile, prev)
-	renderBoard(profile, prev)
+	renderBoard(profile)
 	renderMultiplier(profile, prev)
 	renderButtons(profile)
 	renderCard(profile)
@@ -610,13 +585,6 @@ local function onCardTap()
 		panTo(padPosition(plotId, nextRow.id))
 	else
 		panTo(partPosition(plotId, Keys.GRADUATION_BELL))
-	end
-end
-
-local function onTicketTap()
-	local plotId = HudController.myPlotId()
-	if plotId then
-		panTo(partPosition(plotId, Keys.ADMISSION_DESK))
 	end
 end
 
@@ -702,6 +670,7 @@ local function buildGui()
 
 	-- 용돈 칩 (12, 12) 200×32
 	coinsChip = makePanel(root, "Coins", UDim2.fromOffset(12, 12), UDim2.fromOffset(200, 32))
+	coinsScale = makeScale(coinsChip)
 	local coinsGlyph = makeLabel(coinsChip, "Glyph", Enum.Font.GothamBold, YELLOW)
 	coinsGlyph.Position = UDim2.fromOffset(8, 4)
 	coinsGlyph.Size = UDim2.fromOffset(24, 24)
@@ -731,16 +700,7 @@ local function buildGui()
 	incomeLabel.TextXAlignment = Enum.TextXAlignment.Left
 	incomeChip.Visible = false
 
-	-- 원서 칩 (12, 84) 160×28. 탭 → 접수대로 팬
-	ticketChip = makeButton(root, "Tickets", UDim2.fromOffset(12, 84), UDim2.fromOffset(160, 28))
-	ticketScale = makeScale(ticketChip)
-	ticketStroke = makeStroke(ticketChip, BLUE)
-	ticketLabel = makeLabel(ticketChip, "Value", Enum.Font.GothamBold, BLUE)
-	ticketLabel.Position = UDim2.fromOffset(8, 3)
-	ticketLabel.Size = UDim2.fromOffset(144, 22)
-	ticketLabel.TextXAlignment = Enum.TextXAlignment.Left
-	ticketChip.Visible = false
-	ticketChip.Activated:Connect(onTicketTap)
+	-- (12, 84) 자리는 비워 둔다(W6 「꾸미기」 버튼)
 
 	-- 「다음 시설」 카드 (306, 12) 200×64, 가운데 정렬
 	card = makeButton(root, "NextFacility", UDim2.new(0.5, 0, 0, 12), UDim2.fromOffset(200, 64))
@@ -861,11 +821,11 @@ local function buildGui()
 	bannerLabel.Visible = false
 	makeScale(bannerLabel)
 
-	-- 스티커판 → 원서 칩으로 날아가는 아이콘
-	flyer = makeLabel(root, "Flyer", Enum.Font.GothamBold, BLUE)
+	-- 스티커판 → 용돈 칩으로 날아가는 코인(선물)
+	flyer = makeLabel(root, "Flyer", Enum.Font.GothamBold, YELLOW)
 	flyer.AnchorPoint = Vector2.new(0.5, 0.5)
 	flyer.Size = UDim2.fromOffset(28, 28)
-	flyer.Text = GLYPH_TICKET
+	flyer.Text = GLYPH_COINS
 	flyer.Visible = false
 	flyer.ZIndex = 5
 
@@ -953,6 +913,14 @@ function HudController.hold(on: boolean)
 			render(profile, from)
 		end
 	end
+end
+
+--- 서버 GiftOpened(본인에게만). 판 칩이 보일 때만 코인이 날아간다. 졸업식 중에는 HUD 가 숨어 있어 건너뛴다
+function HudController.onGift(_payload: any)
+	if not built or held or not boardChip.Visible then
+		return
+	end
+	flyGift()
 end
 
 --- 2.6초 토스트

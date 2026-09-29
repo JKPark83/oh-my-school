@@ -1,14 +1,13 @@
 --!strict
 --[[
-	패널 컨트롤러. 기획서 §8.3 의 패널 5개를 코드로 그린다.
-	  도감(714×330) · 뽑기(568×300) · 미션(568×300) · 설정(406×150) · 졸업 확인(전체 화면)
+	패널 컨트롤러. 기획서 §8.3 의 패널 4개를 코드로 그린다.
+	  도감(714×330) · 미션(568×300) · 설정(406×150) · 졸업 확인(전체 화면)
 
 	  ★ 한 번에 하나만 연다. 열기 0.2s Back Out(0.9→1.0), 닫기 0.12s Quad In.
 	  ★ ScreenGui "Panels" DisplayOrder 5, IgnoreGuiInset. UIScale = clamp(세로/375, 0.9, 1.6).
 	  ★ X 버튼 56×56, 바깥 탭, 안드로이드 뒤로가기(ButtonB) 로 닫는다.
 	  ★ 프로필은 HudController.profile() / onProfile() 로만 읽는다(구현계획 §3.4).
-	  ★ 서버 호출은 RollGacha / Graduate / SetSetting 세 개. 원서 0장이면 RollGacha 를 안 보낸다.
-	  ★ 카메라 흔들림 같은 화면 연출은 FeedbackController.play 에 맡기고 여기서는 패널 안 UI 만 움직인다.
+	  ★ 서버 호출은 Graduate / SetSetting 두 개.
 	  ★ 도감 ViewportFrame 은 열 때 만들고 닫을 때 지운다(모바일 메모리).
 	  ★ 아이콘 이미지는 아직 없어 이모지·글자로 대신한다. -- TODO(통합): 아이콘 이미지
 ]]
@@ -27,29 +26,18 @@ local Format = require(Shared.Format)
 local CharacterBuilder = require(Shared.CharacterBuilder)
 local EconomyConfig = require(Shared.Config.EconomyConfig)
 local StudentConfig = require(Shared.Config.StudentConfig)
-local GachaConfig = require(Shared.Config.GachaConfig)
 local MissionConfig = require(Shared.Config.MissionConfig)
 
 -- 형제 컨트롤러. 계약(구현계획 §3.4)의 함수만 쓴다. 아직 옛 버전이 남아 있을 수 있어 타입은 묻지 않는다
 local Controllers = script.Parent
 local HudController = require(Controllers.HudController) :: any
--- 순환 require 회피(Feedback → Pad → Panel → Feedback). 쓰는 곳이 한 곳뿐이라 늦게 잇는다
-local feedbackCache: any = nil
-local function feedback(): any
-	if not feedbackCache then
-		feedbackCache = require(Controllers.FeedbackController) :: any
-	end
-	return feedbackCache
-end
 local SoundController = require(Controllers.SoundController) :: any
 
 type Profile = Types.Profile
-type GachaResult = Types.GachaResult
-type Tier = Types.Tier
 
 local PanelController = {}
 
-export type PanelName = "codex" | "gacha" | "missions" | "settings" | "graduate"
+export type PanelName = "codex" | "missions" | "settings" | "graduate"
 
 -- ── 상수 ──
 
@@ -66,7 +54,6 @@ local TEXT_MAX = 32
 
 local SIZES: { [string]: Vector2 } = {
 	codex = Vector2.new(714, 330),
-	gacha = Vector2.new(568, 300),
 	missions = Vector2.new(568, 300),
 	settings = Vector2.new(406, 150),
 	graduate = Vector2.new(812, 375), -- 전체 화면 안 내용 영역
@@ -81,9 +68,6 @@ local WHITE = Color3.fromRGB(255, 255, 255)
 local GREY = Color3.fromRGB(156, 163, 175)
 local YELLOW = Color3.fromRGB(251, 191, 36)
 local GREEN = Color3.fromRGB(52, 211, 153)
-local BLUE = Color3.fromRGB(96, 165, 250)
-local PURPLE = Color3.fromRGB(167, 139, 250)
-local GOLD = Color3.fromRGB(245, 158, 11)
 
 local FONT_BOLD = Enum.Font.GothamBold
 local FONT_MEDIUM = Enum.Font.GothamMedium
@@ -91,21 +75,6 @@ local FONT_MEDIUM = Enum.Font.GothamMedium
 -- 도감
 local CODEX_CELL = Vector2.new(96, 120)
 local CODEX_COLUMNS = 6
-
--- 뽑기(§9.2 타임라인)
-local BOARD_DOTS = 10
-local SHAKE_TIME = 1.2
-local SHAKE_DEG = 6
-local SHAKE_STEP = 0.08
-local REVEAL_TIME = 0.3
-local FLIP_TIME = 0.3
-local RESULT_READY = 2.0
-local STAMP_DELAY = 0.2
-local DUPE_SHOW = 2.0
-local STAMP_SOUND = "build" -- 기획서 §9.6: build 가 도장 소리다
-local ROLL_TIMEOUT = 8 -- 서버 응답이 이만큼 없으면 버튼을 되살린다
-local TIER_SOUND: { [string]: string } = { ["반장"] = "arrive", ["전교1등"] = "fanfare", ["전설"] = "legend" }
-local TIER_COLOR: { [string]: Color3 } = { ["반장"] = BLUE, ["전교1등"] = PURPLE, ["전설"] = GOLD }
 
 -- 졸업
 local HOLD_TIME = 1.5
@@ -130,8 +99,6 @@ local currentScale: UIScale? = nil
 local currentRefresh: ((Profile) -> ())? = nil
 local currentCleanup: { () -> () } = {}
 local generation = 0 -- 열 때마다 +1. 늦게 도착한 코루틴이 옛 패널을 만지지 않게 한다
-local pendingGacha: GachaResult? = nil
-local lastSeq = 0
 
 -- ── 작은 유틸 ──
 
@@ -275,15 +242,6 @@ local function button(
 	c.MaxTextSize = maxText or TEXT_MAX
 	c.Parent = b
 	return b
-end
-
---- 버튼 활성/비활성. 색만 바꾸지 않고 글자도 함께 바꾼다(회색 + 이유 문구)
-local function setEnabled(b: TextButton, enabled: boolean, text: string, color: Color3)
-	b.Active = enabled
-	b.AutoButtonColor = enabled
-	b.Text = text
-	b.BackgroundColor3 = if enabled then color else GREY
-	b.TextColor3 = if enabled then DARK else SURFACE
 end
 
 --- 사람 실루엣(머리 원 + 몸통). 원형이 없거나 미보유일 때 뷰포트 대신 쓴다
@@ -496,7 +454,6 @@ end
 -- ── 도감 ──
 
 local function buildCodex(content: Frame)
-	local myGen = generation
 	local profile = profileOrNil()
 	local students: { [string]: number } = if profile then profile.students else {}
 	local owned = StudentConfig.ownedCount(students)
@@ -506,7 +463,7 @@ local function buildCodex(content: Frame)
 		content,
 		"Title",
 		`도감 {owned}/{StudentConfig.COUNT}`,
-		UDim2.new(1, -X_SIZE, 0, 36),
+		UDim2.fromOffset(180, 36),
 		nil,
 		26,
 		YELLOW,
@@ -535,7 +492,7 @@ local function buildCodex(content: Frame)
 	grid.SortOrder = Enum.SortOrder.LayoutOrder
 	grid.Parent = scroll
 
-	local views: { { id: string, card: Frame } } = {}
+	local tabGen = 0 -- 탭을 바꿀 때마다 +1. 옛 탭의 뷰포트 코루틴이 멈춘다
 
 	local function cell(order: number, name: string): Frame
 		local card = frame(scroll, name, UDim2.fromOffset(CODEX_CELL.X, CODEX_CELL.Y), nil, SURFACE)
@@ -544,53 +501,115 @@ local function buildCodex(content: Frame)
 		return card
 	end
 
-	for i, id in StudentConfig.ORDER do
-		local row = StudentConfig.BY_ID[id]
-		local count = students[id] or 0
-		local card = cell(i, id)
-		if count > 0 then
-			local style = StudentConfig.TIER_STYLE[row.tier]
-			stroke(card, style.color, style.stroke)
-			label(card, "Name", row.name, UDim2.new(1, -8, 0, 24), UDim2.new(0, 4, 1, -28), 18, WHITE, FONT_BOLD)
-			if count > 1 then
-				local badge = label(
-					card,
-					"Dupe",
-					`×{count}`,
-					UDim2.fromOffset(40, 20),
-					UDim2.new(1, -44, 0, 4),
-					16,
-					YELLOW,
-					FONT_BOLD
-				)
-				badge.TextXAlignment = Enum.TextXAlignment.Right
-			end
-			table.insert(views, { id = id, card = card })
-		else
-			stroke(card, GREY, 2)
-			silhouette(card, UDim2.new(1, -24, 0, 80), UDim2.fromOffset(12, 8), DARK)
-			label(card, "Unknown", "?", UDim2.new(1, 0, 0, 28), UDim2.new(0, 0, 1, -32), 26, GREY, FONT_BOLD)
-		end
+	--- 미보유 칸: 회색 테두리 + 실루엣 + 아래 글자
+	local function lockedCell(order: number, name: string, text: string, maxText: number)
+		local card = cell(order, name)
+		stroke(card, GREY, 2)
+		silhouette(card, UDim2.new(1, -24, 0, 80), UDim2.fromOffset(12, 8), DARK)
+		label(card, "Unknown", text, UDim2.new(1, 0, 0, 28), UDim2.new(0, 0, 1, -32), maxText, GREY, FONT_BOLD)
 	end
 
-	-- 25번째 예약석
-	local reserved = cell(#StudentConfig.ORDER + 1, "Reserved")
-	stroke(reserved, GREY, 2)
-	silhouette(reserved, UDim2.new(1, -24, 0, 80), UDim2.fromOffset(12, 8), DARK)
-	label(reserved, "Soon", "곧 와요", UDim2.new(1, 0, 0, 28), UDim2.new(0, 0, 1, -32), 18, GREY)
-
-	-- 뷰포트는 프레임 뒤에 나눠 만든다. 닫히면(세대 바뀜) 남은 건 안 만든다
-	task.spawn(function()
-		for _, v in views do
-			if myGen ~= generation then
-				return
+	--- tab = "school"(학교 친구: 시설·졸업 해금) | "friend"(함께 오는 친구: 꾸미기로 만난다)
+	local function fill(tab: string)
+		tabGen += 1
+		local myTab = tabGen
+		local myGen = generation
+		for _, child in scroll:GetChildren() do
+			if child:IsA("GuiObject") then
+				child:Destroy()
 			end
-			if v.card.Parent then
-				studentView(v.card, v.id, UDim2.new(1, -8, 0, 84), UDim2.fromOffset(4, 4))
-			end
-			RunService.Heartbeat:Wait()
 		end
-	end)
+		local views: { { id: string, card: Frame } } = {}
+		local order = 0
+		for _, id in StudentConfig.ORDER do
+			local row = StudentConfig.BY_ID[id]
+			local isFriend = row.unlock.kind == "friend"
+			if isFriend == (tab == "friend") then
+				order += 1
+				local count = students[id] or 0
+				if count > 0 then
+					local card = cell(order, id)
+					local style = StudentConfig.TIER_STYLE[row.tier]
+					stroke(card, style.color, style.stroke)
+					label(
+						card,
+						"Name",
+						row.name,
+						UDim2.new(1, -8, 0, 24),
+						UDim2.new(0, 4, 1, -28),
+						18,
+						WHITE,
+						FONT_BOLD
+					)
+					if count > 1 then
+						local badge = label(
+							card,
+							"Dupe",
+							`×{count}`,
+							UDim2.fromOffset(40, 20),
+							UDim2.new(1, -44, 0, 4),
+							16,
+							YELLOW,
+							FONT_BOLD
+						)
+						badge.TextXAlignment = Enum.TextXAlignment.Right
+					end
+					table.insert(views, { id = id, card = card })
+				elseif isFriend then
+					lockedCell(order, id, "꾸미기로 만나요", 14)
+				else
+					lockedCell(order, id, "?", 26)
+				end
+			end
+		end
+
+		if tab == "school" then
+			-- 예약석
+			local reserved = cell(order + 1, "Reserved")
+			stroke(reserved, GREY, 2)
+			silhouette(reserved, UDim2.new(1, -24, 0, 80), UDim2.fromOffset(12, 8), DARK)
+			label(reserved, "Soon", "곧 와요", UDim2.new(1, 0, 0, 28), UDim2.new(0, 0, 1, -32), 18, GREY)
+		end
+
+		-- 뷰포트는 프레임 뒤에 나눠 만든다. 닫히거나 탭이 바뀌면(세대 바뀜) 남은 건 안 만든다
+		task.spawn(function()
+			for _, v in views do
+				if myGen ~= generation or myTab ~= tabGen then
+					return
+				end
+				if v.card.Parent then
+					studentView(v.card, v.id, UDim2.new(1, -8, 0, 84), UDim2.fromOffset(4, 4))
+				end
+				RunService.Heartbeat:Wait()
+			end
+		end)
+	end
+
+	-- 탭 2개. 고른 탭은 노랑, 나머지는 어두운 면
+	local tabs: { { key: string, button: TextButton } } = {}
+	local function selectTab(key: string)
+		for _, t in tabs do
+			local on = t.key == key
+			t.button.BackgroundColor3 = if on then YELLOW else SURFACE
+			t.button.TextColor3 = if on then DARK else WHITE
+		end
+		fill(key)
+	end
+	for i, def in { { key = "school", text = "학교 친구" }, { key = "friend", text = "함께 오는 친구" } } do
+		local b = button(
+			content,
+			`Tab_{def.key}`,
+			def.text,
+			UDim2.fromOffset(170, 36),
+			UDim2.fromOffset(190 + (i - 1) * 180, 0)
+		)
+		b.Activated:Connect(function()
+			selectTab(def.key)
+			SoundController.play("tick")
+		end)
+		table.insert(tabs, { key = def.key, button = b })
+	end
+	selectTab("school")
 
 	currentRefresh = function(p: Profile)
 		title.Text = `도감 {StudentConfig.ownedCount(p.students)}/{StudentConfig.COUNT}`
@@ -634,7 +653,7 @@ local function buildMissions(content: Frame)
 		label(
 			inner,
 			"Reward",
-			`🎫+{MissionConfig.REWARD_TICKETS}`,
+			`🎁+{MissionConfig.REWARD_CELLS}칸`,
 			UDim2.fromOffset(70, 24),
 			UDim2.new(1, -140, 0, 12),
 			18,
@@ -728,292 +747,6 @@ local function buildSettings(content: Frame)
 	currentRefresh = refresh
 end
 
--- ── 뽑기 ──
-
-local function buildGacha(content: Frame)
-	local myGen = generation
-	padding(content, 14, 10)
-	local title =
-		label(content, "Title", "입학 원서 뽑기", UDim2.new(1, -X_SIZE, 0, 30), nil, 24, YELLOW, FONT_BOLD)
-	title.TextXAlignment = Enum.TextXAlignment.Left
-
-	-- 왼쪽: 확률판 10×10 + 확률 글자
-	local left = frame(content, "Board", UDim2.fromOffset(130, 240), UDim2.fromOffset(0, 40))
-	local dots = frame(left, "Dots", UDim2.fromOffset(120, 120), UDim2.fromOffset(5, 0))
-	local dotGrid = Instance.new("UIGridLayout")
-	dotGrid.CellSize = UDim2.fromOffset(10, 10)
-	dotGrid.CellPadding = UDim2.fromOffset(2, 2)
-	dotGrid.FillDirectionMaxCells = BOARD_DOTS
-	dotGrid.SortOrder = Enum.SortOrder.LayoutOrder
-	dotGrid.Parent = dots
-	local order = 0
-	for _, rate in GachaConfig.RATES do
-		local n = math.floor(rate.p * BOARD_DOTS * BOARD_DOTS + 0.5)
-		for _ = 1, n do
-			order += 1
-			local d = frame(dots, "Dot", UDim2.fromOffset(10, 10), nil, TIER_COLOR[rate.tier] or GREY)
-			d.LayoutOrder = order
-			corner(d, 999)
-		end
-	end
-	local rates = frame(left, "Rates", UDim2.fromOffset(130, 66), UDim2.fromOffset(0, 130))
-	listLayout(rates, Enum.FillDirection.Vertical, 2, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
-	for i, rate in GachaConfig.RATES do
-		local l = label(
-			rates,
-			rate.tier,
-			`{rate.tier} {math.floor(rate.p * 100 + 0.5)}%`,
-			UDim2.new(1, 0, 0, 20),
-			nil,
-			16,
-			TIER_COLOR[rate.tier] or GREY,
-			FONT_BOLD
-		)
-		l.LayoutOrder = i
-		l.TextXAlignment = Enum.TextXAlignment.Left
-	end
-
-	-- 가운데: 캡슐 + 「뽑기」
-	local center = frame(content, "Center", UDim2.fromOffset(260, 240), UDim2.fromOffset(140, 40))
-	local capsule = frame(center, "Capsule", UDim2.fromOffset(96, 120), UDim2.fromScale(0.5, 0))
-	capsule.AnchorPoint = Vector2.new(0.5, 0)
-	local capTop = frame(capsule, "Top", UDim2.fromScale(1, 0.5), nil, Color3.fromRGB(240, 244, 248))
-	corner(capTop, 48)
-	local capBottom = frame(capsule, "Bottom", UDim2.fromScale(1, 0.5), UDim2.fromScale(0, 0.5), GREY)
-	corner(capBottom, 48)
-	frame(capsule, "Band", UDim2.new(1, 8, 0, 8), UDim2.new(0, -4, 0.5, -4), DARK)
-	local ticketsText =
-		label(center, "Tickets", "", UDim2.fromOffset(268, 24), UDim2.fromOffset(0, 128), 20, WHITE, FONT_BOLD)
-	local rollButton =
-		button(center, "Roll", "뽑기", UDim2.fromOffset(260, 72), UDim2.fromScale(0.5, 1), YELLOW, DARK, 30)
-	rollButton.AnchorPoint = Vector2.new(0.5, 1)
-
-	-- 오른쪽: 코스모 실루엣 + 천장 링
-	local right = frame(content, "Pity", UDim2.fromOffset(130, 180), UDim2.fromOffset(410, 56))
-	silhouette(right, UDim2.fromOffset(60, 70), UDim2.fromOffset(35, 0), DARK)
-	local ring, setRing = makeRing(right, 72, 6, GOLD)
-	ring.Position = UDim2.fromOffset(29, 76)
-	local pityText = label(ring, "Left", "", UDim2.fromScale(1, 1), nil, 16, GOLD, FONT_BOLD)
-	label(right, "Hint", "전설 확정", UDim2.fromOffset(130, 20), UDim2.fromOffset(0, 152), 14, GREY)
-
-	local busy = false
-	local overlay: Frame? = nil
-
-	local function refreshStatic(p: Profile)
-		ticketsText.Text = `원서 {p.tickets}장`
-		local remain = GachaConfig.pityLeft(p.pity)
-		pityText.Text = `{remain}장 더`
-		setRing(1 - remain / GachaConfig.PITY)
-		if not busy then
-			if p.tickets >= 1 then
-				setEnabled(rollButton, true, "뽑기", YELLOW)
-			else
-				setEnabled(rollButton, false, "원서가 없어요", YELLOW)
-			end
-		end
-	end
-
-	local function clearOverlay()
-		if overlay then
-			overlay:Destroy()
-			overlay = nil
-		end
-		capsule.Rotation = 0
-		capBottom.BackgroundColor3 = GREY
-	end
-
-	local roll: () -> ()
-
-	--- 결과 카드. 0 → 가로 펼침 0.3s Back Out. 2.0s 부터 「확인」/「다시!」
-	local function showResult(result: GachaResult, t0: number)
-		local ov = frame(content, "Result", UDim2.new(1, 28, 1, 20), UDim2.fromOffset(-14, -10), PANEL_BG, 0.2)
-		ov.ZIndex = 3
-		overlay = ov
-		local row = StudentConfig.BY_ID[result.studentId]
-		local style = StudentConfig.TIER_STYLE[result.tier] or StudentConfig.TIER_STYLE[StudentConfig.TIER_ORDER[1]]
-		local card = frame(ov, "Card", UDim2.fromOffset(0, 190), UDim2.new(0.5, 0, 0.5, -30), SURFACE)
-		card.AnchorPoint = Vector2.new(0.5, 0.5)
-		card.ZIndex = 4
-		card.ClipsDescendants = true
-		corner(card, 14)
-		stroke(card, style.color, style.stroke)
-		local inner = frame(card, "Inner", UDim2.fromOffset(160, 190))
-		inner.AnchorPoint = Vector2.new(0.5, 0)
-		inner.Position = UDim2.fromScale(0.5, 0)
-		inner.ZIndex = 4
-		label(inner, "Tier", result.tier, UDim2.new(1, 0, 0, 24), UDim2.fromOffset(0, 6), 18, style.color, FONT_BOLD)
-		local view = studentView(inner, result.studentId, UDim2.fromOffset(110, 110), UDim2.fromOffset(25, 32))
-		view.ZIndex = 4
-		label(
-			inner,
-			"Name",
-			if row then row.name else result.studentId,
-			UDim2.new(1, 0, 0, 28),
-			UDim2.fromOffset(0, 146),
-			22,
-			WHITE,
-			FONT_BOLD
-		)
-		tween(card, FLIP_TIME, { Size = UDim2.fromOffset(160, 190) }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
-		if result.isDupe then
-			-- 「×n」 도장 0.2s 뒤 + 스티커판 「+n칸」 2s
-			task.delay(STAMP_DELAY, function()
-				if myGen ~= generation or not ov.Parent then
-					return
-				end
-				local stamp = label(
-					inner,
-					"Stamp",
-					`×{result.dupeCount}`,
-					UDim2.fromOffset(56, 32),
-					UDim2.fromOffset(98, 28),
-					26,
-					PURPLE,
-					FONT_BOLD
-				)
-				stamp.Rotation = -15
-				stamp.ZIndex = 5
-				stroke(stamp, PURPLE, 2)
-				local pop = Instance.new("UIScale")
-				pop.Scale = 1.6
-				pop.Parent = stamp
-				tween(pop, 0.2, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-				SoundController.play(STAMP_SOUND)
-				local cells = GachaConfig.DUPE_CELLS[result.tier] or 0
-				local plus = label(
-					ov,
-					"Plus",
-					`스티커판 +{cells}칸`,
-					UDim2.fromOffset(200, 26),
-					UDim2.new(0.5, 0, 0.5, 74),
-					18,
-					GREEN,
-					FONT_BOLD
-				)
-				plus.AnchorPoint = Vector2.new(0.5, 0)
-				plus.ZIndex = 4
-				task.delay(DUPE_SHOW, function()
-					if plus.Parent then
-						plus:Destroy()
-					end
-				end)
-			end)
-		end
-
-		local remaining = RESULT_READY - (os.clock() - t0)
-		task.wait(math.max(remaining, FLIP_TIME))
-		if myGen ~= generation or not ov.Parent then
-			return
-		end
-		busy = false
-		local buttons = frame(ov, "Buttons", UDim2.fromOffset(260, 48), UDim2.new(0.5, 0, 0.5, 104))
-		buttons.AnchorPoint = Vector2.new(0.5, 0)
-		buttons.ZIndex = 4
-		listLayout(buttons, Enum.FillDirection.Horizontal, GAP)
-		local ok = button(buttons, "Ok", "확인", UDim2.fromOffset(120, 48), nil, SURFACE, WHITE, 22)
-		ok.ZIndex = 4
-		ok.LayoutOrder = 1
-		local again = button(buttons, "Again", "다시!", UDim2.fromOffset(120, 48), nil, YELLOW, DARK, 22)
-		again.ZIndex = 4
-		again.LayoutOrder = 2
-		if result.ticketsLeft < 1 then
-			setEnabled(again, false, "원서 없음", YELLOW)
-		end
-		ok.Activated:Connect(function()
-			clearOverlay()
-			local p = profileOrNil()
-			if p then
-				refreshStatic(p)
-			end
-		end)
-		again.Activated:Connect(function()
-			clearOverlay()
-			roll()
-		end)
-	end
-
-	--- 색 공개 0.3s → 카드 뒤집기(등급 소리·화면 연출은 Feedback 에 위임)
-	local function reveal(result: GachaResult, t0: number)
-		tween(capsule, 0.1, { Rotation = 0 })
-		tween(capBottom, REVEAL_TIME, { BackgroundColor3 = TIER_COLOR[result.tier] or GREY })
-		task.wait(REVEAL_TIME)
-		if myGen ~= generation then
-			return
-		end
-		ticketsText.Text = `원서 {result.ticketsLeft}장`
-		pityText.Text = `{result.pityLeft}장 더`
-		setRing(1 - result.pityLeft / GachaConfig.PITY)
-		SoundController.play(TIER_SOUND[result.tier] or "arrive")
-		feedback().play("gacha", result)
-		showResult(result, t0)
-	end
-
-	roll = function()
-		if busy then
-			return
-		end
-		local p = profileOrNil()
-		if not p or p.tickets < 1 then
-			-- 원서 없음. 서버에 보내지 않는다(§5.4)
-			local ok = pcall(HudController.toast, "원서가 없어요")
-			if not ok then
-				warn("[Panel] HudController.toast 없음")
-			end
-			return
-		end
-		busy = true
-		pendingGacha = nil
-		setEnabled(rollButton, false, "두근두근…", YELLOW)
-		Remotes.RollGacha:FireServer()
-		SoundController.play("gachaSpin")
-		task.spawn(function()
-			local t0 = os.clock()
-			local sign = 1
-			while myGen == generation do
-				local elapsed = os.clock() - t0
-				if elapsed >= SHAKE_TIME and pendingGacha then
-					break
-				end
-				if elapsed > ROLL_TIMEOUT then
-					-- 서버가 답이 없다. 버튼을 되살리고 끝낸다
-					tween(capsule, 0.1, { Rotation = 0 })
-					busy = false
-					local now = profileOrNil()
-					if now then
-						refreshStatic(now)
-					end
-					return
-				end
-				sign = -sign
-				tween(capsule, SHAKE_STEP, { Rotation = SHAKE_DEG * sign })
-				task.wait(SHAKE_STEP)
-			end
-			if myGen ~= generation then
-				return
-			end
-			local result = pendingGacha
-			pendingGacha = nil
-			if result then
-				reveal(result, t0)
-			end
-		end)
-	end
-
-	rollButton.Activated:Connect(roll)
-
-	local profile = profileOrNil()
-	if profile then
-		refreshStatic(profile)
-	else
-		setEnabled(rollButton, false, "원서가 없어요", YELLOW)
-	end
-	currentRefresh = refreshStatic
-	table.insert(currentCleanup, function()
-		busy = false
-	end)
-end
-
 -- ── 졸업 확인(전체 화면) ──
 
 local function buildGraduate(content: Frame)
@@ -1049,7 +782,7 @@ local function buildGraduate(content: Frame)
 		end
 	end
 	local nextMult = Format.multiplier(1 + EconomyConfig.GRAD_STEP * nextRound)
-	column("Keep", "남아요", 96, GREEN, { "도감 · 원서", "스티커판", `졸업 배율 {nextMult}` })
+	column("Keep", "남아요", 96, GREEN, { "도감 · 꾸미기", "스티커판", `졸업 배율 {nextMult}` })
 	column("Reset", "새로 지어요", 416, YELLOW, { "시설 (전부 새로)", "용돈 0" })
 
 	local no =
@@ -1126,9 +859,6 @@ local BUILDERS: { [string]: (Frame, any) -> () } = {
 	codex = function(c, _)
 		buildCodex(c)
 	end,
-	gacha = function(c, _)
-		buildGacha(c)
-	end,
 	missions = function(c, _)
 		buildMissions(c)
 	end,
@@ -1196,20 +926,6 @@ end
 
 function PanelController.current(): string?
 	return currentName
-end
-
---- 서버 GachaResult. 뽑기 패널이 열려 있으면 흔들기 코루틴이 집어 간다. 아니면 버린다(HUD 가 프로필로 갱신)
-function PanelController.onGachaResult(payload: GachaResult)
-	if type(payload) ~= "table" or type(payload.seq) ~= "number" then
-		return
-	end
-	if payload.seq <= lastSeq then
-		return
-	end
-	lastSeq = payload.seq
-	if currentName == "gacha" then
-		pendingGacha = payload
-	end
 end
 
 function PanelController.Start()

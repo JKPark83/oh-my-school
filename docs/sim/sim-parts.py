@@ -20,6 +20,12 @@
   - 졸업 = 강당 마지막 부품(50번째) 완공 즉시. 다음 회차 시작 용돈 10 × 1.35^N.
   - 원서·뽑기·선물판 없음. 선물판 보상 0, 꾸미기 지출 0(W3 게이트 가정). 「수입 20% 를 꾸미기」는 참고 행.
 
+■ 선물판 코인 선물(W4, gift_coin_basis)
+  선물판 BOARD_CELLS 40칸 = 선물 1개, 미션 완료 = REWARD_CELLS 20칸. 1회차 코인 선물 GIFT_COIN_VALUE 는
+  활동형 1회차 궤적에서 스티커 누적 기대 장수(초당 스폰/15 × 회수율)가 40장이 되는 시각까지 스티커로 번 코인
+  (위 기대값 흐름의 합, 콤보 보너스 칸 무시)을 유효숫자 2자리로 반올림한 값이다. N회 졸업 뒤 × 1.35^N.
+  위 표는 여전히 선물판 보상 0 으로 돈다(선물 코인은 가격표·완공 시각에 넣지 않는다).
+
 ■ 가격 반올림 규칙(nice_price)
   유효숫자 2자리 반올림(사사오입). 10 보다 작으면 10(START_COINS·STICKER_MIN 과 같은 바닥값).
   예: 7.3 → 10, 13.4 → 13, 346,812 → 350,000, 7,387 → 7,400.
@@ -52,6 +58,9 @@ GAP_FIRST = 5.0          # k=2 목표 간격(초)
 GAP_LAST = 55.0          # k=50 목표 간격(초)
 IDLE_TUTORIAL_STICKERS = (3, 6, 9)   # 방치형이 줍는 튜토리얼 스티커 3장의 시각(초)
 MAX_SECONDS = 90 * 60
+BOARD_CELLS = 40         # 선물판 40칸 = 선물 1개(EconomyConfig.BOARD_CELLS)
+REWARD_CELLS = 20        # 미션 완료 = 선물판 +20칸(MissionConfig.REWARD_CELLS)
+GIFT_COIN_VALUE = 5700   # 1회차 코인 선물(EconomyConfig.GIFT_COIN_VALUE). 근거는 gift_coin_basis()
 GOLD_EV = ((GOLD_EVERY - 1) + GOLD_MULT) / GOLD_EVERY
 
 # (id, 이름, 초당 수입, 스티커 스폰 추가, 부품 수). 수입·스폰은 FacilityConfig.luau 와 같다.
@@ -149,6 +158,10 @@ def simulate(grads=0, collect=COLLECT_ACTIVE, spend=0.0, tutorial=False, curve=F
     buy_times = []
     snaps = []
     t = 0
+    stickers = 0.0        # 누적 기대 장수(튜토리얼 스티커 포함)
+    sticker_coins = 0.0   # 스티커로 번 코인 합
+    board_at = None       # 누적 장수가 BOARD_CELLS 에 닿은 시각
+    board_coins = None    # 그때까지 스티커로 번 코인
 
     def income_now():
         _, base, spawns = state_after(bought)
@@ -174,14 +187,27 @@ def simulate(grads=0, collect=COLLECT_ACTIVE, spend=0.0, tutorial=False, curve=F
         t += 1
         inc, st = income_now()
         gain = inc + st
+        _, _, spawns = state_after(bought)
+        stickers += spawns / RESPAWN * collect
+        sticker_coins += st
         if tutorial and t in IDLE_TUTORIAL_STICKERS:
             gain += round(sticker_value(inc, grads))
+            stickers += 1
+            sticker_coins += round(sticker_value(inc, grads))
+        if board_at is None and stickers >= BOARD_CELLS:
+            board_at, board_coins = t, sticker_coins
         coins += gain * (1 - spend)
         try_buy()
         if curve and t % 60 == 0:
             snap()
     return dict(buy_times=buy_times, done=buy_times[-1] if bought == len(PARTS) else None,
-                snaps=snaps, coins=coins, bought=bought)
+                snaps=snaps, coins=coins, bought=bought, board_at=board_at, board_coins=board_coins)
+
+
+def gift_coin_basis():
+    """활동형 1회차 첫 선물판(스티커 40장)이 차는 시각과 그때까지 스티커로 번 코인. (시각, 코인, 반올림 값)"""
+    r = simulate()
+    return r["board_at"], r["board_coins"], nice_price(r["board_coins"])
 
 
 def clock(t):
@@ -230,8 +256,12 @@ def main():
     at = active["buy_times"]
     it = idle["buy_times"]
 
+    board_at, board_coins, gift = gift_coin_basis()
+    assert gift == GIFT_COIN_VALUE, f"GIFT_COIN_VALUE {GIFT_COIN_VALUE} ≠ 근거 {gift}"
+
     print("# 안 A 부품 50개 시뮬레이션 출력 (python3 docs/sim/sim-parts.py)")
-    print("\n**가정(W3 게이트)**: 선물판 보상 0 · 꾸미기 지출 0 · 원서·뽑기 없음 · CONTRIB 없음. "
+    print(f"\n**가정(W3 게이트)**: 선물판 보상 0(GIFT_COIN_VALUE = {GIFT_COIN_VALUE:,}: 활동형 1회차 스티커 누적 {BOARD_CELLS}장이 "
+          f"{clock(board_at)} 에 차고 그때까지 스티커로 번 {fmt(board_coins)} 을 유효숫자 2자리로. 표에는 넣지 않는다) · 꾸미기 지출 0 · 원서·뽑기 없음 · CONTRIB 없음. "
           "수입은 시설 완공 때만 붙는다. GRAD_STEP 1.0, PRICE_SCALE 1.35. "
           "스티커 스폰 3 → 복도 +2 → 운동장 +3, 리스폰 15초, 회수율 활동형 55%·방치형 0%, "
           "1장 = max(10×1.35^N, 초당 수입×1.2), 12장마다 황금 ×5(기대값 흐름). "

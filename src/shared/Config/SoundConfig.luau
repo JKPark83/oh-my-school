@@ -1,6 +1,6 @@
 --!strict
 --[[
-	사운드 18종. 기획서 §9.6 표.
+	사운드 17종. 기획서 §9.6 표.
 
 	★ id 는 두 종류다. rbxassetid:// 는 Creator Store 의 무료 음원이고,
 	  rbxasset://sounds/* 는 로블록스 엔진 내장 음원을 pitch(PlaybackSpeed)와 volume 으로
@@ -46,11 +46,9 @@ local DEFS: { [string]: SoundDef } = {
 	-- 복도 웅성거림 배경음(루프). 항상 아주 작게 깔린다
 	hallway = { id = "rbxassetid://9112811182", volume = 0.08, speed = 1, looped = true },
 
-	-- 이하 신규 12종
+	-- 이하 신규 11종
 	-- 시설 완공·도장. PSE "Date Stamp Big Office Impact Good Squeak 2" 0.74초
 	build = { id = "rbxassetid://9114026047", volume = 0.7, speed = 1, looped = false },
-	-- 뽑기 캡슐 흔들기. PSE "Ratchet Comic 2" 1.0초
-	gachaSpin = { id = "rbxassetid://9118043348", volume = 0.5, speed = 1, looped = false },
 	-- 전교1등 등급. APM "Correct Answer 1"(상승하는 신스) 5.4초
 	fanfare = { id = "rbxassetid://1839997916", volume = 0.7, speed = 1, looped = false },
 	-- 전설 등급. APM "Clock Tower (sting)"(반짝이는 첼레스타) 5.4초
@@ -59,8 +57,8 @@ local DEFS: { [string]: SoundDef } = {
 	graduation = { id = "rbxassetid://9042730932", volume = 0.8, speed = 1, looped = false },
 	-- 콤보. speed 는 기준값이고 호출 쪽 pitch 로 단계마다 올린다. PSE "Synth Sparkle Tone High Pitch Bell Tone Ding 3" 1.1초
 	combo = { id = "rbxassetid://9126073064", volume = 0.5, speed = 1, looped = false },
-	-- 원서 받음(스티커판 60칸·미션 완료). APM "Correct Answer 2"(윤기 있는 신스) 4.6초
-	ticket = { id = "rbxassetid://1839997929", volume = 0.6, speed = 1, looped = false },
+	-- 선물 받음(선물판 40칸·미션 완료). APM "Correct Answer 2"(윤기 있는 신스) 4.6초
+	reward = { id = "rbxassetid://1839997929", volume = 0.6, speed = 1, looped = false },
 	-- 스티커 획득. 콤보마다 호출 쪽 pitch 로 5음계를 올린다. PSE "Mouth Drips Cheek Pluck Water Liquid 10"(입 팝) 0.5초
 	sticker = { id = "rbxassetid://9117014265", volume = 0.55, speed = 1, looped = false },
 	-- 스티커 찾기 표식. 3초마다 판에 붙어 거리로 줄어드는 잔잔한 반짝(개선계획 §3.2 #9, 볼륨 ≤0.2).

@@ -29,7 +29,7 @@ export PATH="$HOME/.rokit/bin:$PATH" && stylua src && rojo sourcemap default.pro
 
 - Studio 에서 스크립트를 고치지 않는다. 파일이 기준이다.
 - Studio 는 `PrincipalProfile_Dev` + Mock 이다. 실제 DataStore 는 ServerScriptService 어트리뷰트 `UseLiveDataStore = true`.
-- `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveTickets:Invoke(player, n)`.
+- `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveCoins:Invoke(player, n)`.
 
 ## 구조
 

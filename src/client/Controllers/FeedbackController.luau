@@ -23,6 +23,7 @@ local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local MissionConfig = require(ReplicatedStorage.Shared.Config.MissionConfig)
 local Seats = require(ReplicatedStorage.Shared.Seats)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
@@ -77,7 +78,7 @@ local SOUND_FANFARE = "fanfare"
 local SOUND_LEGEND = "legend"
 local SOUND_GRADUATION = "graduation"
 local SOUND_COMBO = "combo"
-local SOUND_TICKET = "ticket"
+local SOUND_REWARD = "reward"
 local SOUND_DOOR = "door_open"
 local SOUND_SIT = "sit"
 
@@ -104,7 +105,6 @@ local COLOR_CAP = Color3.fromRGB(30, 30, 40)
 -- 수치(기획서 §9). 클라 전용 연출 수치라 공용 Config 에 없다
 local TRAUMA_GOLD = 0.15
 local TRAUMA_PURCHASE = 0.30
-local TRAUMA_LEGEND = 0.45
 local TRAUMA_GRADUATION = 0.60
 local HITSTOP_SECONDS = 0.15
 local FLASH_ALPHA = 0.7
@@ -192,7 +192,6 @@ local flashFrame: Frame? = nil
 local popupFolder: Folder? = nil -- PlayerGui 아래, 「+N」 빌보드
 local fxFolder: Folder? = nil -- Workspace 아래, 파티클 임시 파트
 local lastFlash = -math.huge
-local lastBoardCells = -1
 local cardToken = 0
 local currentCard: Frame? = nil
 local hapticEffects: { [string]: HapticEffect } = {}
@@ -572,17 +571,12 @@ end
 
 local handlers: { [string]: (payload: any) -> () } = {}
 
---- 스티커 뒤 공통: 콤보 5마다 토스트, 스티커판이 한 바퀴 돌면 원서
+--- 스티커 뒤 공통: 콤보 5마다 토스트. 판이 찬 순간은 GiftOpened(handlers.gift)가 따로 온다
 local function afterSticker(payload: any)
 	local combo = if type(payload.combo) == "number" then payload.combo else 0
 	if combo > 0 and combo % COMBO_TOAST_EVERY == 0 then
 		handlers.combo(payload)
 	end
-	local cells = if type(payload.boardCells) == "number" then payload.boardCells else -1
-	if lastBoardCells >= 0 and cells >= 0 and cells < lastBoardCells then
-		handlers.ticket(payload)
-	end
-	lastBoardCells = cells
 end
 
 -- 하늘색 별(방문객): 팝 + 틱, 그 별을 60초 동안 나한테만 숨긴다
@@ -688,10 +682,10 @@ handlers.combo = function(payload: any)
 	sound(SOUND_COMBO)
 end
 
--- 스티커판 한 바퀴 = 원서 1장
-handlers.ticket = function()
-	HudController.toast("입학원서 +1!")
-	sound(SOUND_TICKET)
+-- 스티커판 40칸 = 선물(GiftOpened, 본인에게만 온다). 코인이 날아가는 건 HUD
+handlers.gift = function(_payload: any)
+	HudController.toast("선물 도착!")
+	sound(SOUND_REWARD)
 	haptic("small")
 end
 
@@ -800,45 +794,6 @@ handlers.student = function(payload: any)
 	end)
 end
 
--- 뽑기 결과 공개 순간(패널이 타이밍을 정한다): 등급 소리, 전설은 파티클 40 + 플래시 + 트라우마 0.45
-handlers.gacha = function(payload: any)
-	local tier = payload.tier
-	local position = rootPosition()
-	if tier == TIER_LEGEND then
-		hitstop(HITSTOP_SECONDS)
-		flash()
-		shake(TRAUMA_LEGEND)
-		if position then
-			burst(position + Vector3.new(0, 2, 0), PRESET_PILLAR, 40)
-		end
-		sound(SOUND_LEGEND)
-		haptic("large")
-	elseif tier == TIER_TOP then
-		if position then
-			burst(position + Vector3.new(0, 3, 0), PRESET_CONFETTI, 20)
-		end
-		sound(SOUND_FANFARE)
-		haptic("medium")
-	elseif tier == TIER_CAPTAIN then
-		if position then
-			burst(position + Vector3.new(0, 3, 0), PRESET_SPARKLE, 12)
-		end
-		sound(SOUND_ARRIVE)
-		haptic("medium")
-	else
-		sound(SOUND_TICK)
-		haptic("small")
-	end
-end
-
--- 중복: 「×n」 도장 0.2초 + 도장 소리. 미니 게이지는 패널 카드 안(PanelController)
-handlers.dupe = function(payload: any)
-	local count = if type(payload.dupeCount) == "number" then payload.dupeCount else 2
-	stamp(`×{count}`, COLOR_PURPLE, 0.8)
-	sound(SOUND_BUILD)
-	haptic("small")
-end
-
 -- 부족: 링 밝힘 + 실루엣 깜빡임(PadController) + 낮은 틱. 글자·빨강·흔들림 없음. 나머지 이유는 로그용
 handlers.deny = function(payload: any)
 	if payload.reason == "coins" then
@@ -847,10 +802,10 @@ handlers.deny = function(payload: any)
 	end
 end
 
--- 미션 완료: 배너 4초 + ticket 소리 + 햅틱 소. 원서 칩 펀치는 HUD
+-- 미션 완료: 배너 4초 + reward 소리 + 햅틱 소
 handlers.mission = function()
-	HudController.banner("미션 완료! 원서 +1")
-	sound(SOUND_TICKET)
+	HudController.banner(`미션 완료! 선물판 +{MissionConfig.REWARD_CELLS}칸`)
+	sound(SOUND_REWARD)
 	haptic("small")
 end
 

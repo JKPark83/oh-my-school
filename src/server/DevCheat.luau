@@ -3,7 +3,7 @@
 	Studio 전용 치트. 계획서 §0 수치 검증용. Studio 가 아니면 아무것도 하지 않는다.
 	ServerScriptService.DevCheat 폴더에 BindableFunction 2개를 둔다.
 	  FastForward(player, seconds)  초당 수입 × seconds 만큼 용돈 지급. 지급액을 돌려준다
-	  GiveTickets(player, n)        원서 n장. 지급 후 보유 수를 돌려준다
+	  GiveCoins(player, n)          용돈 n. 지급 후 보유 용돈을 돌려준다
 	MCP execute_luau 예:
 	  game.ServerScriptService.DevCheat.FastForward:Invoke(game.Players:GetPlayers()[1], 600)
 ]]
@@ -20,7 +20,7 @@ local DevCheat = {}
 
 local FOLDER_NAME = "DevCheat"
 local FAST_FORWARD = "FastForward"
-local GIVE_TICKETS = "GiveTickets"
+local GIVE_COINS = "GiveCoins"
 
 --- seconds 초 동안의 수입을 한 번에 지급. 지급액 반환
 function DevCheat.fastForward(player: Player, seconds: number): number
@@ -33,15 +33,14 @@ function DevCheat.fastForward(player: Player, seconds: number): number
 	return amount
 end
 
---- 원서 n장 지급. 보유 수 반환
-function DevCheat.giveTickets(player: Player, n: number): number
+--- 용돈 n 지급. 보유 용돈 반환
+function DevCheat.giveCoins(player: Player, n: number): number
 	local profile = DataService.get(player)
 	if not profile then
 		return 0
 	end
-	profile.tickets += n
-	DataService.markDirty(player)
-	return profile.tickets
+	EconomyService.grant(player, n)
+	return profile.coins
 end
 
 local function isPlayer(value: any): boolean
@@ -67,19 +66,19 @@ function DevCheat.Start()
 	end
 	fastForward.Parent = folder
 
-	local giveTickets = Instance.new("BindableFunction")
-	giveTickets.Name = GIVE_TICKETS
-	giveTickets.OnInvoke = function(player: any, n: any): number
+	local giveCoins = Instance.new("BindableFunction")
+	giveCoins.Name = GIVE_COINS
+	giveCoins.OnInvoke = function(player: any, n: any): number
 		if not isPlayer(player) or typeof(n) ~= "number" then
-			warn(`[DevCheat] {GIVE_TICKETS}(player, n) 인자가 틀렸다`)
+			warn(`[DevCheat] {GIVE_COINS}(player, n) 인자가 틀렸다`)
 			return 0
 		end
-		return DevCheat.giveTickets(player, n)
+		return DevCheat.giveCoins(player, n)
 	end
-	giveTickets.Parent = folder
+	giveCoins.Parent = folder
 
 	folder.Parent = ServerScriptService
-	print(`[DevCheat] {FOLDER_NAME}.{FAST_FORWARD} / {GIVE_TICKETS} 준비`)
+	print(`[DevCheat] {FOLDER_NAME}.{FAST_FORWARD} / {GIVE_COINS} 준비`)
 end
 
 return DevCheat

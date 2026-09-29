@@ -3,7 +3,7 @@
 	플레이어 프로필. ProfileStore 위에 얇게 얹었다. 기획서 §11.6.
 	  - 프로필 형태는 TEMPLATE 하나뿐이다. 필드를 추가하면 Reconcile 이 채운다.
 	  - 형태가 바뀌면 SCHEMA_VERSION 을 올리고 MIGRATIONS[이전 버전] 에 변환을 적는다.
-	  - 저장 시점: 졸업·미션 완료·퇴장은 save(), 구매·뽑기는 saveDebounced(player, 30).
+	  - 저장 시점: 졸업·미션 완료·퇴장은 save(), 구매·스티커는 saveDebounced(player, 30).
 	  - ProfileSync: markDirty() 로 예약하면 1초 틱이 모아서 보낸다(≤1Hz, seq 단조 증가). syncNow() 는 즉시.
 	Studio 에서는 "_Dev" 스토어 + Mock 이다. 실제 DataStore 를 쓰려면
 	ServerScriptService 에 UseLiveDataStore = true 어트리뷰트를 둔다.
@@ -18,31 +18,34 @@ local ProfileStore = require(ServerScriptService.ServerPackages.ProfileStore)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Types = require(ReplicatedStorage.Shared.Types)
+local Migrations = require(script.Parent.Parent.Migrations)
 
 local DataService = {}
 
 local STORE_NAME = "PrincipalProfile"
-local SCHEMA_VERSION = 1
+local SCHEMA_VERSION = 2
 local SYNC_INTERVAL = 1
 
 -- 색 바꾸기 필드 두 개를 지우며 버전을 올리지 않았다. 실 데이터가 없고 Reconcile 은 남는 키를 건드리지 않는다
 local TEMPLATE: Types.Profile = {
 	version = SCHEMA_VERSION,
 	coins = 10,
-	tickets = 0,
 	stickerBoard = 0,
+	giftIndex = 0,
 	graduations = 0,
 	facilities = {},
 	buildParts = 0, -- 필드가 없는 옛 프로필은 Reconcile 이 0 으로 채운다
 	students = {},
-	pity = 0,
 	missions = { day = 0, stickers = 0, built = 0, chair = false, done = { false, false, false } },
 	settings = { shake = true, sfx = true, haptic = true },
-	stats = { totalCoins = 0, totalStickers = 0, totalPulls = 0, playSeconds = 0 },
+	stats = { totalCoins = 0, totalStickers = 0, playSeconds = 0 },
+	decorOwned = {},
+	decorPlaced = {},
+	towerFloors = 0,
 }
 
--- [이전 버전] = 그 버전의 데이터를 다음 버전으로 바꾸는 함수. version 증가는 루프가 한다.
-local MIGRATIONS: { [number]: (data: any) -> () } = {}
+-- [이전 버전] = 그 버전의 데이터를 다음 버전으로 바꾸는 함수. version 증가는 루프가 한다. 규칙은 Migrations.luau 머리말
+local MIGRATIONS: { [number]: (data: any) -> () } = Migrations
 
 local store
 local profiles: { [Player]: any } = {}

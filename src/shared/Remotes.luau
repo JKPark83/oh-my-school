@@ -1,6 +1,6 @@
 --!nonstrict
 --[[
-	RemoteEvent 6개. 기획서 §11.5.
+	RemoteEvent 5개. 기획서 §11.5.
 	  서버: Remotes.init() 을 부팅 첫 줄에서 부른다. 폴더와 이벤트를 만든다.
 	  클라: Remotes.wait() 가 30초까지 기다린다. 못 찾으면 warn 하고 다시 기다린다(assert 없음).
 	  이후 Remotes.GoHome 처럼 이름으로 꺼내 쓴다.
@@ -15,7 +15,6 @@ local WAIT_TIMEOUT = 30
 
 local NAMES = {
 	-- 클라 → 서버
-	"RollGacha", -- ()
 	"Graduate", -- ()
 	"SetSetting", -- (key: "shake"|"sfx"|"haptic", value: boolean)
 	"GoHome", -- ()

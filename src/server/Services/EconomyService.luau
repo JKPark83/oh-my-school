@@ -20,6 +20,7 @@ local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local StudentService = require(script.Parent.StudentService)
 local MissionService = require(script.Parent.MissionService)
+local GiftBoard = require(script.Parent.Parent.GiftBoard)
 local RemoteGuard = require(script.Parent.Parent.RemoteGuard)
 local Metrics = require(script.Parent.Parent.Metrics)
 
@@ -56,7 +57,7 @@ function EconomyService.grant(player: Player, amount: number)
 	DataService.syncNow(player)
 end
 
---- 부품 1개 구매. 돈은 호출자가 확인했다. 마지막 부품이면 시설 완공(수입·티켓·전학생은 완공 때만)
+--- 부품 1개 구매. 돈은 호출자가 확인했다. 마지막 부품이면 시설 완공(수입·전학생은 완공 때만)
 local function buy(player: Player, profile: Types.Profile, nextPart: FacilityConfig.NextPart)
 	local row = nextPart.facility
 	local price = FacilityConfig.partPriceOf(row.id, nextPart.index, profile.graduations)
@@ -84,7 +85,6 @@ local function buy(player: Player, profile: Types.Profile, nextPart: FacilityCon
 		return
 	end
 
-	profile.tickets += 1
 	Metrics.facilityBuilt(player)
 	Remotes.event(nil, "FacilityBuilt", { plot = plotId, facilityId = row.id })
 
@@ -220,7 +220,8 @@ local function onSticker(player: Player, part: BasePart)
 	if combo.count % EconomyConfig.COMBO_BONUS_EVERY == 0 then
 		profile.stickerBoard += 1
 	end
-	StudentService.settleBoard(profile)
+	-- StickerCollected 의 boardCells 가 정산 뒤 값이 되게 먼저 정산한다(GiftOpened 가 먼저 간다)
+	GiftBoard.settleBoard(player, profile)
 
 	Remotes.event(player, "StickerCollected", {
 		stickerId = part:GetAttribute(Keys.ATTR_STICKER_ID),
@@ -266,7 +267,7 @@ local function onStar(player: Player, plotId: number, part: BasePart)
 	window.taken[part] = true
 
 	profile.stickerBoard += 1
-	StudentService.settleBoard(profile)
+	GiftBoard.settleBoard(player, profile)
 	Remotes.event(player, "StickerCollected", {
 		stickerId = part.Name,
 		plot = plotId, -- 별 이름(Star01·Star02)은 부지마다 같다

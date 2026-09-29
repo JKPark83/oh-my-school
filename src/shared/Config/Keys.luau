@@ -35,7 +35,6 @@ Keys.PROTOTYPES = "CharacterPrototypes" -- ReplicatedStorage 사람 원형 폴�
 Keys.DOOR = "Door" -- 시설 모델의 문 Attachment(학생이 걸어 들어오는 지점)
 Keys.LEADERBOARD = "Leaderboard" -- 광장 리더보드 파트
 Keys.HOME_PROMPT = "HomePrompt" -- 「우리 학교로」 ProximityPrompt(광장 팻말·부지 팻말)
-Keys.ADMISSION_PROMPT = "AdmissionPrompt" -- 입학 접수대 ProximityPrompt
 
 -- PlotState 폴더 어트리뷰트(기획서 §11.4)
 Keys.ATTR_OWNER_ID = "OwnerId" -- number, 0 = 빈 부지

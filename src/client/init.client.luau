@@ -162,9 +162,13 @@ local dispatch: { [string]: { Handler } } = {
 			call(FeedbackController, "FeedbackController", "play", "student", payload)
 		end,
 	},
-	GachaResult = {
+	-- 스티커판 40칸 = 선물 1개(본인에게만 온다)
+	GiftOpened = {
 		function(payload)
-			call(PanelController, "PanelController", "onGachaResult", payload)
+			call(FeedbackController, "FeedbackController", "play", "gift", payload)
+		end,
+		function(payload)
+			call(HudController, "HudController", "onGift", payload)
 		end,
 	},
 	MissionDone = {

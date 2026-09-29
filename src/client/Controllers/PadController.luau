@@ -7,11 +7,11 @@
 	- 칭찬스티커: 서버 파트는 보이지 않는 히트박스(3.4×3×3.4)다. 내 부지면 그 바닥에 3×0.1×3 표시판(별·하트·꽃·스마일)과
 	  세로 빛·반짝 소리를 로컬로 붙인다(개선계획 §3.2 #2·#3·#9). 금 스티커엔 빛기둥. 수평 2.2·높이 4 안이면 먼저 숨기는
 	  클라 예측(0.5초 안에 확정이 없으면 되돌림)
-	- 칭찬스티커판: 내 부지 현관 벽 판의 SurfaceGui 에 60칸을 그리고 프로필 stickerBoard 만큼 채운다
+	- 칭찬스티커판: 내 부지 현관 벽 판의 SurfaceGui 에 BOARD_CELLS(40)칸을 그리고 프로필 stickerBoard 만큼 채운다
 	- 시설 등장: 부품을 살 때마다 시설 모델에 새로 붙는 파트(PartIndex)만 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장).
 	  DescendantAdded 로 모아 한 프레임에 한 번 올린다. 스트리밍으로 다시 들어온 옛 부품은 올리지 않는다
-	- 졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
-	- 다른 부지의 접수대 프롬프트는 로컬에서 끄고, 「우리 학교로」 팻말 프롬프트는 반대로 내 부지에서만 끈다
+	- 졸업 종(졸업하기) → PanelController.open
+	- 「우리 학교로」 팻말 프롬프트는 내 부지에서만 끈다. 접수대 건물은 남지만 프롬프트는 W4 에서 없앴다
 	- 방문객 별(하늘색)도 히트박스 + 로컬 표시판이다. 남의 부지에서만 판을 그린다(내 별은 안 보임, §7.5)
 
 	패드 파트는 서버가 Transparency 1 로 만들어 두므로(PlotShell) 여기서는 Transparency 를 직접 쓴다.
@@ -22,7 +22,6 @@
 ]]
 
 local Players = game:GetService("Players")
-local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -59,7 +58,6 @@ local PAD_BUILT = "built"
 
 -- 패널 이름(계획 §3.4 PanelController.open)
 local PANEL_GRADUATE = "graduate"
-local PANEL_GACHA = "gacha"
 
 -- 색(기획서 §8.1)
 local COLOR_PANEL = Color3.fromRGB(31, 41, 55)
@@ -120,12 +118,12 @@ local HINT_SECONDS = 0.4
 local SILHOUETTE_ALPHA = 0.7 -- 서버 PlotService.SILHOUETTE_TRANSPARENCY 와 같다
 local SILHOUETTE_BLINK_ALPHA = 0.35
 -- 스티커판 캔버스는 8×5 스터드 × 40px = 320×200px(PlotShell STICKER_BOARD_SIZE)
-local BOARD_COLUMNS = 10 -- 10×6 = 60칸
+local BOARD_COLUMNS = 10 -- 행은 BOARD_CELLS 로 계산한다(40칸 = 10×4)
 local BOARD_CELL = 22 -- px
 local BOARD_GAP = 4
 local BOARD_POP_SECONDS = 0.15
 local BOARD_FLASH_ALPHA = 0.3
-local BOARD_FLASH_SECONDS = 0.3 -- §9.2 판 60 → 금색 플래시 0.3초
+local BOARD_FLASH_SECONDS = 0.3 -- §9.2 판이 차면 금색 플래시 0.3초
 
 type Ring = {
 	gui: BillboardGui,
@@ -230,19 +228,6 @@ local function plotIdOfModel(model: Instance): number?
 		return value
 	end
 	return Keys.plotIdOf(model.Name)
-end
-
---- 인스턴스가 속한 부지 번호. Workspace.Plots 바로 아래 모델까지 올라간다
-local function plotIdOfInstance(inst: Instance): number?
-	local node: Instance? = inst
-	while node do
-		local parent = node.Parent
-		if parent and parent.Name == Keys.PLOTS_FOLDER and parent.Parent == Workspace then
-			return plotIdOfModel(node)
-		end
-		node = parent
-	end
-	return nil
 end
 
 local function isComplete(profile: Types.Profile?): boolean
@@ -873,7 +858,7 @@ local function unwatchBoard()
 	end
 end
 
---- 칸을 채운다. 60칸을 채워 원서가 되면(칸이 줄면) 판이 금색으로 번쩍이고 남은 칸이 다시 찬다
+--- 칸을 채운다. 40칸을 채워 선물이 되면(칸이 줄면) 판이 금색으로 번쩍이고 남은 칸이 다시 찬다
 local function applyBoard(entry: BoardEntry, cells: number, animate: boolean)
 	if cells == entry.shown then
 		return
@@ -1136,22 +1121,10 @@ end
 
 -- ── 프롬프트 ─────────────────────────────────────────────────────
 
---- 접수대는 내 부지에서만, 「우리 학교로」 팻말은 남의 부지에서만 켠다. 광장 팻말은 건드리지 않는다
+--- 「우리 학교로」 팻말은 남의 부지에서만 켠다. 광장 팻말은 건드리지 않는다
 local function applyPrompt(prompt: ProximityPrompt, plotId: number)
-	if prompt.Name == Keys.ADMISSION_PROMPT then
-		prompt.Enabled = plotId == myPlotId
-	elseif prompt.Name == Keys.HOME_PROMPT then
+	if prompt.Name == Keys.HOME_PROMPT then
 		prompt.Enabled = plotId ~= myPlotId
-	end
-end
-
-local function onPromptTriggered(prompt: ProximityPrompt)
-	if prompt.Name ~= Keys.ADMISSION_PROMPT then
-		return
-	end
-	local plotId = plotIdOfInstance(prompt)
-	if plotId ~= nil and plotId == myPlotId then
-		PanelController.open(PANEL_GACHA)
 	end
 end
 
@@ -1422,7 +1395,6 @@ function PadController.Start()
 	HudController.onProfile(function()
 		PadController.refresh()
 	end)
-	ProximityPromptService.PromptTriggered:Connect(onPromptTriggered)
 	RunService.Heartbeat:Connect(onHeartbeat)
 
 	-- Plots 폴더는 서버 부팅 뒤 온다. Start 를 막지 않게 따로 기다린다
@@ -1471,13 +1443,6 @@ function PadController.padPosition(facilityId: string): Vector3?
 		end
 	end
 	return nil
-end
-
---- 내 부지 입학 접수대 위치(월드)
-function PadController.admissionDeskPosition(): Vector3?
-	local model = if myPlotId then plotModels[myPlotId] else nil
-	local desk = if model then model:FindFirstChild(Keys.ADMISSION_DESK, true) else nil
-	return if desk and desk:IsA("BasePart") then desk.Position else nil
 end
 
 --- 내 부지 스티커 위치(월드). id 는 StickerId(1~8) 또는 파트 이름

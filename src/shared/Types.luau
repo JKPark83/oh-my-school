@@ -28,23 +28,33 @@ export type Settings = {
 export type Stats = {
 	totalCoins: number,
 	totalStickers: number,
-	totalPulls: number,
 	playSeconds: number,
+}
+
+-- 꾸미기 배치 1개. cx·cz 는 그리드 칸, rot 는 회전 단계, f 는 층(nil = 1층)
+export type DecorPlacement = {
+	item: string,
+	cx: number,
+	cz: number,
+	rot: number,
+	f: number?,
 }
 
 export type Profile = {
 	version: number,
 	coins: number,
-	tickets: number,
-	stickerBoard: number, -- 0 … 59
+	stickerBoard: number, -- 0 … 39
+	giftIndex: number, -- 받은 선물 수
 	graduations: number,
 	facilities: { [FacilityId]: boolean },
 	buildParts: number, -- 다음 시설에 이미 산 부품 수(0..부품 수-1). 시설이 완공되면 0
 	students: { [StudentId]: number }, -- 보유 수(중복 포함). 0 이면 키 없음
-	pity: number, -- 마지막 전설 이후 뽑은 횟수
 	missions: Missions,
 	settings: Settings,
 	stats: Stats,
+	decorOwned: { [string]: number }, -- 꾸미기 아이템 id → 보관함 수
+	decorPlaced: { DecorPlacement },
+	towerFloors: number,
 }
 
 export type Seat = {
@@ -56,21 +66,18 @@ export type GameEventKind =
 	"PartBuilt" -- { plot, facilityId, partIndex, partCount }. 마지막 부품이면 뒤에 FacilityBuilt 가 온다
 	| "FacilityBuilt"
 	| "StudentJoined"
-	| "GachaResult"
 	| "MissionDone"
 	| "Graduated"
 	| "StickerCollected"
+	| "GiftOpened"
 	| "Deny"
 
-export type GachaResult = {
-	studentId: StudentId,
-	tier: Tier,
-	isDupe: boolean,
-	dupeCount: number,
+-- 선물판 40칸이 차서 선물 1개를 받음. 본인에게만
+export type GiftOpened = {
+	giftIndex: number,
+	kind: "coins",
+	coins: number,
 	boardCells: number,
-	ticketsLeft: number,
-	pityLeft: number,
-	seq: number,
 }
 
 export type SettingKey = "shake" | "sfx" | "haptic"

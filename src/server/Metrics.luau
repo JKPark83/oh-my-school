@@ -5,12 +5,11 @@
 	  회수율        주운 스티커 / 기회. 기회 = Σ(켜진 스폰 수 × 초) / RESPAWN.
 	                sim-final.py COLLECT_RATE 와 같은 뜻이다(스폰마다 다시 뜨자마자 주우면 100%).
 	                "뜬 횟수"로 나누지 않는다. 안 주운 스티커는 다시 뜨지 않아 분모가 분자를 따라가기 때문이다.
-	  5분 완료      5:00 에 부품·시설·전학생(중복 제외)·뽑기로 온 새 학생·뽑기·미션을 찍고 §2.4·개선계획 §13.1 기준으로 판정
+	  5분 완료      5:00 에 부품·시설·미션·선물을 찍고 §2.4·개선계획 §13.1 기준으로 판정
 	  30분 시설     30:00 의 시설 수 + 누적 졸업. 이번 세션에 졸업했으면 14/14 를 이미 지난 것으로 본다
-	  첫 뽑기       세션 시작부터 첫 뽑기까지. 일어난 순간 찍는다
 	  패드 3초 미만 활성 패드 Touched 로 관찰을 시작해 0.25초마다 구매 판정과 같은 기준(PlotService.standsOn)으로 본다.
 	                위에 올라섰다가 3초 안에 내려왔고 그 사이 구매가 없으면 +1. 그중 내려올 때 살 돈이 있던 횟수도 센다
-	뽑기·새 학생·미션은 이번 세션에서 센 값, 시설·전학생 수는 그 순간의 프로필 값이다.
+	미션·선물은 이번 세션에서 센 값, 부품·시설 수는 그 순간의 프로필 값이다.
 	다른 서비스는 O(1) 함수만 부른다. 1Hz 경제 틱 안에서는 카운터만 바꾼다.
 ]]
 
@@ -18,7 +17,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
-local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local DataService = require(script.Parent.Services.DataService)
 local PlotService = require(script.Parent.Services.PlotService)
 
@@ -27,11 +25,9 @@ local Metrics = {}
 -- 게임 수치가 아니라 W7 게이트(§2.4·§13.1)라 Config 가 아닌 여기 둔다
 local FIVE_MINUTES = 5 * 60
 local THIRTY_MINUTES = 30 * 60
-local FIRST_PULL_GOAL = 2 * 60
 local FIVE_PARTS = 24 -- 첫 5분 부품 수(개선계획 §13.1)
-local FIVE_STUDENTS = 8
-local FIVE_PULLS = 4
 local FIVE_MISSIONS = 2
+local FIVE_GIFTS = 1 -- 첫 5분 선물판 선물 수
 local SHORT_STAY = 3 -- 초. 이보다 짧게 서 있다 내려오면 센다(§13.3)
 local PAD_POLL = 0.25 -- 초. 패드 근처에 있는 동안만 도는 확인 주기
 local PAD_GRACE = 1 -- 초. Touched 뒤 이 안에 패드 위로 안 올라오면 스친 것으로 본다
@@ -43,10 +39,8 @@ type Session = {
 	spawns: number, -- 지금 켜진 스티커 스폰 수
 	spawnSince: number,
 	spawnSeconds: number, -- Σ 스폰 수 × 초
-	pulls: number,
-	gachaNew: number, -- 뽑기로 온 새 학생(중복 제외)
-	firstPullAt: number?,
 	missions: number,
+	gifts: number, -- 이번 세션에 연 선물판 선물
 	graduations: number,
 	passedFive: boolean?, -- nil = 5분 전
 	atThirty: string?, -- nil = 30분 전
@@ -104,16 +98,10 @@ local function snapshotFive(player: Player, session: Session)
 	end
 	local parts = FacilityConfig.partsBuilt(profile.facilities, profile.buildParts)
 	local facilities = FacilityConfig.count(profile.facilities)
-	local students = StudentConfig.ownedCount(profile.students)
-	local passed = parts >= FIVE_PARTS
-		and students >= FIVE_STUDENTS
-		and session.gachaNew >= 1
-		and session.pulls >= FIVE_PULLS
-		and session.missions >= FIVE_MISSIONS
+	local passed = parts >= FIVE_PARTS and session.missions >= FIVE_MISSIONS and session.gifts >= FIVE_GIFTS
 	session.passedFive = passed
-	local counts =
-		`부품 {parts}(≥{FIVE_PARTS}) · 시설 {facilities} · 전학생 {students}(≥{FIVE_STUDENTS}, 뽑기로 {session.gachaNew})`
-	local actions = `뽑기 {session.pulls}(≥{FIVE_PULLS}) · 미션 {session.missions}(≥{FIVE_MISSIONS})`
+	local counts = `부품 {parts}(≥{FIVE_PARTS}) · 시설 {facilities}`
+	local actions = `미션 {session.missions}(≥{FIVE_MISSIONS}) · 선물 {session.gifts}(≥{FIVE_GIFTS})`
 	log(player, `5분 · {counts} · {actions} → {verdict(passed)} · {kind(session)}`)
 end
 
@@ -182,15 +170,13 @@ function Metrics.begin(player: Player)
 	local parts = FacilityConfig.partsBuilt(profile.facilities, profile.buildParts)
 	local session: Session = {
 		startedAt = now,
-		isNew = profile.graduations == 0 and parts == 0 and profile.stats.totalPulls == 0,
+		isNew = profile.graduations == 0 and parts == 0,
 		collected = 0,
 		spawns = EconomyConfig.spawnCount(profile.facilities, profile.buildParts),
 		spawnSince = now,
 		spawnSeconds = 0,
-		pulls = 0,
-		gachaNew = 0,
-		firstPullAt = nil,
 		missions = 0,
+		gifts = 0,
 		graduations = 0,
 		passedFive = nil,
 		atThirty = nil,
@@ -208,7 +194,7 @@ function Metrics.begin(player: Player)
 		log(player, "세션 시작 · 새 계정")
 	else
 		local state =
-			`졸업 {profile.graduations} · 시설 {facilities}/{FacilityConfig.COUNT} · 누적 뽑기 {profile.stats.totalPulls}`
+			`졸업 {profile.graduations} · 시설 {facilities}/{FacilityConfig.COUNT} · 누적 선물 {profile.giftIndex}`
 		log(player, `세션 시작 · 기존 계정({state})`)
 	end
 end
@@ -230,12 +216,11 @@ function Metrics.finish(player: Player)
 	local chances = session.spawnSeconds / EconomyConfig.RESPAWN
 	local percent = if chances > 0 then `{math.floor(session.collected / chances * 100 + 0.5)}%` else "-"
 	local rate = `회수율 {percent}(주움 {session.collected} / 기회 {math.floor(chances + 0.5)})`
-	local firstPull = `첫 뽑기 {if session.firstPullAt then clock(session.firstPullAt) else "없음"}`
 	local five = if session.passedFive == nil then "5분 전 종료" else `5분 {verdict(session.passedFive)}`
 	local thirty = if session.atThirty then `30분 시설 {session.atThirty}` else "30분 전 종료"
 	local pads = `패드 3초 미만 {session.shortStays}회(살 돈 있었음 {session.shortAffordable})`
 	local length = `세션 {clock(os.clock() - session.startedAt)}`
-	log(player, `요약 · {kind(session)} · {length} · {rate} · {firstPull} · {five} · {thirty} · {pads}`)
+	log(player, `요약 · {kind(session)} · {length} · {rate} · {five} · {thirty} · {pads}`)
 end
 
 --- 자기 부지 스티커 1장 주움(방문객 별 제외)
@@ -268,25 +253,11 @@ function Metrics.facilityBuilt(player: Player)
 	end
 end
 
---- 뽑기 1회 성공
-function Metrics.gachaRolled(player: Player, isDupe: boolean)
+--- 선물판 선물 1개 열림(GiftBoard)
+function Metrics.giftOpened(player: Player)
 	local session = sessions[player]
-	if not session then
-		return
-	end
-	session.pulls += 1
-	if not isDupe then
-		session.gachaNew += 1
-	end
-	if session.firstPullAt == nil then
-		local elapsed = os.clock() - session.startedAt
-		session.firstPullAt = elapsed
-		log(
-			player,
-			`첫 뽑기 {clock(elapsed)}(≤{clock(FIRST_PULL_GOAL)} {verdict(elapsed <= FIRST_PULL_GOAL)}) · {kind(
-				session
-			)}`
-		)
+	if session then
+		session.gifts += 1
 	end
 end
 

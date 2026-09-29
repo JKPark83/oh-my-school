@@ -24,11 +24,14 @@ EconomyConfig.GOLD_EVERY = 12 -- 12장마다 금 스티커
 EconomyConfig.GOLD_MULT = 5
 EconomyConfig.RESPAWN = 15 -- 초
 EconomyConfig.STICKER_HOME_UNTIL = 3 -- 총 스티커가 이보다 적으면 리스폰도 홈 자리(튜토리얼 빛기둥 1~3번 수. TutorialController 가 이 값을 읽는다)
-EconomyConfig.BOARD_CELLS = 60 -- 60칸 = 입학원서 1장
+EconomyConfig.BOARD_CELLS = 40 -- 40칸 = 선물 1개
 EconomyConfig.COMBO_WINDOW = 6 -- 초. 이 안에 다음 스티커면 콤보 유지
 EconomyConfig.COMBO_BONUS_EVERY = 5 -- 콤보 5마다 스티커판 +1칸
 EconomyConfig.STICKER_TOUCH_INTERVAL = 0.4 -- 초. 토큰 버킷 최소 간격
 EconomyConfig.STICKER_MAX_SPEED = 40 -- 스터드/초. 넘으면 무시 + 위반
+
+-- 선물판 선물. 1회차 코인 선물 = 활동형 첫 40칸까지 스티커로 번 코인(sim-parts.py gift_coin_basis). ×1.35^졸업
+EconomyConfig.GIFT_COIN_VALUE = 5700
 
 -- 방문객 별
 EconomyConfig.VISITOR_STARS = 2
@@ -69,6 +72,11 @@ end
 --- 졸업 후 시작 용돈
 function EconomyConfig.startCoins(graduations: number): number
 	return math.floor(EconomyConfig.START_COINS * EconomyConfig.PRICE_SCALE ^ graduations + 0.5)
+end
+
+--- 선물판 코인 선물 1개 값
+function EconomyConfig.giftCoins(graduations: number): number
+	return math.floor(EconomyConfig.GIFT_COIN_VALUE * FacilityConfig.PRICE_SCALE ^ graduations + 0.5)
 end
 
 --- 활성 스티커 스폰 수(3 → 5 → 8)

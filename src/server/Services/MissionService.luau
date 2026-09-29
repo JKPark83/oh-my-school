@@ -2,7 +2,7 @@
 --[[
 	일일 미션 3개. 기획서 §6.3.
 	  ensureDay(profile)   KST 일 번호가 바뀌었으면 진행도·done 초기화. 모든 진행 갱신 직전과 60초 틱에서 부른다
-	  onSticker/onBuilt/onChair  진행도 갱신 → 목표 달성 즉시 원서 +1, 즉시 저장, MissionDone 발송
+	  onSticker/onBuilt/onChair  진행도 갱신 → 목표 달성 즉시 선물판 +20칸(찼으면 선물), 즉시 저장, MissionDone 발송
 	  교장 의자: Workspace.Plots.PlotNN 안 "principal" 모델의 Seat "PrincipalChair" Occupant 를 감시한다.
 	    주인이 아니면 그 사람만 내려 옆으로 비켜 세운다(의자는 끄지 않는다). 주인이면 onChair.
 	3/3 완료 배너는 클라이언트가 프로필로 판단한다(추가 보상 없음).
@@ -17,6 +17,7 @@ local MissionConfig = require(ReplicatedStorage.Shared.Config.MissionConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Types = require(ReplicatedStorage.Shared.Types)
 local DataService = require(script.Parent.DataService)
+local GiftBoard = require(script.Parent.Parent.GiftBoard)
 local PlotService = require(script.Parent.PlotService)
 local Metrics = require(script.Parent.Parent.Metrics)
 
@@ -60,9 +61,10 @@ end
 
 local function complete(player: Player, profile: Types.Profile, index: number)
 	profile.missions.done[index] = true
-	profile.tickets += MissionConfig.REWARD_TICKETS
-	DataService.save(player)
+	profile.stickerBoard += MissionConfig.REWARD_CELLS
 	Remotes.event(player, "MissionDone", { index = index })
+	GiftBoard.settleBoard(player, profile)
+	DataService.save(player)
 	Metrics.missionDone(player)
 	DataService.markDirty(player)
 end

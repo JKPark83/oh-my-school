@@ -5,10 +5,10 @@
 	글로 가르치지 않는다. 지금 할 일 하나를 말풍선(≤12자)·발자국·손가락·빛기둥으로 가리킬 뿐이다.
 	단계는 §2.1 표를 프로필로 계산한다(첫 번째로 참인 행). 서버는 튜토리얼을 모른다 — 전부 클라 로컬 연출.
 
-	★ 대상 위치는 PadController 가 안다(패드·접수대·스티커). 아직 스트리밍 전이면 nil 이 오므로
+	★ 대상 위치는 PadController 가 안다(패드·스티커). 아직 스트리밍 전이면 nil 이 오므로
 	  매 틱 다시 물어본다. 나를 PadController 가 require 하지 않는다(순환 금지).
 	★ §2.3 에스컬레이션: 대상에서 12 스터드 넘게 떨어진 채 30초 → 큰 화살표 3번 + 손가락 4초, 60초 → 카메라 팬.
-	  가까이 가면 타이머가 0 으로 돌아간다. 단계 ⑦(끝)도 다음 패드를 대상으로 에스컬레이션만 한다.
+	  가까이 가면 타이머가 0 으로 돌아간다. 단계 ⑤(끝)도 다음 패드를 대상으로 에스컬레이션만 한다.
 	★ 모듈 최상위 부작용 없음. Start() 에서 폴더·앵커를 만든다.
 ]]
 
@@ -29,7 +29,6 @@ type HudApi = {
 }
 type PadApi = {
 	padPosition: (facilityId: string) -> Vector3?,
-	admissionDeskPosition: () -> Vector3?,
 	-- 아래 셋은 §3.4 계약 밖. PadController 가 덤으로 낸다
 	myPlot: () -> number?,
 	plotModel: (plotId: number) -> Model?,
@@ -48,15 +47,12 @@ local TutorialController = {}
 local STAGE_DESK = 1 -- 책상을 사자
 local STAGE_STICKERS = 2 -- 스티커를 줍자
 local STAGE_GROW3 = 3 -- 시설 3개까지(말풍선 없음)
-local STAGE_GACHA = 4 -- 원서로 뽑아 보자
-local STAGE_GROW4 = 5 -- 이제 학교를 키우자
--- ⑥ 스킨 단계는 2026-09-29 폐기
-local STAGE_DONE = 7 -- 끝. 에스컬레이션만
+local STAGE_GROW4 = 4 -- 이제 학교를 키우자
+local STAGE_DONE = 5 -- 끝. 에스컬레이션만
 
 -- 말풍선(≤12자)
 local BUBBLE_DESK = "책상을 사자!"
 local BUBBLE_STICKERS = "스티커를 줍자!"
-local BUBBLE_GACHA = "원서로 뽑아 보자!"
 local BUBBLE_GROW = "이제 학교를 키우자!"
 local FINGER_TEXT = "👇"
 local ARROW_TEXT = "⬇"
@@ -66,7 +62,6 @@ local STICKER_HINT_COUNT = EconomyConfig.STICKER_HOME_UNTIL -- 앞마당 스티�
 -- 안 A 시뮬 활동형에서 시설 3 은 0:52, 시설 4 는 1:16 이라 임계값을 바꾸지 않는다(개선계획 §3.4 #11)
 local GROW3_FACILITIES = 3
 local GROW4_FACILITIES = 4
-local REENTRY_TICKETS = 3 -- ⑦에서 원서 3장인데 한 번도 안 뽑았으면 ④로
 
 -- 연출 수치(§2.2·§2.3). 클라 전용이라 공용 Config 에 없다
 local BUBBLE_SECONDS = 8
@@ -115,7 +110,6 @@ local SPECS: { [number]: StageSpec } = {
 	[STAGE_DESK] = { bubble = BUBBLE_DESK, footprints = true, finger = true, pillar = true },
 	[STAGE_STICKERS] = { bubble = BUBBLE_STICKERS, footprints = true, finger = false, pillar = true },
 	[STAGE_GROW3] = { footprints = true, finger = false, pillar = false },
-	[STAGE_GACHA] = { bubble = BUBBLE_GACHA, footprints = true, finger = false, pillar = true },
 	[STAGE_GROW4] = { bubble = BUBBLE_GROW, footprints = true, finger = false, pillar = false },
 	[STAGE_DONE] = { footprints = false, finger = false, pillar = false },
 }
@@ -352,7 +346,6 @@ end
 local function computeStage(profile: Types.Profile): number
 	local built = FacilityConfig.count(profile.facilities)
 	local stats = profile.stats
-	local noPulls = stats.totalPulls == 0
 	-- 책상 첫 부품은 시작 용돈으로 산다. 수입은 완공 때만 붙으므로 부품 2·3 은 스티커로 사야 해서
 	-- 부품 1 뒤에는 시설이 0 이어도 스티커로 보내고, 스티커를 다 주우면 책상 패드로 돌려보낸다
 	if FacilityConfig.partsBuilt(profile.facilities, profile.buildParts) == 0 then
@@ -376,14 +369,8 @@ local function computeStage(profile: Types.Profile): number
 	if built < GROW3_FACILITIES then
 		return STAGE_GROW3
 	end
-	if profile.tickets >= 1 and noPulls then
-		return STAGE_GACHA
-	end
 	if built < GROW4_FACILITIES then
 		return STAGE_GROW4
-	end
-	if noPulls and profile.tickets >= REENTRY_TICKETS then
-		return STAGE_GACHA -- ⑦ 재진입
 	end
 	return STAGE_DONE
 end
@@ -412,8 +399,6 @@ local function resolveTarget(stage: number, profile: Types.Profile): Vector3?
 		return PadController.padPosition(FacilityConfig.ORDER[1])
 	elseif stage == STAGE_STICKERS then
 		return nearestSticker()
-	elseif stage == STAGE_GACHA then
-		return PadController.admissionDeskPosition()
 	end
 	local nextRow = FacilityConfig.nextOf(profile.facilities)
 	return if nextRow then PadController.padPosition(nextRow.id) else nil
@@ -575,7 +560,7 @@ function TutorialController.refresh()
 	end
 end
 
---- 현재 단계 1~7(§2.1)
+--- 현재 단계 1~5(§2.1)
 function TutorialController.stage(): number
 	return currentStage
 end
