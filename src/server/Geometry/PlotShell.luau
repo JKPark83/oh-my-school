@@ -4,7 +4,7 @@
 
 	PlotShell.build(plotCFrame, plotId) 가 돌려주는 Model 하나가 Workspace.Plots.PlotNN 이 된다.
 	  Shell (Model)          바닥·담장·교문·현판·팻말·접수대·현관·2층 계단·착지대·스티커판·교실1·「공사 중」 실루엣
-	  Spawn (SpawnLocation)  (0,48). Neutral, Enabled=false — 서버가 RespawnLocation 으로 지정한다
+	  Spawn (SpawnLocation)  (0,60). Neutral, Enabled=false — 서버가 RespawnLocation 으로 지정한다
 	  Pads (Folder)          시설 14개 구매 패드. 이름 = facilityId, PadState="hidden" 이라 투명으로 시작
 	  Stickers (Folder)      칭찬스티커 스폰 8개. Collected=true + 투명으로 시작(서버가 리스폰 때 켠다)
 	  Stars (Folder)         방문객 별 2개
@@ -13,10 +13,10 @@
 	시설 자리(교실2·급식실·…)는 평평한 바닥 그대로 둔다. 바닥은 Shell 이 이미 깔았다.
 
 	★ 바닥 윗면은 y=0 이다(시설 빌더들이 center.Y=0 을 바닥으로 본다). 광장 지면은 면이 겹치지 않게 Plaza 쪽이 0.05 내려가 있다.
-	★ 담장은 두께 0.6 을 부지 경계 바깥으로 0.2 내밀었다(중심 ±59.9). 경계에 붙는 방 벽(교실1·도서관·체육관…)의
-	  바깥 면 x=±60 이 담장 속에 묻혀서 면끼리 겹치지 않는다.
-	★ 2층 계단: 기획서의 「x 4~10 · z -12~4」 그대로 두면 착지대(z -14~-6)와 위아래로 겹쳐 머리가 걸린다.
-	  계단 7단(높이 1.5)을 z 5 → -5.5 로 두고 8단째를 착지대(y12)로 삼았다. 현관 지붕은 계단 위(x 4~12, z -6~6)를 뚫어 뒀다.
+	★ 담장은 두께 0.6 을 부지 경계 바깥으로 0.2 내밀었다(중심 ±74.9). 경계에 붙는 방 벽(교실1·도서관·체육관…)의
+	  바깥 면 x=±75 가 담장 속에 묻혀서 면끼리 겹치지 않는다.
+	★ 2층 계단: 계단 11단(높이 1.5)을 x 5~14 · z 6 → -10.5 로 두고 12단째를 착지대(y18)로 삼았다.
+	  현관 지붕은 계단 위(x 5~14, z -10.5~6.5)를 뚫어 뒀다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -35,73 +35,74 @@ local PAD_STATE_HIDDEN = "hidden"
 local PROMPT_DISTANCE = 8
 
 -- ── 치수 (기획서 §7.2) ────────────────────────────────────────────
-local PLOT_HALF = 60
+local PLOT_HALF = 75
 local FLOOR_T = 1
 local FENCE_H = 3
 local FENCE_T = 0.6
 local FENCE_X = PLOT_HALF - 0.1 -- 담장 중심. 바깥으로 0.2 내민다
 
-local GATE_Z = 54
+local GATE_Z = 67.5
 local GATE_W = 12 -- 기둥 안쪽 면 사이
 local GATE_H = 8
 local PILLAR = 1.5
 local LEAF_W = 5.8
 local LEAF_OPEN = math.rad(75) -- 문짝이 바깥(+Z)으로 열린 각도
 
-local SPAWN = Vector3.new(0, 0, 48)
-local SIGNPOST = Vector3.new(-10, 0, 50)
-local ADMISSION = Vector3.new(12, 0, 46)
+local SPAWN = Vector3.new(0, 0, 60)
+local SIGNPOST = Vector3.new(-12.5, 0, 62.5)
+local ADMISSION = Vector3.new(15, 0, 57.5)
 
 local WALL_T = 1
-local WALL_H = 12
+local WALL_H = 18
 local ROOF_T = 1
 local DOOR_W = 8
 local DOOR_H = 8
 
--- 현관 (0,-4) 24×20. 남문 (0,6), 북문 (0,-14)
-local ENTRANCE = Vector3.new(0, 0, -4)
-local ENTRANCE_SIZE = Vector3.new(24, WALL_H, 20)
--- 교실1 (-48,-38) 24×24. 남문 (-48,-26)
-local CLASS1 = Vector3.new(-48, 0, -38)
-local CLASS1_SIZE = Vector3.new(24, WALL_H, 24)
+-- 현관 (0,-5) 30×25. 남문 (0,7.5), 북문 (0,-17.5)
+local ENTRANCE = Vector3.new(0, 0, -5)
+local ENTRANCE_SIZE = Vector3.new(30, WALL_H, 25)
+-- 교실1 (-60,-47.5) 30×30. 남문 (-60,-32.5)
+local CLASS1 = Vector3.new(-60, 0, -47.5)
+local CLASS1_SIZE = Vector3.new(30, WALL_H, 30)
 
 -- 2층 계단·착지대
-local STAIR_X0, STAIR_X1 = 4, 11 -- 현관 동쪽 벽 안쪽 면(x=11)까지
-local STAIR_Z_BOTTOM = 5
-local STAIR_STEPS = 7
+local STAIR_X0, STAIR_X1 = 5, 14 -- 현관 동쪽 벽 안쪽 면(x=14)까지
+local STAIR_Z_BOTTOM = 6
+local STAIR_STEPS = 11 -- 1.5 × 12 = 18. 12단째가 착지대
 local STAIR_RISE = 1.5
 local STAIR_RUN = 1.5
-local LANDING = Vector3.new(4, 12, -10)
-local LANDING_SIZE = Vector3.new(16, 1, 8)
-local STAIRWELL_Z0 = -6 -- 현관 지붕에 뚫는 구멍의 북쪽 끝(x 4~12, 남쪽 끝은 현관 남벽)
+-- 착지대 x -5~14 · z -16.5~-10.5. 동·북 벽 윗면(y=18)과 겹치지 않게 벽 안쪽 면(x=14, z=-16.5)까지만
+local LANDING = Vector3.new(4.5, WALL_H, -13.5)
+local LANDING_SIZE = Vector3.new(19, 1, 6)
+local STAIRWELL_Z0 = -10.5 -- 현관 지붕에 뚫는 구멍의 북쪽 끝(x 5~14, 남쪽 끝은 현관 남벽)
 
 -- 강당 실루엣(2층). FacilityConfig.auditorium 의 center/size 를 쓴다
 local CONSTRUCTION_T = 0.5
 local CONSTRUCTION_ALPHA = 0.7
 
-local STICKER_BOARD = Vector3.new(-10.85, 5, -4) -- 현관 서쪽 벽 안쪽 면(x=-11)에 붙인다
+local STICKER_BOARD = Vector3.new(-13.85, 5, -5) -- 현관 서쪽 벽 안쪽 면(x=-14)에 붙인다
 local STICKER_BOARD_SIZE = Vector3.new(0.3, 5, 8)
 
 -- 스티커 스폰 8 (앞마당 3 · 복도 2 · 운동장 3) · 별 2
 local STICKER_Y = 1
 local STICKER_SPOTS = {
-	Vector2.new(-6, 26),
-	Vector2.new(0, 36),
-	Vector2.new(20, 30),
-	Vector2.new(-44, -20),
-	Vector2.new(44, -20),
-	Vector2.new(-48, 20),
-	Vector2.new(-36, 30),
-	Vector2.new(-24, 40),
+	Vector2.new(-7.5, 32.5),
+	Vector2.new(0, 45),
+	Vector2.new(25, 37.5),
+	Vector2.new(-55, -25),
+	Vector2.new(55, -25),
+	Vector2.new(-60, 25),
+	Vector2.new(-45, 37.5),
+	Vector2.new(-30, 50),
 }
 local STAR_Y = 1.5
-local STAR_SPOTS = { Vector2.new(-8, 42), Vector2.new(8, 42) }
+local STAR_SPOTS = { Vector2.new(-10, 52.5), Vector2.new(10, 52.5) }
 
 local PAD_SIZE = Vector3.new(4, 0.4, 4)
 local PAD_LIFT = 0.2
 
-local TREES = { Vector2.new(30, 40), Vector2.new(-8, 10) }
-local FLAGPOLE = Vector3.new(-10, 0, 46)
+local TREES = { Vector2.new(37.5, 50), Vector2.new(-10, 12.5) }
+local FLAGPOLE = Vector3.new(-12.5, 0, 57.5)
 
 -- ── 색 (사실적 톤) ────────────────────────────────────────────────
 local C = {
@@ -204,10 +205,12 @@ local function solidWall(
 	)
 end
 
-local function roof(parent: Instance, name: string, plotCFrame: CFrame, center: Vector3, size: Vector3)
-	-- 지붕 윗면이 벽 높이(12)와 같다. 2층 바닥과 같은 높이라 강당이 그 위에 앉는다
-	local pos = Vector3.new(center.X, WALL_H - ROOF_T / 2, center.Z)
-	put(parent, name, Vector3.new(size.X, ROOF_T, size.Z), plotCFrame * CFrame.new(pos), {
+-- x0~x1 · z0~z1 은 벽 안쪽 면까지다. 지붕이 벽 위까지 덮으면 벽 윗면·바깥면과 같은 평면에서 겹쳐
+-- 카메라가 움직일 때마다 벽색·지붕색이 번갈아 깜빡인다(z-fighting)
+local function roof(parent: Instance, name: string, plotCFrame: CFrame, x0: number, x1: number, z0: number, z1: number)
+	-- 지붕 윗면이 벽 높이(18)와 같다. 2층 바닥과 같은 높이라 강당이 그 위에 앉는다
+	local pos = Vector3.new((x0 + x1) / 2, WALL_H - ROOF_T / 2, (z0 + z1) / 2)
+	put(parent, name, Vector3.new(x1 - x0, ROOF_T, z1 - z0), plotCFrame * CFrame.new(pos), {
 		color = C.roof,
 		material = Enum.Material.Concrete,
 		fade = true,
@@ -229,7 +232,7 @@ local function buildGround(shell: Model, plotCFrame: CFrame)
 	)
 
 	local fenceOpts = { color = C.fence, material = Enum.Material.Concrete }
-	local sideLen = GATE_Z + PLOT_HALF -- z -60 ~ 54
+	local sideLen = GATE_Z + PLOT_HALF -- z -75 ~ 67.5
 	local sideMid = (GATE_Z - PLOT_HALF) / 2
 	put(
 		shell,
@@ -252,7 +255,7 @@ local function buildGround(shell: Model, plotCFrame: CFrame)
 		plotCFrame * CFrame.new(-FENCE_X, FENCE_H / 2, sideMid),
 		table.clone(fenceOpts)
 	)
-	-- 남쪽 담장은 교문 줄(z=54)에 맞춘다. 기둥 바깥 면(x=±7.5)부터 부지 끝까지
+	-- 남쪽 담장은 교문 줄(z=67.5)에 맞춘다. 기둥 바깥 면(x=±7.5)부터 부지 끝까지
 	local southFrom = GATE_W / 2 + PILLAR
 	local southLen = PLOT_HALF - southFrom
 	local southMid = (southFrom + PLOT_HALF) / 2
@@ -273,7 +276,8 @@ local function buildGround(shell: Model, plotCFrame: CFrame)
 end
 
 local function buildGate(shell: Model, plotCFrame: CFrame)
-	local pillarH = GATE_H + 1.5
+	-- 기둥 윗면 = 보 아랫면. 기둥이 보 높이까지 올라가면 두 면이 겹쳐 깜빡인다
+	local pillarH = GATE_H
 	local pillarX = GATE_W / 2 + PILLAR / 2
 	local pillarOpts = { color = C.pillar, material = Enum.Material.Concrete }
 	put(
@@ -421,24 +425,12 @@ local function buildEntrance(shell: Model, plotCFrame: CFrame)
 	wallWithDoor(shell, "EntranceWallS", plotCFrame, "X", x0, x1, ENTRANCE.X, z1 - inner)
 	wallWithDoor(shell, "EntranceWallN", plotCFrame, "X", x0, x1, ENTRANCE.X, z0 + inner)
 
-	-- 지붕. 계단 위(x 4~12, z -6~6)는 뚫고, 착지대가 z -14~-6 의 동쪽을 덮는다
-	local landingX0 = LANDING.X - LANDING_SIZE.X / 2 -- -4
-	roof(
-		shell,
-		"EntranceRoof",
-		plotCFrame,
-		Vector3.new((x0 + STAIR_X0) / 2, 0, (STAIRWELL_Z0 + z1) / 2),
-		Vector3.new(STAIR_X0 - x0, 0, z1 - STAIRWELL_Z0)
-	)
-	roof(
-		shell,
-		"EntranceRoofNW",
-		plotCFrame,
-		Vector3.new((x0 + landingX0) / 2, 0, (z0 + STAIRWELL_Z0) / 2),
-		Vector3.new(landingX0 - x0, 0, STAIRWELL_Z0 - z0)
-	)
+	-- 지붕. 계단 위(x 5~14, z -10.5~6.5)는 뚫고, 착지대가 z -16.5~-10.5 의 동쪽을 덮는다
+	local landingX0 = LANDING.X - LANDING_SIZE.X / 2 -- -5
+	roof(shell, "EntranceRoof", plotCFrame, x0 + WALL_T, STAIR_X0, STAIRWELL_Z0, z1 - WALL_T)
+	roof(shell, "EntranceRoofNW", plotCFrame, x0 + WALL_T, landingX0, z0 + WALL_T, STAIRWELL_Z0)
 
-	-- 2층 계단 7단 + 착지대. 단은 바닥부터 꽉 찬 블록이라 옆에서 봐도 계단이다
+	-- 2층 계단 11단 + 착지대. 단은 바닥부터 꽉 찬 블록이라 옆에서 봐도 계단이다
 	local stairW = STAIR_X1 - STAIR_X0
 	for i = 1, STAIR_STEPS do
 		local h = STAIR_RISE * i
@@ -453,7 +445,7 @@ local function buildEntrance(shell: Model, plotCFrame: CFrame)
 		color = C.landing,
 		material = Enum.Material.Concrete,
 	})
-	-- TODO(통합): 강당(auditorium) 바닥은 착지대 윗면 y=12 와 같은 높이여야 하고, 계단 위 x 4~12 · z -6~6 은 비워 둬야 머리가 안 걸린다
+	-- TODO(통합): 강당(auditorium) 바닥은 착지대 윗면 y=18 과 같은 높이여야 하고, 계단 위 x 5~14 · z -10.5~6.5 는 비워 둬야 머리가 안 걸린다
 
 	-- 칭찬스티커판. 서쪽 벽 안쪽 면. 60칸은 클라(PadController)가 이 SurfaceGui 에 그린다
 	local board = put(shell, Keys.STICKER_BOARD, STICKER_BOARD_SIZE, plotCFrame * CFrame.new(STICKER_BOARD), {
@@ -478,7 +470,7 @@ local function buildClass1(shell: Model, plotCFrame: CFrame)
 	solidWall(shell, "Class1WallW", plotCFrame, "Z", z0 + WALL_T, z1 - WALL_T, x0 + inner)
 	solidWall(shell, "Class1WallE", plotCFrame, "Z", z0 + WALL_T, z1 - WALL_T, x1 - inner)
 	wallWithDoor(shell, "Class1WallS", plotCFrame, "X", x0, x1, CLASS1.X, z1 - inner)
-	roof(shell, "Class1Roof", plotCFrame, CLASS1, CLASS1_SIZE)
+	roof(shell, "Class1Roof", plotCFrame, x0 + WALL_T, x1 - WALL_T, z0 + WALL_T, z1 - WALL_T)
 end
 
 -- 「공사 중」 실루엣. 강당 자리(2층)에 벽 4 + 지붕 1, 30% 만 보인다. 강당을 지으면 PlotService 가 없앤다

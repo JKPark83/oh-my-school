@@ -1,6 +1,6 @@
 --!strict
 --[[
-	급식실(시설 6) — 24×24 방 + 배식대·식탁. 계획서 §3.6 규약.
+	급식실(시설 6) — 30×30 방 + 배식대·식탁. 계획서 §3.6 규약.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 8. 배식대(몸통+상판+식판 3) = 5. 식탁 2(상판+다리) = 4. 의자 4(좌판 블록+등받이) = 8.
 	  바닥판은 Shell 바닥 위에 얹는 얇은 판이라 방 바닥 높이 = center.Y + FLOOR_T 이고 자리 Attachment 는 그 높이.
@@ -104,7 +104,9 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx, floorY + (DOOR_H + h) / 2, sz),
 		wallOpts()
 	)
-	put(model, "Roof", Vector3.new(row.size.X, ROOF_T, row.size.Z), at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
+	-- 지붕은 벽 안쪽만 덮는다. 벽 위까지 덮으면 벽 윗면·바깥면과 겹쳐 깜빡인다(z-fighting)
+	local roofSize = Vector3.new(row.size.X - WALL_T * 2, ROOF_T, row.size.Z - WALL_T * 2)
+	put(model, "Roof", roofSize, at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
 		color = C.roof,
 		material = Enum.Material.Concrete,
 		fade = true,

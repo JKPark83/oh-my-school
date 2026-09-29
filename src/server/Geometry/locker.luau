@@ -2,7 +2,7 @@
 --[[
 	사물함(시설 3) — 교실 1 동벽 안쪽 면에 붙는 가구. 계획서 §3.6 규약.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 11개(≤25), 전부 BuildKit.part.
-	  FacilityConfig.locker 의 center (−37,0,−38) 는 동벽 안쪽 면 위 바닥점, size (1.6,6,12) 는 몸통이다.
+	  FacilityConfig.locker 의 center (−46,0,−47.5) 는 동벽 안쪽 면 위 바닥점, size (1.6,6,12) 는 몸통이다.
 	  몸통은 벽에서 방 쪽(−X)으로 붙는다. 서쪽 면에 문짝 8개(4열×2단), 위 마감·아래 받침.
 	  스킨: SkinRole "primary" = 몸통, "secondary" = 문짝. 색과 재질 모두 스킨 것을 쓴다. 자리·문 없음.
 	  SkinSign = 사물함 남쪽 끝 옆 눈높이. BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
@@ -103,8 +103,8 @@ function locker.build(plotCFrame: CFrame, skinIndex: number): Model
 		end
 	end
 
-	-- 위 마감·아래 받침: 몸통보다 조금 크다
-	local trimSize = Vector3.new(depth + 0.2, TRIM_T, length + 0.4)
+	-- 위 마감·아래 받침: 몸통보다 조금 크다. 서쪽으로 문짝(PANEL_T)보다 더 나와야 문짝 앞면과 겹치지 않는다
+	local trimSize = Vector3.new(depth + 0.4, TRIM_T, length + 0.4)
 	put(model, "Trim", trimSize, at(plotCFrame, cx, floorY + height + TRIM_T / 2, cz), {
 		color = COLOR_TRIM,
 		material = Enum.Material.Metal,

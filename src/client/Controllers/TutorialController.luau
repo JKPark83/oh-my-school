@@ -77,14 +77,14 @@ local FOOTPRINT_SIZE = Vector3.new(1.2, 0.1, 2)
 local FOOTPRINT_LIFT = 0.15
 local FOOTPRINT_DIM = 0.65
 local FOOTPRINT_STEP = 0.35
--- 앞마당 → 현관 → 복도 → 교실1 문. 부지 로컬 좌표(FacilityConfig 의 책상 패드 (-48, -30) 쪽으로)
+-- 앞마당 → 현관 → 복도 → 교실1 문. 부지 로컬 좌표(FacilityConfig 의 책상 패드 (-60, -37.5) 쪽으로)
 -- TODO(통합): PlotShell 의 실제 복도 좌표에 맞춰 손봐야 할 수 있다
 local FOOTPRINT_PATH = {
-	Vector3.new(0, 0, 30),
-	Vector3.new(0, 0, 10),
-	Vector3.new(-6, 0, -18),
-	Vector3.new(-26, 0, -26),
-	Vector3.new(-44, 0, -30),
+	Vector3.new(0, 0, 37.5),
+	Vector3.new(0, 0, 12.5),
+	Vector3.new(-7.5, 0, -22.5),
+	Vector3.new(-32.5, 0, -25),
+	Vector3.new(-55, 0, -37.5),
 }
 local PILLAR_SIZE = Vector3.new(1, 14, 1)
 local PILLAR_ALPHA = 0.5

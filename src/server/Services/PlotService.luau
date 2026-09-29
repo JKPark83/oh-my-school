@@ -33,18 +33,18 @@ local PlotService = {}
 
 -- 기획서 §7.1 표. 부지 로컬 +Z 가 교문이고, 교문은 전부 광장(원점)을 향한다.
 local LAYOUT: { { x: number, z: number, yaw: number } } = {
-	{ x = -72, z = 216, yaw = 180 },
-	{ x = 72, z = 216, yaw = 180 },
-	{ x = 216, z = 72, yaw = -90 },
-	{ x = 216, z = -72, yaw = -90 },
-	{ x = 72, z = -216, yaw = 0 },
-	{ x = -72, z = -216, yaw = 0 },
-	{ x = -216, z = -72, yaw = 90 },
-	{ x = -216, z = 72, yaw = 90 },
-	{ x = -216, z = 216, yaw = 180 },
-	{ x = 216, z = 216, yaw = 180 },
-	{ x = 216, z = -216, yaw = 0 },
-	{ x = -216, z = -216, yaw = 0 },
+	{ x = -90, z = 270, yaw = 180 },
+	{ x = 90, z = 270, yaw = 180 },
+	{ x = 270, z = 90, yaw = -90 },
+	{ x = 270, z = -90, yaw = -90 },
+	{ x = 90, z = -270, yaw = 0 },
+	{ x = -90, z = -270, yaw = 0 },
+	{ x = -270, z = -90, yaw = 90 },
+	{ x = -270, z = 90, yaw = 90 },
+	{ x = -270, z = 270, yaw = 180 },
+	{ x = 270, z = 270, yaw = 180 },
+	{ x = 270, z = -270, yaw = 0 },
+	{ x = -270, z = -270, yaw = 0 },
 }
 
 local PAD_RADIUS = 3.2 -- 패드 4×4 의 중심에서 HRP 까지 수평 거리
@@ -339,7 +339,7 @@ local function buildPlot(plotId: number)
 	local cf = CFrame.new(row.x, 0, row.z) * CFrame.Angles(0, math.rad(row.yaw), 0)
 	cframes[plotId] = cf
 	-- 교문(로컬 +Z 끝)이 부지 중심보다 원점에 가까워야 한다(교문은 광장을 향한다)
-	local gate = cf:PointToWorldSpace(Vector3.new(0, 0, 60))
+	local gate = cf:PointToWorldSpace(Vector3.new(0, 0, 75))
 	assert(
 		Vector3.new(gate.X, 0, gate.Z).Magnitude < Vector3.new(row.x, 0, row.z).Magnitude,
 		`Plot{plotId} 의 교문이 광장을 향하지 않는다`
@@ -571,7 +571,7 @@ function PlotService.goHome(player: Player)
 		return
 	end
 	local spawn = plotModels[plotId]:FindFirstChild(Keys.SPAWN)
-	local cf = if spawn then spawn.CFrame else cframes[plotId] * CFrame.new(0, 0, 48)
+	local cf = if spawn then spawn.CFrame else cframes[plotId] * CFrame.new(0, 0, 60)
 	-- 멀리서 순간이동하면 바닥이 아직 안 내려와 떨어질 수 있다. 도착지 주변을 먼저 받게 한다(실패해도 이동은 한다)
 	pcall(player.RequestStreamAroundAsync, player, cf.Position)
 	if player.Character ~= character or not character.Parent then

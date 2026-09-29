@@ -1,6 +1,6 @@
 --!strict
 --[[
-	복도(시설 4) — 1층 가로 복도 120×12. 계획서 §3.6 규약, 기획서 §7.2.
+	복도(시설 4) — 1층 가로 복도 150×15. 계획서 §3.6 규약, 기획서 §7.2.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  바닥판(primary) + 가운데 줄무늬(secondary) + 북벽·남벽(문 자리마다 끊고 상인방) + 양 끝벽 + 지붕.
 	  북벽 z=−26 쪽 문: 교실1·교실2·급식실·도서관(뒷줄 방 남문). 남벽 z=−14 쪽 문: 현관 북문·보건실·과학실·음악실·교장실.
@@ -27,12 +27,13 @@ local SIGN_EYE = 4.5
 local WALL_T = 1
 local ROOF_T = 1
 local FLOOR_T = 0.2
+local FLOOR_INSET = 0.05 -- 바닥 끝면이 벽 바깥면과 같은 평면이면 깜빡인다. 벽 속으로 조금 들인다
 local STRIPE_W = 1.6
 local DOOR_W = 8
 local DOOR_H = 8
 
--- Shell 이 짓는 방의 문 x(기획서 §7.2). 교실 1 남문 (−48,−26), 현관 북문 (0,−14)
-local CLASS1_DOOR_X = -48
+-- Shell 이 짓는 방의 문 x(기획서 §7.2). 교실 1 남문 (−60,−32.5), 현관 북문 (0,−17.5)
+local CLASS1_DOOR_X = -60
 local ENTRANCE_DOOR_X = 0
 local NORTH_ROOMS = { "class2", "cafeteria", "library" } -- 뒷줄, 남문이 복도 북벽에 닿는다
 local SOUTH_ROOMS = { "nurse", "science", "music", "principal" } -- 앞줄, 북문이 복도 남벽에 닿는다
@@ -128,7 +129,7 @@ function hall.build(plotCFrame: CFrame, skinIndex: number): Model
 	local floor = put(
 		model,
 		"Floor",
-		Vector3.new(row.size.X, FLOOR_T, row.size.Z),
+		Vector3.new(row.size.X - FLOOR_INSET * 2, FLOOR_T, row.size.Z - FLOOR_INSET * 2),
 		at(plotCFrame, cx, floorY + FLOOR_T / 2, cz),
 		{
 			color = skin.primary,
@@ -139,7 +140,7 @@ function hall.build(plotCFrame: CFrame, skinIndex: number): Model
 	local stripe = put(
 		model,
 		"Stripe",
-		Vector3.new(row.size.X, FLOOR_T + 0.06, STRIPE_W),
+		Vector3.new(row.size.X - FLOOR_INSET * 4, FLOOR_T + 0.06, STRIPE_W), -- 양끝이 바닥 끝면과 겹치지 않게 더 들인다
 		at(plotCFrame, cx, floorY + FLOOR_T / 2, cz),
 		{
 			color = skin.secondary,
@@ -177,7 +178,9 @@ function hall.build(plotCFrame: CFrame, skinIndex: number): Model
 		wallOpts()
 	)
 
-	put(model, "Roof", Vector3.new(row.size.X, ROOF_T, row.size.Z), at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
+	-- 지붕은 벽 안쪽만 덮는다. 벽 위까지 덮으면 벽 윗면·바깥면과 겹쳐 깜빡인다(z-fighting)
+	local roofSize = Vector3.new(row.size.X - WALL_T * 2, ROOF_T, row.size.Z - WALL_T * 2)
+	put(model, "Roof", roofSize, at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
 		color = C.roof,
 		material = Enum.Material.Concrete,
 		fade = true,

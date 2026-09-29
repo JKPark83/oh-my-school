@@ -3,7 +3,7 @@
 	체육관(시설 12) 지오메트리 — 계획서 §3.6 규약.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 21개(≤25), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
-	  별동 24×36, 높이 14. 문은 서쪽(-X, 본관 쪽) 폭 8·높이 9: 서벽을 두 조각 + 상인방으로 비운다. 벽·지붕은 fade.
+	  별동 30×45, 높이 20. 문은 서쪽(-X, 본관 쪽) 폭 8·높이 9: 서벽을 두 조각 + 상인방으로 비운다. 벽·지붕은 fade.
 	  코트는 남북(Z) 방향이라 골대 둘이 북·남 끝에 선다. 좌석 없음(Seats 폴더는 비어 있다).
 	  Door = 서문 중심 바닥(LookVector 가 안쪽 +X). SkinSign = 문 옆 바깥 눈높이.
 	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
@@ -183,15 +183,15 @@ function gym.build(plotCFrame: CFrame, skinIndex: number): Model
 		return { color = COLOR_WHITE, collide = false, cast = false }
 	end
 	part(model, "CenterLine", Vector3.new(w - 2, LINE_T, 0.5), at(plotCFrame, cx, lineY, cz), lineOpts())
-	part(model, "FreeThrowN", Vector3.new(8, LINE_T, 0.5), at(plotCFrame, cx, lineY, cz - 10), lineOpts())
-	part(model, "FreeThrowS", Vector3.new(8, LINE_T, 0.5), at(plotCFrame, cx, lineY, cz + 10), lineOpts())
+	part(model, "FreeThrowN", Vector3.new(8, LINE_T, 0.5), at(plotCFrame, cx, lineY, cz - 12.5), lineOpts())
+	part(model, "FreeThrowS", Vector3.new(8, LINE_T, 0.5), at(plotCFrame, cx, lineY, cz + 12.5), lineOpts())
 
 	-- 골대 둘: 북·남 끝
 	buildHoop(model, plotCFrame, "N", cx, floorTop, cz - d / 2 + 2.5, 1)
 	buildHoop(model, plotCFrame, "S", cx, floorTop, cz + d / 2 - 2.5, -1)
 
 	-- 매트 둘(secondary) · 뜀틀 · 공: 동쪽 벽 쪽
-	for _, side in { { name = "N", dz = -12 }, { name = "S", dz = 12 } } do
+	for _, side in { { name = "N", dz = -15 }, { name = "S", dz = 15 } } do
 		local mat = part(
 			model,
 			"Mat" .. side.name,

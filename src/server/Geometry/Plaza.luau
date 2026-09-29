@@ -3,9 +3,9 @@
 	광장. 기획서 §7.3, 계획서 §3.5.
 
 	Plaza.build() 가 돌려주는 Model 하나가 Workspace.Plaza 가 된다. 파트 40개(≤60), 전부 BuildKit.part.
-	  Ground        600×600 잔디. 부지 12곳이 전부 이 위에 얹힌다
-	  Boundary ×4   ±300 에 투명 벽(높이 50, CanCollide) — 떨어지지 않게
-	  Pavement      가운데 100×100 포장
+	  Ground        750×750 잔디. 부지 12곳이 전부 이 위에 얹힌다
+	  Boundary ×4   ±375 에 투명 벽(높이 50, CanCollide) — 떨어지지 않게
+	  Pavement      가운데 125×125 포장
 	  Podium        (0,0) 12×12 높이 2 + 앞 계단
 	  Signpost      (8,0) 팻말 + ProximityPrompt "HomePrompt" 「우리 학교로」
 	  Leaderboard   (0,20) 16×10 판. SurfaceGui(제목·순위)는 LeaderboardService 가 만든다
@@ -28,11 +28,11 @@ local BOUNDARY = "Boundary"
 local NOTICE_BOARD = "NoticeBoard"
 local PROMPT_DISTANCE = 8
 
-local GROUND_HALF = 300
+local GROUND_HALF = 375
 local GROUND_T = 1
 local GROUND_TOP = -0.05
 local BOUNDARY_H = 50
-local PAVEMENT_HALF = 50
+local PAVEMENT_HALF = 62.5
 local PAVEMENT_T = 0.2
 
 local PODIUM_SIZE = Vector3.new(12, 2, 12)
@@ -42,8 +42,8 @@ local LEADERBOARD_SIZE = Vector3.new(16, 10, 0.8)
 local NOTICE_POS = Vector3.new(0, 0, -20)
 local NOTICE_SIZE = Vector3.new(12, 8, 0.8)
 local BOARD_LIFT = 2.2 -- 판 아랫면 높이(기둥 위)
-local BENCH_R = 40 -- 벤치 네 개 (±R, ±R)
-local TREE_R = 70
+local BENCH_R = 50 -- 벤치 네 개 (±R, ±R)
+local TREE_R = 87.5
 
 local C = {
 	grass = Color3.fromRGB(98, 140, 64),

@@ -5,7 +5,7 @@
 	  교실 1 의 벽·지붕·남문은 Shell 에 있으므로 여기는 2인 책상 3 + 의자 6 만 놓는다.
 	  줄 간격 4(center.Z −4·0·+4), 자리 x = center.X ± 1.5. 전부 칠판(−Z)을 본다.
 	  Seats/S01~S06 = 의자 아래 바닥 중심, LookVector −Z. 1줄 왼쪽부터 번호를 매긴다.
-	  Door = 교실 1 남문 중심(기획서 §7.2 (−48,−26)), LookVector 가 방 안쪽(−Z).
+	  Door = 교실 1 남문 중심(기획서 §7.2 (−60,−32.5)), LookVector 가 방 안쪽(−Z).
 	  SkinSign = 문 옆 교실 안쪽 눈높이.
 	  세 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 	  스킨: SkinRole "primary" = 책상(상판·앞판), "secondary" = 의자(좌판·등받이). 색과 재질 모두 스킨 것을 쓴다.
@@ -30,7 +30,7 @@ local FACILITY_ID = script.Name
 local SIT_HIP = CharacterBuilder.SIT_HIP
 local SIT_DESK = CharacterBuilder.SIT_DESK
 local SIGN_EYE = 4.5
-local CLASS1_DOOR = Vector3.new(-48, 0, -26) -- 교실 1 남문 중심(기획서 §7.2). 벽은 Shell 소유
+local CLASS1_DOOR = Vector3.new(-60, 0, -32.5) -- 교실 1 남문 중심(기획서 §7.2). 벽은 Shell 소유
 
 local ROW_DZ = { -4, 0, 4 }
 local SEAT_DX = 1.5

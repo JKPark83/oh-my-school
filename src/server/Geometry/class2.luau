@@ -1,6 +1,6 @@
 --!strict
 --[[
-	교실 2(시설 5) — 24×24 방 + 책걸상. 계획서 §3.6 규약.
+	교실 2(시설 5) — 30×30 방 + 책걸상. 계획서 §3.6 규약.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방) + 지붕 = 7. 바닥은 Shell 바닥을 그대로 쓴다(교실 1 과 같다).
 	  칠판은 파트 대신 북벽 안쪽 면 SurfaceGui 의 초록 Frame 이다(파트 예산 때문).
@@ -103,7 +103,9 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	wall("WallSW", Vector3.new(side, h, WALL_T), cx - hx + side / 2, y, sz)
 	wall("WallSE", Vector3.new(side, h, WALL_T), cx + hx - side / 2, y, sz)
 	wall("Lintel", Vector3.new(DOOR_W, h - DOOR_H, WALL_T), cx, floorY + (DOOR_H + h) / 2, sz)
-	put(model, "Roof", Vector3.new(row.size.X, ROOF_T, row.size.Z), at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
+	-- 지붕은 벽 안쪽만 덮는다. 벽 위까지 덮으면 벽 윗면·바깥면과 겹쳐 깜빡인다(z-fighting)
+	local roofSize = Vector3.new(row.size.X - WALL_T * 2, ROOF_T, row.size.Z - WALL_T * 2)
+	put(model, "Roof", roofSize, at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
 		color = C.roof,
 		material = Enum.Material.Concrete,
 		fade = true,
@@ -121,12 +123,13 @@ local function paintChalkboard(north: Part)
 	gui.LightInfluence = 1
 	gui.Parent = north
 
-	-- 벽 24×12 기준: 칠판 12×4, 아랫변 높이 3 → 세로 중심 5
+	-- 칠판 12×4, 아랫변 높이 3 → 세로 중심 5. 비율은 벽 크기에서 구한다
+	local wallW, wallH = north.Size.X, north.Size.Y
 	local frame = Instance.new("Frame")
 	frame.Name = "ChalkboardFrame"
 	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Size = UDim2.fromScale(12.6 / 24, 4.6 / 12)
-	frame.Position = UDim2.fromScale(0.5, (12 - 5) / 12)
+	frame.Size = UDim2.fromScale(12.6 / wallW, 4.6 / wallH)
+	frame.Position = UDim2.fromScale(0.5, (wallH - 5) / wallH)
 	frame.BackgroundColor3 = C.chalkboardFrame
 	frame.BorderSizePixel = 0
 	frame.Parent = gui

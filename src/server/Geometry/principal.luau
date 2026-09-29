@@ -3,12 +3,12 @@
 	교장실(시설 11) 지오메트리 — 계획서 §3.6 규약.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 22개(≤25).
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
-	  방 24×20: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위 얇은 판이라
+	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위 얇은 판이라
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
-	  PrincipalChair = 진짜 Roblox Seat(부지 로컬 (48, -8), 앉는 면 = 바닥 + SIT_HIP, 남쪽 +Z 를 본다).
+	  PrincipalChair = 진짜 Roblox Seat(부지 로컬 (60, -10), 앉는 면 = 바닥 + SIT_HIP, 남쪽 +Z 를 본다).
 	    Anchored · CanCollide · Disabled=false. 미션 "교장 의자에 앉기" 가 이름으로 찾는다(Keys.PRINCIPAL_CHAIR).
 	    BuildKit.part 는 Part 만 만들므로 이 하나만 Instance.new("Seat") 로 같은 속성을 준다.
-	  Seats/S01 = 손님 의자(부지 로컬 (40, -2), 교장 의자를 바라본다).
+	  Seats/S01 = 손님 의자(부지 로컬 (50, -2.5), 교장 의자를 바라본다).
 	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z). SkinSign = 문 옆 복도 쪽 눈높이.
 	  세 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 	  스킨: SkinRole "primary" = 책상 상판 · 서랍장 둘, "secondary" = 교장 의자 · 등받이.
@@ -37,8 +37,8 @@ local SIT_HIP = CharacterBuilder.SIT_HIP
 local SIT_DESK = CharacterBuilder.SIT_DESK
 
 -- 계획서 §3.6 고정 좌표(부지 로컬)
-local CHAIR_X, CHAIR_Z = 48, -8
-local GUEST_X, GUEST_Z = 40, -2
+local CHAIR_X, CHAIR_Z = 60, -10
+local GUEST_X, GUEST_Z = 50, -2.5
 
 local COLOR_WALL = Color3.fromRGB(226, 220, 206)
 local COLOR_ROOF = Color3.fromRGB(62, 64, 68)
@@ -81,7 +81,9 @@ end
 --- 벽 4(북벽은 문 양옆 두 조각 + 상인방) · 지붕 · 바닥 = 파트 8개. 바닥과 상인방을 돌려준다.
 local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.Facility): (Part, Part)
 	local cx, cz = row.center.X, row.center.Z
-	local w, h, d = row.size.X, row.size.Y, row.size.Z
+	local w, d = row.size.X, row.size.Z
+	-- 벽 윗면을 부지 y+size.Y 에 맞춘다. 바닥 판 두께만큼 더 올리면 위에 얹히는 강당 바닥 윗면과 같은 평면이 되어 깜빡인다
+	local h = row.size.Y - FLOOR_T
 	local floorTop = row.center.Y + FLOOR_T
 	local wallY = floorTop + h / 2
 	local northZ = cz - d / 2 + WALL_T / 2
@@ -133,8 +135,9 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	part(
 		model,
 		"Roof",
-		Vector3.new(w, ROOF_T, d),
-		at(plotCFrame, cx, floorTop + h + ROOF_T / 2, cz),
+		-- 벽 안쪽만 덮는다. 벽 위에 얹으면 강당 바닥을 뚫고 올라온다
+		Vector3.new(w - WALL_T * 2, ROOF_T, d - WALL_T * 2),
+		at(plotCFrame, cx, floorTop + h - ROOF_T / 2, cz),
 		{ color = COLOR_ROOF, material = Enum.Material.Slate, fade = true, light = true }
 	)
 	return floor, lintel

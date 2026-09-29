@@ -2,11 +2,11 @@
 --[[
 	강당(시설 14, 2층) 지오메트리 — 계획서 §3.6 규약.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 26개(바닥을 계단 구멍 때문에 3조각으로 나눠 한도 25 를 1 넘김), 전부 BuildKit.part.
-	  치수·위치는 FacilityConfig 행(center (0,12,-14) / size 40×12×28, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
-	  바닥 판은 y=12 위에 얹히므로 방 바닥 높이 = 12 + FLOOR_T. 벽·지붕은 fade. 문은 남쪽(+Z) 폭 8 → 층계참 쪽.
-	  무대는 북쪽 끝(부지 로컬 z -26 근처). 무대 위 Part "GraduationBell"(금색 공) 을 HUD 가 이름으로 찾는다.
+	  치수·위치는 FacilityConfig 행(center (0,18,-17.5) / size 50×18×35, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
+	  바닥 판은 y=18 위에 얹히므로 방 바닥 높이 = 18 + FLOOR_T. 벽·지붕은 fade. 문은 남쪽(+Z) 폭 8 → 층계참 쪽.
+	  무대는 북쪽 끝(부지 로컬 z -32.5 근처). 무대 위 Part "GraduationBell"(금색 공) 을 HUD 가 이름으로 찾는다.
 	  좌석 S01…S25: 5줄 × 5 열, 모두 무대(-Z) 를 본다. 파트 25개 한도 때문에 의자 대신 줄마다 긴 벤치 하나(5개) 를 두고
-	  Attachment 만 25개 둔다. Attachment 위치 = 벤치 아래 바닥 중심(방 바닥 높이). 벤치는 층계참(x 4~12, z -14~-6 부근) 을
+	  Attachment 만 25개 둔다. Attachment 위치 = 벤치 아래 바닥 중심(방 바닥 높이). 벤치는 층계참(x 5~14, z -16.5~-10.5 부근) 을
 	  피해 서쪽에 몰아 놓았다.
 	  Door = 남문 중심 바닥(LookVector 가 안쪽 -Z). SkinSign = 문 옆 안쪽 눈높이.
 	  Attachment 들은 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
@@ -33,14 +33,14 @@ local DOOR_H = 8
 local SIGN_EYE = 4.5
 local SEAT_H = 1.55 -- 벤치 윗면 = CharacterBuilder.SIT_HIP 와 같은 값. 학생 NPC 가 앉는 높이
 
-local STAGE_Z = -26 -- 계획서 §3.6: 단상 (0, -26)
+local STAGE_Z = -32.5 -- 계획서 §3.6: 단상 (0, -32.5)
 local STAGE_H = 1.2
-local STAGE_W, STAGE_D = 24, 6
+local STAGE_W, STAGE_D = 30, 6
 local BELL_R = 0.8
 
 -- 좌석 격자(부지 로컬). 5열 × 5줄 = S01…S25, index = (줄-1)*5 + 열
-local SEAT_COLS = { -15.3, -12.9, -10.5, -8.1, -5.7 }
-local SEAT_ROWS = { -19.5, -16.5, -13.5, -10.5, -7.5 }
+local SEAT_COLS = { -17.9, -15.5, -13.1, -10.7, -8.3 }
+local SEAT_ROWS = { -23, -20, -17, -14, -11 }
 local BENCH_W = 12.4
 local BENCH_D = 1.6
 
@@ -89,12 +89,12 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local southZ = cz + d / 2 - WALL_T / 2
 	local segW = (w - DOOR_W) / 2
 
-	-- 바닥은 세 조각. PlotShell 의 계단(x 4~12, z 5→-5.5)이 올라오는 남동쪽 x 4~12·z -6~0 을 비워 둔다
+	-- 바닥은 세 조각. PlotShell 의 계단(x 5~14, z 6→-10.5)이 올라오는 남동쪽 x 5~14·z -10.5~0 을 비워 둔다
 	local floorY = row.center.Y + FLOOR_T / 2
 	local floorOpts = { color = COLOR_FLOOR, material = Enum.Material.Fabric }
 	local x0, x1 = cx - w / 2, cx + w / 2
 	local z0, z1 = cz - d / 2, cz + d / 2
-	local holeX0, holeX1, holeZ0 = 4, 12, -6
+	local holeX0, holeX1, holeZ0 = 5, 14, -10.5
 	local floor = part(
 		model,
 		"Floor",
@@ -216,7 +216,7 @@ function auditorium.build(plotCFrame: CFrame, skinIndex: number): Model
 		}
 	)
 	backdrop:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
-	for _, side in { { name = "W", dx = -15 }, { name = "E", dx = 15 } } do
+	for _, side in { { name = "W", dx = -19 }, { name = "E", dx = 19 } } do
 		local curtain = part(
 			model,
 			"Curtain" .. side.name,
@@ -230,15 +230,21 @@ function auditorium.build(plotCFrame: CFrame, skinIndex: number): Model
 		)
 		curtain:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
 	end
-	local valance = part(model, "Valance", Vector3.new(38, 2, 0.3), at(plotCFrame, cx, ceiling - 1, stageFront - 0.5), {
-		color = skin.primary,
-		material = skin.material,
-		collide = false,
-	})
+	local valance = part(
+		model,
+		"Valance",
+		Vector3.new(row.size.X - WALL_T * 2, 2, 0.3),
+		at(plotCFrame, cx, ceiling - 1, stageFront - 0.5),
+		{
+			color = skin.primary,
+			material = skin.material,
+			collide = false,
+		}
+	)
 	valance:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
 	BuildKit.surfaceText(valance, Enum.NormalId.Back, "졸업식", COLOR_BANNER, 1.6)
 
-	-- 졸업 종: 기둥 둘 + 가로대 + 금색 공. 무대 뒤쪽 가운데(§3.6 (0, -26))
+	-- 졸업 종: 기둥 둘 + 가로대 + 금색 공. 무대 뒤쪽 가운데(§3.6 (0, -32.5))
 	local bellZ = STAGE_Z
 	local frameH = 5
 	for _, side in { { name = "W", dx = -1.5 }, { name = "E", dx = 1.5 } } do

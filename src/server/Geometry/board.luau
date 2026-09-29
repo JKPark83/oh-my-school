@@ -2,7 +2,7 @@
 --[[
 	칠판(시설 2) — 교실 1 북벽 안쪽 면에 붙는 가구. 계획서 §3.6 규약.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 6개(≤25), 전부 BuildKit.part.
-	  FacilityConfig.board 의 center (−48,0,−49) 는 북벽 안쪽 면 위 바닥점이다. 칠판은 그 면에서 방 쪽(+Z)으로 붙는다.
+	  FacilityConfig.board 의 center (−60,0,−61.5) 는 북벽 안쪽 면 위 바닥점이다. 칠판은 그 면에서 방 쪽(+Z)으로 붙는다.
 	  틀(secondary) + 칠판면(primary) + 분필받침 + 지우개 + 시계 + 급훈 액자. 자리·문 없음.
 	  SkinSign = 칠판 왼쪽 옆 눈높이. BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 	  글자는 BuildKit.surfaceText(한글은 SurfaceGui 로만 낼 수 있다).

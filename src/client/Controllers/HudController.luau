@@ -67,9 +67,9 @@ local GO_HOME_COOLDOWN = 5 -- §11.5 GoHome 속도 제한과 같은 값
 local TICK_SECONDS = 1
 local GOLD_MULTIPLIER = 2 -- 배율 칩이 금색이 되는 기준
 
--- 부지 반폭. 기획서 §7.2 부지 120×120. 부지 중심은 월드 인스턴스에서 읽는다
+-- 부지 반폭. 기획서 §7.2 부지 150×150. 부지 중심은 월드 인스턴스에서 읽는다
 -- TODO(통합): 부지 크기 상수를 Config 로 옮기면 여기서 참조
-local PLOT_HALF = 60
+local PLOT_HALF = 75
 
 -- 다른 컨트롤러 이름·패널 이름·소리 키
 -- 패널 이름은 PanelController.PanelName, 소리 키는 SoundConfig.DEFS 와 같아야 한다

@@ -1,6 +1,6 @@
 --!strict
 --[[
-	도서관(시설 7) — 24×24 방 + 책장·열람 탁자. 계획서 §3.6 규약.
+	도서관(시설 7) — 30×30 방 + 책장·열람 탁자. 계획서 §3.6 규약.
 	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 8. 북벽 책장 3 + 책 3 = 6. 동벽 책장 1 + 책 1 = 2.
 	  열람 탁자(상판+받침) = 2. 의자 3(좌판 블록+등받이) = 6. 사서 카운터 1.
@@ -111,7 +111,9 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx, floorY + (DOOR_H + h) / 2, sz),
 		wallOpts()
 	)
-	put(model, "Roof", Vector3.new(row.size.X, ROOF_T, row.size.Z), at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
+	-- 지붕은 벽 안쪽만 덮는다. 벽 위까지 덮으면 벽 윗면·바깥면과 겹쳐 깜빡인다(z-fighting)
+	local roofSize = Vector3.new(row.size.X - WALL_T * 2, ROOF_T, row.size.Z - WALL_T * 2)
+	put(model, "Roof", roofSize, at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
 		color = C.roof,
 		material = Enum.Material.Concrete,
 		fade = true,

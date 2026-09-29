@@ -130,7 +130,7 @@ local POP_SECONDS = 0.12
 local ORBIT_RADIUS = 24
 local ORBIT_PITCH = 30
 local ORBIT_SECONDS = 4
-local CLASSROOM_CAMERA = Vector3.new(0, 14, 22) -- 교실1 을 내려다보는 카메라 오프셋(부지 로컬)
+local CLASSROOM_CAMERA = Vector3.new(0, 17.5, 27.5) -- 교실1 을 내려다보는 카메라 오프셋(부지 로컬)
 
 type Preset = {
 	color: ColorSequence,
