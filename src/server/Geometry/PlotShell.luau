@@ -455,7 +455,7 @@ local function buildEntrance(shell: Model, plotCFrame: CFrame)
 	})
 	-- TODO(통합): 강당(auditorium) 바닥은 착지대 윗면 y=12 와 같은 높이여야 하고, 계단 위 x 4~12 · z -6~6 은 비워 둬야 머리가 안 걸린다
 
-	-- 칭찬스티커판. 서쪽 벽 안쪽 면. 60칸은 클라가 SurfaceGui 에 그린다
+	-- 칭찬스티커판. 서쪽 벽 안쪽 면. 60칸은 클라(PadController)가 이 SurfaceGui 에 그린다
 	local board = put(shell, Keys.STICKER_BOARD, STICKER_BOARD_SIZE, plotCFrame * CFrame.new(STICKER_BOARD), {
 		color = C.cork,
 		material = Enum.Material.Fabric,
@@ -466,7 +466,6 @@ local function buildEntrance(shell: Model, plotCFrame: CFrame)
 	gui.PixelsPerStud = 40
 	gui.LightInfluence = 1
 	gui.Parent = board
-	-- TODO(통합): 클라(FeedbackController)가 StickerBoard.SurfaceGui 안에 60칸 게이지를 그린다
 end
 
 local function buildClass1(shell: Model, plotCFrame: CFrame)

@@ -6,6 +6,7 @@
 	- 구매 패드: PadState 로 보이기·색을 정하고, 내 부지의 활성 패드 위에 빌보드(이름·가격·진행 링)를 띄운다
 	- 칭찬스티커: Collected 로 보이기를 정하고, 금 스티커엔 빛기둥. 3 스터드 안이면 먼저 숨기는 클라 예측(0.5초 안에
 	  확정이 없으면 되돌림)
+	- 칭찬스티커판: 내 부지 현관 벽 판의 SurfaceGui 에 60칸을 그리고 프로필 stickerBoard 만큼 채운다
 	- 시설 등장: Built=true 모델이 들어오면 파트를 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장)
 	- 스킨 팻말(🎨)·졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
 	- 다른 부지의 접수대 프롬프트는 로컬에서 끄고, 「우리 학교로」 팻말 프롬프트는 반대로 내 부지에서만 끈다
@@ -24,6 +25,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
@@ -62,6 +64,8 @@ local COLOR_GREEN = Color3.fromRGB(52, 211, 153)
 local COLOR_GOLD = Color3.fromRGB(245, 158, 11)
 local COLOR_GRAY = Color3.fromRGB(156, 163, 175)
 local COLOR_WHITE = Color3.new(1, 1, 1)
+local COLOR_BOARD_TEXT = Color3.fromRGB(74, 44, 20) -- 코르크 판 위 글자
+local COLOR_BOARD_EMPTY = Color3.fromRGB(150, 110, 70) -- 빈 칸
 
 -- 클라 전용 연출 수치(기획서 §8·§9). 공용 Config 에 없는 것만 둔다
 local WAIT_TIMEOUT = 5
@@ -92,6 +96,13 @@ local HINT_COOLDOWN = 1
 local HINT_SECONDS = 0.4
 local SILHOUETTE_ALPHA = 0.7 -- 서버 PlotService.SILHOUETTE_TRANSPARENCY 와 같다
 local SILHOUETTE_BLINK_ALPHA = 0.35
+-- 스티커판 캔버스는 8×5 스터드 × 40px = 320×200px(PlotShell STICKER_BOARD_SIZE)
+local BOARD_COLUMNS = 10 -- 10×6 = 60칸
+local BOARD_CELL = 22 -- px
+local BOARD_GAP = 4
+local BOARD_POP_SECONDS = 0.15
+local BOARD_FLASH_ALPHA = 0.3
+local BOARD_FLASH_SECONDS = 0.3 -- §9.2 판 60 → 금색 플래시 0.3초
 
 type Ring = {
 	gui: BillboardGui,
@@ -134,6 +145,15 @@ type FacilityEntry = {
 	conns: { RBXScriptConnection },
 }
 
+type BoardEntry = {
+	part: BasePart,
+	root: Frame,
+	dots: { Frame },
+	title: TextLabel,
+	flash: Frame,
+	shown: number,
+}
+
 local player = Players.LocalPlayer
 local started = false
 local guiFolder: Folder? = nil -- PlayerGui 아래. 빌보드가 탭을 받으려면 여기 있어야 한다
@@ -146,6 +166,7 @@ local stickers: { [BasePart]: StickerEntry } = {}
 local facilities: { [Model]: FacilityEntry } = {}
 local ringClock = 0
 local lastHint = 0
+local board: BoardEntry? = nil -- 내 부지 스티커판 하나만 그린다. 남의 판 칸 수는 클라가 모른다
 
 -- ── 공통 헬퍼 ────────────────────────────────────────────────────
 
@@ -584,6 +605,128 @@ local function watchSticker(part: Instance, plotId: number)
 	applySticker(entry)
 end
 
+-- ── 칭찬스티커판 ─────────────────────────────────────────────────
+
+local function unwatchBoard()
+	if board then
+		board.root:Destroy()
+		board = nil
+	end
+end
+
+--- 칸을 채운다. 60칸을 채워 원서가 되면(칸이 줄면) 판이 금색으로 번쩍이고 남은 칸이 다시 찬다
+local function applyBoard(entry: BoardEntry, cells: number, animate: boolean)
+	if cells == entry.shown then
+		return
+	end
+	local wrapped = animate and cells < entry.shown
+	local pop = TweenInfo.new(BOARD_POP_SECONDS, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	for i, dot in entry.dots do
+		local on = i <= cells
+		if on and animate and (wrapped or i > entry.shown) then
+			dot.Size = UDim2.fromScale(0, 0)
+			TweenService:Create(dot, pop, { Size = UDim2.fromScale(1, 1) }):Play()
+		else
+			dot.Size = if on then UDim2.fromScale(1, 1) else UDim2.fromScale(0, 0)
+		end
+	end
+	entry.title.Text = `칭찬스티커판 {cells}/{EconomyConfig.BOARD_CELLS}`
+	if wrapped then
+		entry.flash.BackgroundTransparency = BOARD_FLASH_ALPHA
+		TweenService:Create(entry.flash, TweenInfo.new(BOARD_FLASH_SECONDS), { BackgroundTransparency = 1 }):Play()
+	end
+	entry.shown = cells
+end
+
+local function watchBoard(part: BasePart)
+	local surface = part:FindFirstChildOfClass("SurfaceGui")
+	if not surface then
+		return -- 스트리밍으로 SurfaceGui 가 뒤따라오면 onPlotDescendantAdded 가 다시 부른다
+	end
+	unwatchBoard()
+
+	local root = Instance.new("Frame")
+	root.Name = "BoardCells"
+	root.Size = UDim2.fromScale(1, 1)
+	root.BackgroundTransparency = 1
+	root.Parent = surface
+
+	local title = newLabel(root, "", 24, COLOR_BOARD_TEXT)
+	title.Size = UDim2.new(1, 0, 0, 40)
+	title.TextStrokeTransparency = 1
+
+	local rows = math.ceil(EconomyConfig.BOARD_CELLS / BOARD_COLUMNS)
+	local pitch = BOARD_CELL + BOARD_GAP
+	local grid = Instance.new("Frame")
+	grid.Name = "Grid"
+	grid.AnchorPoint = Vector2.new(0.5, 1)
+	grid.Position = UDim2.new(0.5, 0, 1, -BOARD_GAP * 2)
+	grid.Size = UDim2.fromOffset(BOARD_COLUMNS * pitch - BOARD_GAP, rows * pitch - BOARD_GAP)
+	grid.BackgroundTransparency = 1
+	grid.Parent = root
+	local layout = Instance.new("UIGridLayout")
+	layout.CellSize = UDim2.fromOffset(BOARD_CELL, BOARD_CELL)
+	layout.CellPadding = UDim2.fromOffset(BOARD_GAP, BOARD_GAP)
+	layout.FillDirectionMaxCells = BOARD_COLUMNS
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = grid
+
+	local dots: { Frame } = {}
+	for i = 1, EconomyConfig.BOARD_CELLS do
+		local cell = Instance.new("Frame")
+		cell.LayoutOrder = i
+		cell.BackgroundColor3 = COLOR_BOARD_EMPTY
+		cell.BorderSizePixel = 0
+		cell.Parent = grid
+		local cellCorner = Instance.new("UICorner")
+		cellCorner.CornerRadius = UDim.new(0.5, 0)
+		cellCorner.Parent = cell
+		local dot = Instance.new("Frame")
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Position = UDim2.fromScale(0.5, 0.5)
+		dot.Size = UDim2.fromScale(0, 0)
+		dot.BackgroundColor3 = COLOR_YELLOW
+		dot.BorderSizePixel = 0
+		dot.Parent = cell
+		local dotCorner = Instance.new("UICorner")
+		dotCorner.CornerRadius = UDim.new(0.5, 0)
+		dotCorner.Parent = dot
+		dots[i] = dot
+	end
+
+	local flash = Instance.new("Frame")
+	flash.Name = "Flash"
+	flash.Size = UDim2.fromScale(1, 1)
+	flash.BackgroundColor3 = COLOR_GOLD
+	flash.BackgroundTransparency = 1
+	flash.BorderSizePixel = 0
+	flash.ZIndex = 2
+	flash.Parent = root
+
+	local entry: BoardEntry = { part = part, root = root, dots = dots, title = title, flash = flash, shown = -1 }
+	board = entry
+	local profile = HudController.profile()
+	applyBoard(entry, if profile then profile.stickerBoard else 0, false)
+end
+
+--- 부지가 바뀌었거나 판이 스트리밍으로 나갔다 들어왔으면 다시 그리고, 칸 수를 맞춘다
+local function refreshBoard()
+	local model = if myPlotId then plotModels[myPlotId] else nil
+	if board and (model == nil or not board.part:IsDescendantOf(model)) then
+		unwatchBoard()
+	end
+	if not board and model then
+		local part = model:FindFirstChild(Keys.STICKER_BOARD, true)
+		if part and part:IsA("BasePart") then
+			watchBoard(part)
+		end
+	end
+	local profile = HudController.profile()
+	if board and profile then
+		applyBoard(board, profile.stickerBoard, true)
+	end
+end
+
 -- ── 시설 모델 ────────────────────────────────────────────────────
 
 --- 파트를 땅 아래 6 스터드에서 Back Out 0.5초로 솟게 한다. 아래쪽 파트부터 0.05초 간격
@@ -719,6 +862,13 @@ local function onPlotDescendantAdded(inst: Instance, plotId: number)
 		applyPrompt(inst, plotId)
 		return
 	end
+	-- 판 파트와 함께 SurfaceGui 도 온다. 판이 스트리밍으로 다시 들어오면 새 인스턴스라 다시 그린다
+	if inst:IsA("SurfaceGui") and inst.Parent and inst.Parent.Name == Keys.STICKER_BOARD then
+		if plotId == myPlotId then
+			refreshBoard()
+		end
+		return
+	end
 	local late = (inst:IsA("Attachment") and inst.Name == Keys.SKIN_SIGN)
 		or (inst:IsA("BasePart") and inst.Name == Keys.GRADUATION_BELL)
 	if not late then
@@ -829,6 +979,9 @@ local function watchPlot(model: Instance, animate: boolean)
 			applyPrompt(inst, plotId)
 		end
 	end
+	if plotId == myPlotId then
+		refreshBoard()
+	end
 end
 
 local function refreshAll()
@@ -848,6 +1001,7 @@ local function refreshAll()
 			end
 		end
 	end
+	refreshBoard()
 end
 
 -- ── 프레임 ───────────────────────────────────────────────────────
