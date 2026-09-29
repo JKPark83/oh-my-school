@@ -143,7 +143,7 @@ local function setGateSign(plotId: number, ownerName: string)
 		if length > GATE_NAME_MAX then
 			short = string.sub(short, 1, (utf8.offset(short, GATE_NAME_MAX + 1) or #short + 1) - 1)
 		end
-		label.Text = `{short} 초등학교`
+		label.Text = `{short}의 학교`
 	end
 end
 

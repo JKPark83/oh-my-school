@@ -66,7 +66,6 @@ Keys.PLOT_COUNT = 12
 
 -- 사용자에게 보이는 고정 문구
 Keys.KICK_RELOAD = "다시 들어와 주세요"
-Keys.KICK_SAVE = "저장이 안 됐어요"
 
 --- 부지 번호 → "Plot01" 꼴 이름
 function Keys.plotName(plotId: number): string

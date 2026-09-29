@@ -290,7 +290,7 @@ function CharacterBuilder.teacherConfig(seed: number?): PersonConfig
 		scale = 1,
 		sitting = false,
 		collide = false,
-		shadow = true,
+		shadow = false, -- §12.1 NPC CastShadow false
 		tint = nil,
 	}
 end

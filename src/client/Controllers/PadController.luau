@@ -10,6 +10,7 @@
 	- 시설 등장: Built=true 모델이 들어오면 파트를 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장)
 	- 스킨 팻말(🎨)·졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
 	- 다른 부지의 접수대 프롬프트는 로컬에서 끄고, 「우리 학교로」 팻말 프롬프트는 반대로 내 부지에서만 끈다
+	- 방문객 별(하늘색)은 내 부지 것만 로컬로 숨긴다
 
 	패드·스티커 파트는 서버가 Transparency 1 로 만들어 두므로(PlotShell) 여기서는 Transparency 를 직접 쓴다.
 	클라가 바꾼 속성은 복제되지 않고, 서버는 이 속성을 다시 건드리지 않는다.
@@ -845,6 +846,13 @@ local function applyPrompt(prompt: ProximityPrompt, plotId: number)
 	end
 end
 
+--- 방문객 별은 주인 화면에서 안 보인다(§7.5). 남의 부지 별은 FeedbackController 가 밟은 사람에게만 숨긴다
+local function applyStar(star: BasePart, plotId: number)
+	if plotId == myPlotId then
+		star.LocalTransparencyModifier = 1
+	end
+end
+
 local function onPromptTriggered(prompt: ProximityPrompt)
 	if prompt.Name ~= Keys.ADMISSION_PROMPT then
 		return
@@ -860,6 +868,10 @@ end
 local function onPlotDescendantAdded(inst: Instance, plotId: number)
 	if inst:IsA("ProximityPrompt") then
 		applyPrompt(inst, plotId)
+		return
+	end
+	if inst:IsA("BasePart") and inst:HasTag(Keys.STAR_TAG) then
+		applyStar(inst, plotId)
 		return
 	end
 	-- 판 파트와 함께 SurfaceGui 도 온다. 판이 스트리밍으로 다시 들어오면 새 인스턴스라 다시 그린다
@@ -977,6 +989,8 @@ local function watchPlot(model: Instance, animate: boolean)
 	for _, inst in model:GetDescendants() do
 		if inst:IsA("ProximityPrompt") then
 			applyPrompt(inst, plotId)
+		elseif inst:IsA("BasePart") and inst:HasTag(Keys.STAR_TAG) then
+			applyStar(inst, plotId)
 		end
 	end
 	if plotId == myPlotId then
@@ -998,6 +1012,8 @@ local function refreshAll()
 		for _, inst in model:GetDescendants() do
 			if inst:IsA("ProximityPrompt") then
 				applyPrompt(inst, plotId)
+			elseif inst:IsA("BasePart") and inst:HasTag(Keys.STAR_TAG) then
+				applyStar(inst, plotId)
 			end
 		end
 	end

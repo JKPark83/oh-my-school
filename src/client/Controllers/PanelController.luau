@@ -86,7 +86,6 @@ local GREY = Color3.fromRGB(156, 163, 175)
 local YELLOW = Color3.fromRGB(251, 191, 36)
 local GREEN = Color3.fromRGB(52, 211, 153)
 local BLUE = Color3.fromRGB(96, 165, 250)
-local RED = Color3.fromRGB(248, 113, 113)
 local PURPLE = Color3.fromRGB(167, 139, 250)
 local GOLD = Color3.fromRGB(245, 158, 11)
 
@@ -899,12 +898,12 @@ local function buildGacha(content: Frame)
 					UDim2.fromOffset(56, 32),
 					UDim2.fromOffset(98, 28),
 					26,
-					RED,
+					PURPLE,
 					FONT_BOLD
 				)
 				stamp.Rotation = -15
 				stamp.ZIndex = 5
-				stroke(stamp, RED, 2)
+				stroke(stamp, PURPLE, 2)
 				local pop = Instance.new("UIScale")
 				pop.Scale = 1.6
 				pop.Parent = stamp
@@ -1261,7 +1260,7 @@ local function buildGraduate(content: Frame)
 	end
 	local nextMult = Format.multiplier(1 + EconomyConfig.GRAD_STEP * nextRound)
 	column("Keep", "남아요", 96, GREEN, { "도감 · 스킨 · 원서", "스티커판", `졸업 배율 {nextMult}` })
-	column("Reset", "새로 지어요", 416, RED, { "시설 (전부 새로)", "용돈 0" })
+	column("Reset", "새로 지어요", 416, YELLOW, { "시설 (전부 새로)", "용돈 0" })
 
 	local no =
 		button(content, "No", "아니요", UDim2.fromOffset(160, 56), UDim2.new(0.5, -90, 1, -8), SURFACE, WHITE, 24)

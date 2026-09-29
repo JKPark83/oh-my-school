@@ -552,18 +552,14 @@ local function tierStyle(tier: Types.Tier): { color: Color3, stroke: number }
 	return StudentConfig.TIER_STYLE[tier] or StudentConfig.TIER_STYLE[TIER_NORMAL]
 end
 
---- 모든 부지의 Stars 폴더에서 이름으로 별 파트를 찾는다(방문객 별은 남의 부지에 있다)
-local function findStar(name: string): BasePart?
+--- 그 부지 Stars 폴더에서 이름으로 별 파트를 찾는다(별 이름은 부지마다 같다)
+local function findStar(plotId: number, name: string): BasePart?
 	local plots = Workspace:FindFirstChild(Keys.PLOTS_FOLDER)
-	if not plots then
-		return nil
-	end
-	for _, plot in plots:GetChildren() do
-		local stars = plot:FindFirstChild(Keys.STARS_FOLDER)
-		local star = if stars then stars:FindFirstChild(name) else nil
-		if star and star:IsA("BasePart") then
-			return star
-		end
+	local plot = if plots then plots:FindFirstChild(Keys.plotName(plotId)) else nil
+	local stars = if plot then plot:FindFirstChild(Keys.STARS_FOLDER) else nil
+	local star = if stars then stars:FindFirstChild(name) else nil
+	if star and star:IsA("BasePart") then
+		return star
 	end
 	return nil
 end
@@ -588,7 +584,7 @@ end
 -- 하늘색 별(방문객): 팝 + 틱, 그 별을 60초 동안 나한테만 숨긴다
 handlers.star = function(payload: any)
 	local name = tostring(payload.stickerId)
-	local star = findStar(name)
+	local star = if type(payload.plot) == "number" then findStar(payload.plot, name) else nil
 	local position = if star then star.Position else rootPosition()
 	if position then
 		burst(position, PRESET_SPARKLE, 6)
@@ -738,6 +734,9 @@ handlers.student = function(payload: any)
 		return -- 남의 부지·복원 착석은 연출 없음
 	end
 	local plotId = if type(payload.plot) == "number" then payload.plot else PadController.myPlot()
+	if plotId ~= PadController.myPlot() then
+		return -- 서버는 walk 를 전체에 보낸다. 카드·소리는 주인 화면에서만(§11.5)
+	end
 	local studentId = if type(payload.studentId) == "string" then payload.studentId else ""
 	local row = StudentConfig.BY_ID[studentId]
 	if not plotId or not row then

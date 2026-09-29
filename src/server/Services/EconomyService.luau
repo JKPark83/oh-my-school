@@ -35,6 +35,7 @@ type StarWindow = { start: number, count: number }
 
 local combos: { [Player]: ComboState } = {}
 local lastStickerAt: { [Player]: number } = {}
+local lastStickerPos: { [Player]: Vector3 } = {}
 local starWindows: { [Player]: { [number]: StarWindow } } = {}
 
 local function rootOf(player: Player): BasePart?
@@ -158,11 +159,17 @@ local function onSticker(player: Player, part: BasePart)
 	if not root or (root.Position - part.Position).Magnitude > TOUCH_RANGE then
 		return
 	end
-	if root.AssemblyLinearVelocity.Magnitude > EconomyConfig.STICKER_MAX_SPEED then
+	-- 속도는 서버가 본 두 줍기 사이 이동으로 잰다. AssemblyLinearVelocity 는 클라가 소유한 값이라 순간이동하면 0 이다
+	local lastPos = lastStickerPos[player]
+	if
+		lastPos
+		and (root.Position - lastPos).Magnitude / (now - lastStickerAt[player]) > EconomyConfig.STICKER_MAX_SPEED
+	then
 		RemoteGuard.violation(player, "스티커 과속")
 		return
 	end
 	lastStickerAt[player] = now
+	lastStickerPos[player] = root.Position
 
 	part:SetAttribute(Keys.ATTR_COLLECTED, true)
 	part.CanTouch = false
@@ -234,6 +241,7 @@ local function onStar(player: Player, plotId: number, part: BasePart)
 	StudentService.settleBoard(profile)
 	Remotes.event(player, "StickerCollected", {
 		stickerId = part.Name,
+		plot = plotId, -- 별 이름(Star01·Star02)은 부지마다 같다
 		value = 0,
 		combo = 0,
 		boardCells = profile.stickerBoard,
@@ -287,6 +295,7 @@ function EconomyService.Start()
 	Players.PlayerRemoving:Connect(function(player)
 		combos[player] = nil
 		lastStickerAt[player] = nil
+		lastStickerPos[player] = nil
 		starWindows[player] = nil
 	end)
 
