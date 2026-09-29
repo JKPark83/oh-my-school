@@ -332,7 +332,7 @@ local function plotModel(plotId: number): Model?
 	return if plot and plot:IsA("Model") then plot else nil
 end
 
---- 부지 중심(월드). Shell 바닥 바운딩박스가 있으면 그것, 없으면 모델 피벗
+--- 부지 중심(월드) = 모델 피벗(PlotShell 이 부지 CFrame 으로 둔다). 바운딩박스는 스트리밍으로 파트 일부만 있으면 어긋난다
 local function plotCenter(plotId: number): Vector3?
 	local known = plotCenters[plotId]
 	if known then
@@ -342,13 +342,9 @@ local function plotCenter(plotId: number): Vector3?
 	if not plot then
 		return nil
 	end
-	local shell = plot:FindFirstChild(Keys.SHELL)
-	if shell and shell:IsA("Model") and shell:FindFirstChildWhichIsA("BasePart", true) then
-		local cf = shell:GetBoundingBox()
-		plotCenters[plotId] = cf.Position
-		return cf.Position
-	end
-	return plot:GetPivot().Position
+	local center = plot:GetPivot().Position
+	plotCenters[plotId] = center
+	return center
 end
 
 local function padPosition(plotId: number, facilityId: string): Vector3?

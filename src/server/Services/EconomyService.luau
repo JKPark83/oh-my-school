@@ -31,7 +31,7 @@ local HOME_COOLDOWN = 5
 local TOUCH_RANGE = 12
 
 type ComboState = { count: number, last: number }
-type StarWindow = { start: number, count: number }
+type StarWindow = { start: number, count: number, taken: { [BasePart]: boolean } }
 
 local combos: { [Player]: ComboState } = {}
 local lastStickerAt: { [Player]: number } = {}
@@ -128,7 +128,7 @@ local function respawnSticker(player: Player, plotId: number, part: BasePart)
 			return
 		end
 		if PlotService.ownerOf(plotId) ~= player then
-			return -- 주인이 바뀌었으면 PlotService.refresh 가 이미 다시 켰다
+			return -- 주인이 바뀌었으면 PlotService.release 가 이미 다시 켰다
 		end
 		local profile: Types.Profile? = DataService.get(player)
 		local gold = profile ~= nil and EconomyConfig.isGoldNext(profile.stats.totalStickers) and not goldOut(plotId)
@@ -161,15 +161,15 @@ local function onSticker(player: Player, part: BasePart)
 	end
 	-- 속도는 서버가 본 두 줍기 사이 이동으로 잰다. AssemblyLinearVelocity 는 클라가 소유한 값이라 순간이동하면 0 이다
 	local lastPos = lastStickerPos[player]
-	if
-		lastPos
+	local tooFast = lastPos ~= nil
 		and (root.Position - lastPos).Magnitude / (now - lastStickerAt[player]) > EconomyConfig.STICKER_MAX_SPEED
-	then
+	-- 거절해도 기준점은 옮긴다. 안 옮기면 같은 스티커의 Touched 마다 위반이 쌓여 한 번의 순간이동으로 킥에 가까워진다
+	lastStickerAt[player] = now
+	lastStickerPos[player] = root.Position
+	if tooFast then
 		RemoteGuard.violation(player, "스티커 과속")
 		return
 	end
-	lastStickerAt[player] = now
-	lastStickerPos[player] = root.Position
 
 	part:SetAttribute(Keys.ATTR_COLLECTED, true)
 	part.CanTouch = false
@@ -229,13 +229,15 @@ local function onStar(player: Player, plotId: number, part: BasePart)
 	end
 	local window = windows[plotId]
 	if not window or now - window.start >= EconomyConfig.STAR_COOLDOWN then
-		window = { start = now, count = 0 }
+		window = { start = now, count = 0, taken = {} }
 		windows[plotId] = window
 	end
-	if window.count >= EconomyConfig.VISITOR_STARS then
+	-- 걷는 동안 Touched 가 여러 번 온다. 같은 별은 창 안에서 한 번만 센다(클라에서는 이미 사라졌다)
+	if window.count >= EconomyConfig.VISITOR_STARS or window.taken[part] then
 		return
 	end
 	window.count += 1
+	window.taken[part] = true
 
 	profile.stickerBoard += 1
 	StudentService.settleBoard(profile)
@@ -247,6 +249,7 @@ local function onStar(player: Player, plotId: number, part: BasePart)
 		boardCells = profile.stickerBoard,
 		gold = false,
 	})
+	MissionService.onSticker(player, 1) -- 미션 1 은 남의 부지 별도 센다(§6.3)
 	DataService.syncNow(player)
 end
 
@@ -290,6 +293,7 @@ function EconomyService.Start()
 	RemoteGuard.wrap(Remotes.SetSkin, { cooldown = SKIN_COOLDOWN, args = { "string", "number" } }, onSetSkin)
 	RemoteGuard.wrap(Remotes.GoHome, { cooldown = HOME_COOLDOWN, args = {} }, function(player)
 		PlotService.goHome(player)
+		lastStickerPos[player] = nil -- 귀가 순간이동을 과속으로 보지 않는다
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)

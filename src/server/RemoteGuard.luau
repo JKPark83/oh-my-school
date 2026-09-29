@@ -28,7 +28,9 @@ local BUCKET_REFILL_PER_SECOND = 10
 local MAX_STRING_LENGTH = 32
 local VIOLATION_WINDOW = 600 -- 초
 local VIOLATION_LIMIT = 20
-local SETTING_COOLDOWN = 0.5
+-- 설정은 쿨다운이 없다. 토글 3개를 빠르게 연달아 누르면 쿨다운이 둘째를 버려 화면과 서버가 어긋난다.
+-- 값이 불리언이라 반복해도 무해하고, 토큰 버킷 10/s 와 markDirty(≤1Hz 동기화)가 이미 막는다
+local SETTING_COOLDOWN = 0
 
 type Bucket = { tokens: number, last: number }
 
@@ -92,6 +94,10 @@ function RemoteGuard.wrap(remote: RemoteEvent, opts: Options, handler: (player: 
 	local argCount = #opts.args
 
 	remote.OnServerEvent:Connect(function(player: Player, ...: any)
+		-- 퇴장 처리(PlayerRemoving 정리) 뒤에 도착한 요청이 버킷·쿨다운 표를 다시 만들지 않게 한다
+		if not player.Parent then
+			return
+		end
 		if not takeToken(player) then
 			RemoteGuard.violation(player, `{remote.Name} 과속`)
 			return

@@ -65,7 +65,11 @@ local function onPlayerAdded(player: Player)
 		return
 	end
 	MissionService.ensureDay(profile)
-	PlotService.assign(player)
+	if not PlotService.assign(player) then
+		-- 12부지가 다 찼다(나간 사람의 release 보다 먼저 들어온 경우). 부지 없이는 할 게 없으니 다시 들어오게 한다
+		player:Kick(Keys.KICK_RELOAD)
+		return
+	end
 	DataService.syncNow(player)
 	task.spawn(logPolicy, player)
 end

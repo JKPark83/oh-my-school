@@ -4,7 +4,7 @@
 	  ensureDay(profile)   KST 일 번호가 바뀌었으면 진행도·done 초기화. 모든 진행 갱신 직전과 60초 틱에서 부른다
 	  onSticker/onBuilt/onChair  진행도 갱신 → 목표 달성 즉시 원서 +1, 즉시 저장, MissionDone 발송
 	  교장 의자: Workspace.Plots.PlotNN 안 "principal" 모델의 Seat "PrincipalChair" Occupant 를 감시한다.
-	    주인이 아니면 Sit=false + Seat.Disabled 1초. 주인이면 onChair.
+	    주인이 아니면 그 사람만 내려 옆으로 비켜 세운다(의자는 끄지 않는다). 주인이면 onChair.
 	3/3 완료 배너는 클라이언트가 프로필로 판단한다(추가 보상 없음).
 ]]
 
@@ -23,8 +23,8 @@ local MissionService = {}
 
 -- TODO(통합): 시설 id "principal" 은 FacilityConfig 의 id 문자열이다. Keys 에 상수가 없어 여기 둔다.
 local PRINCIPAL_FACILITY_ID: Types.FacilityId = "principal"
--- TODO(통합): 기획서 §6.3 "Seat.Disabled 1초". 전용 Config 가 생기면 옮긴다.
-local CHAIR_BLOCK_SECONDS = 1
+-- 방문객을 의자 옆으로 비켜 세우는 거리. 책상(폭 9)은 의자 앞이라 옆 5 studs 는 비어 있다(Geometry/principal)
+local EJECT_SIDE = 5
 local PLOTS_WAIT = 10
 
 local function indexOf(id: string): number
@@ -41,7 +41,6 @@ local BUILT_INDEX = indexOf("built")
 local CHAIR_INDEX = indexOf("chair")
 
 local seatConnections: { [Seat]: RBXScriptConnection } = {}
-local blockGeneration: { [Seat]: number } = {}
 
 --- 날짜가 바뀌었으면 초기화. 초기화했으면 true
 function MissionService.ensureDay(profile: Types.Profile): boolean
@@ -114,16 +113,18 @@ function MissionService.onChair(player: Player)
 	DataService.markDirty(player)
 end
 
-local function blockSeat(seat: Seat, occupant: Humanoid)
+--- 방문객만 내린다. Seat.Disabled 로 막으면 그동안 주인도 못 앉아 방문객이 주인을 늦출 수 있다(§7.5)
+local function ejectVisitor(seat: Seat, occupant: Humanoid)
+	local weld = seat:FindFirstChild("SeatWeld")
+	if weld then
+		weld:Destroy()
+	end
 	occupant.Sit = false
-	local generation = (blockGeneration[seat] or 0) + 1
-	blockGeneration[seat] = generation
-	seat.Disabled = true
-	task.delay(CHAIR_BLOCK_SECONDS, function()
-		if blockGeneration[seat] == generation and seat.Parent then
-			seat.Disabled = false
-		end
-	end)
+	local character = occupant.Parent
+	if character and character:IsA("Model") then
+		-- 의자에 그대로 닿아 있으면 바로 다시 앉으므로 옆으로 옮긴다
+		character:PivotTo(seat.CFrame * CFrame.new(EJECT_SIDE, 3, 0))
+	end
 end
 
 local function watchSeat(plotId: number, seat: Seat)
@@ -139,7 +140,7 @@ local function watchSeat(plotId: number, seat: Seat)
 		local sitter = if character and character:IsA("Model") then Players:GetPlayerFromCharacter(character) else nil
 		local owner = PlotService.ownerOf(plotId)
 		if sitter == nil or owner == nil or sitter ~= owner then
-			blockSeat(seat, occupant)
+			ejectVisitor(seat, occupant)
 			return
 		end
 		MissionService.onChair(sitter)
@@ -148,7 +149,6 @@ local function watchSeat(plotId: number, seat: Seat)
 	seat.Destroying:Connect(function()
 		connection:Disconnect()
 		seatConnections[seat] = nil
-		blockGeneration[seat] = nil
 	end)
 end
 

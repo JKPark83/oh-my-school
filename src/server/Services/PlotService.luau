@@ -390,7 +390,7 @@ function PlotService.Start()
 				local character = player.Character
 				local root = character and character:FindFirstChild("HumanoidRootPart")
 				if root and root.Position.Y < FALL_Y and plotModels[plotId] then
-					PlotService.goHome(player)
+					task.spawn(PlotService.goHome, player) -- goHome 은 스트리밍을 기다린다. 이 루프를 멈추지 않게
 				end
 			end
 		end
@@ -446,7 +446,7 @@ function PlotService.assign(player: Player): number?
 	end
 	PlotService.syncAttributes(player)
 	if player.Character then
-		PlotService.goHome(player)
+		task.spawn(PlotService.goHome, player) -- 첫 ProfileSync 가 늦어지지 않게 기다리지 않는다
 	end
 	return plotId
 end
@@ -464,6 +464,13 @@ function PlotService.release(player: Player)
 	end
 	owners[plotId] = nil
 	removeFacilities(plotId)
+	-- 이전 주인이 주운 스티커는 respawnSticker 가 주인이 바뀌어 다시 켜지 않는다. 전부 새로 켜게 Enabled 를 지운다
+	local stickers = plotModels[plotId]:FindFirstChild(Keys.STICKERS_FOLDER)
+	if stickers then
+		for _, part in stickers:GetChildren() do
+			part:SetAttribute("Enabled", nil)
+		end
+	end
 	refreshWorld(plotId, {})
 	resetState(plotId)
 end
@@ -495,6 +502,11 @@ function PlotService.syncAttributes(player: Player)
 	if not plotId or not profile then
 		return
 	end
+	-- 졸업 잠금 동안은 그대로 둔다. 클라 졸업식이 지금 학생으로 강당을 채우기 때문이다.
+	-- 8.0초 철거(GraduationService.finish)가 잠금을 푼 뒤 한 번에 바꾼다(§6.1)
+	if locked[player] then
+		return
+	end
 	local folder = stateFolders[plotId]
 	folder:SetAttribute(Keys.ATTR_OWNER_ID, player.UserId)
 	folder:SetAttribute(Keys.ATTR_OWNER_NAME, player.DisplayName)
@@ -519,7 +531,7 @@ function PlotService.buildFacility(player: Player, facilityId: string): Model?
 	return facility
 end
 
---- 졸업: 시설 모델 전부 제거, 스폰 3, 실루엣. 프로필은 이미 비워져 있다
+--- 졸업: 시설 모델 전부 제거, 스폰 0(책상을 다시 사면 3), 실루엣. 프로필은 이미 비워져 있다
 function PlotService.teardown(player: Player)
 	local plotId = plotOf[player]
 	local profile = DataService.get(player)
@@ -544,6 +556,7 @@ function PlotService.applySkin(player: Player, facilityId: string, skinIndex: nu
 	PlotService.syncAttributes(player)
 end
 
+--- 자기 부지 스폰으로 옮긴다. 도착지 스트리밍을 기다리므로 멈춘다(호출자가 멈추면 안 되면 task.spawn)
 function PlotService.goHome(player: Player)
 	local plotId = plotOf[player]
 	local character = player.Character
@@ -552,6 +565,11 @@ function PlotService.goHome(player: Player)
 	end
 	local spawn = plotModels[plotId]:FindFirstChild(Keys.SPAWN)
 	local cf = if spawn then spawn.CFrame else cframes[plotId] * CFrame.new(0, 0, 48)
+	-- 멀리서 순간이동하면 바닥이 아직 안 내려와 떨어질 수 있다. 도착지 주변을 먼저 받게 한다(실패해도 이동은 한다)
+	pcall(player.RequestStreamAroundAsync, player, cf.Position)
+	if player.Character ~= character or not character.Parent then
+		return -- 기다리는 동안 리스폰·퇴장
+	end
 	character:PivotTo(cf + Vector3.new(0, 4, 0))
 end
 

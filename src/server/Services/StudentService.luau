@@ -6,6 +6,7 @@
 	원서가 없으면 조용히 무시한다(Deny 없음). 졸업 중(lock)도 무시.
 ]]
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Types = require(ReplicatedStorage.Shared.Types)
@@ -95,6 +96,9 @@ end
 function StudentService.Start()
 	RemoteGuard.wrap(Remotes.RollGacha, { cooldown = ROLL_COOLDOWN, args = {} }, function(player)
 		StudentService.roll(player)
+	end)
+	Players.PlayerRemoving:Connect(function(player: Player)
+		seqs[player] = nil
 	end)
 end
 

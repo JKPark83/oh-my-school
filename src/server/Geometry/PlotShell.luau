@@ -682,6 +682,8 @@ function PlotShell.build(plotCFrame: CFrame, plotId: number): Model
 	buildConstruction(shell, plotCFrame)
 	buildYard(shell, plotCFrame)
 	shell.Parent = plot
+	-- 클라는 스트리밍으로 파트 일부만 받아도 부지 중심을 알아야 한다(HudController.plotCenter). 피벗은 파트와 달리 늘 복제된다
+	plot.WorldPivot = plotCFrame
 
 	buildSpawn(plot, plotCFrame)
 	buildPads(plot, plotCFrame)

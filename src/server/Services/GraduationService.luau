@@ -2,10 +2,10 @@
 --[[
 	졸업. 기획서 §6.1·§6.2.
 	  Graduate 리모트(쿨다운 10초) → 검증(14/14, 잠금 아님, 마지막 졸업 후 10초)
-	  → 프로필 원자적 변경(yield 없음): graduations += 1, facilities = {}, coins = 10 × 1.4^N,
+	  → PlotService.lock → 프로필 원자적 변경(yield 없음): graduations += 1, facilities = {}, coins = 10 × 1.4^N,
 	    졸업 확정 학생(1회 s18, 5회 s23) grant. skinsApplied·skinsOwned·tickets·board·pity·missions 유지
-	  → PlotService.lock → 즉시 저장 → 리더보드 → Graduated 전체 방송 → 어트리뷰트·ProfileSync
-	  → 8.0초 뒤 월드 철거(teardown) + 잠금 해제. 퇴장하면 flush() 로 즉시 철거.
+	  → 즉시 저장 요청 → (요청이 받아들여지면) 리더보드 → Graduated 전체 방송 → ProfileSync
+	  → 8.0초 뒤 잠금 해제 + 월드 철거(teardown). 부지 어트리뷰트도 이때 바뀐다. 퇴장하면 flush() 로 즉시 철거.
 	8초는 클라이언트 졸업식 연출(§9.5)을 위한 대기일 뿐 프로필과 무관하다.
 ]]
 
@@ -32,8 +32,9 @@ local pendingTeardown: { [Player]: thread } = {}
 
 local function finish(player: Player)
 	pendingTeardown[player] = nil
-	PlotService.teardown(player)
+	-- 잠금을 먼저 풀어야 teardown 의 syncAttributes 가 어트리뷰트를 쓴다
 	PlotService.lock(player, false)
+	PlotService.teardown(player)
 end
 
 local function graduate(player: Player)
@@ -53,6 +54,8 @@ local function graduate(player: Player)
 		return
 	end
 	lastGraduation[player] = now
+	-- 먼저 잠근다. 아래 grant 의 syncAttributes 가 빈 시설을 부지에 내보내지 않게
+	PlotService.lock(player, true)
 
 	-- 원자적 프로필 변경. 여기서 저장까지 yield 없음
 	profile.graduations += 1
@@ -63,22 +66,20 @@ local function graduate(player: Player)
 	if newStudent then
 		StudentService.grant(player, newStudent.id, false)
 	end
-	PlotService.lock(player, true)
 
-	if not DataService.save(player) then
-		warn(`[GraduationService] {player.UserId} 졸업 저장 실패, 1회 재시도`)
-		if not DataService.save(player) then
-			warn(`[GraduationService] {player.UserId} 졸업 저장 재시도 실패`)
-		end
+	-- ProfileStore Save() 는 비동기라 성공 여부를 돌려주지 않는다. 요청이 거절되는 건 세션이 없을 때뿐이고,
+	-- 그러면 이 졸업은 저장되지 않으니 리더보드에도 올리지 않는다. 일시 오류는 ProfileStore 자동 저장이 다시 시도한다
+	if DataService.save(player) then
+		LeaderboardService.submit(player, graduations)
+	else
+		warn(`[GraduationService] {player.UserId} 졸업 저장 요청 거절(세션 없음)`)
 	end
-
-	LeaderboardService.submit(player, graduations)
 	Remotes.event(nil, "Graduated", {
 		plot = PlotService.plotOf(player) or 0,
 		graduations = graduations,
 		newStudentId = if newStudent then newStudent.id else nil,
 	})
-	PlotService.syncAttributes(player)
+	-- 부지 어트리뷰트는 잠금 동안 그대로다(졸업식이 지금 학생을 쓴다). 철거 때 바뀐다
 	DataService.syncNow(player)
 
 	pendingTeardown[player] = task.delay(TEARDOWN_DELAY, finish, player)

@@ -4,7 +4,7 @@
 	  OrderedDataStore "Graduations" TOP 10 을 60초마다 읽어 Workspace.Plaza.Leaderboard 의 SurfaceGui 에 그린다.
 	  이름은 UserService:GetUserInfosByUserIdsAsync 의 DisplayName(60초 캐시). 실패하면 「교장 #끝4자리」.
 	  Username 은 어디에도 쓰지 않는다. submit 은 졸업 저장 성공 뒤에만 부른다(GraduationService).
-	Studio(Mock) 에서는 DataStore 호출이 실패해도 조용히 넘어간다.
+	Studio 에서는 "Graduations_Dev" 를 쓰고, DataStore 호출이 실패해도 조용히 넘어간다.
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -178,7 +178,8 @@ end
 --- 스토어 준비 + 보드 라벨 생성 + 60초 갱신 루프
 function LeaderboardService.Start()
 	local ok, result = pcall(function()
-		return DataStoreService:GetOrderedDataStore(STORE_NAME)
+		-- Studio 에서 실제 DataStore 를 켜도 라이브 보드에 테스트 기록이 섞이지 않게 DataService 처럼 "_Dev" 를 붙인다
+		return DataStoreService:GetOrderedDataStore(if RunService:IsStudio() then STORE_NAME .. "_Dev" else STORE_NAME)
 	end)
 	if ok then
 		store = result
