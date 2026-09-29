@@ -1,431 +1,1059 @@
---!nonstrict
+--!strict
 --[[
-	HUD. 계획서 §7.3 의 규칙은 "덜어내는 것"이다.
+	HUD. 기획서 §8.2 표의 위젯과 프로필 로컬 캐시(§11.3)를 여기서 소유한다.
 
-	  좌상단  — 지금 몇 학년 몇 반인가, 별은 몇 개인가, 소리 켬/끔
-	  하단중앙 — 지금 장착한 업그레이드, 그 아래 이동 모드 (둘 다 작게)
-	  가운데  — 알림 한 줄. 상점 결과처럼 연출이 필요 없는 통보
-	  수료 배너 — 학년을 끝냈을 때만
-
-	없는 것: 체력바, 미니맵, 퀘스트 로그, 선생님 상태 표시.
-
-	★ 특히 "선생님 상태"를 글자로 띄우지 않는다. Phase 1~4 의 디버그 HUD 에는 있었지만,
-	  그게 있으면 소리와 비네트를 아무도 안 본다. 상태를 읽는 능력이 이 게임의 실력이다.
-
-	적발 사유는 FeedbackController 가 실패 연출의 부제로 띄운다. 여기서 또 띄우지 않는다.
+	  ★ 프로필의 유일한 클라이언트 사본이다. ProfileSync 는 setProfile 하나로만 들어오고(seq 가 크지 않으면 버림),
+	    다른 컨트롤러는 profile() / onProfile() 로만 읽는다. 컨트롤러끼리 프로필을 따로 들고 있지 않는다.
+	  ★ 좌표는 812×375 기준 px Offset 이고 UIScale = clamp(viewportHeight / 375, 0.9, 1.6) 로만 키운다(§8.1).
+	    루트 프레임 Size 를 1/scale 로 두어 Scale 1 = 화면 끝이 되게 한다 — 오른쪽 열은 (1, -12) 로 붙는다.
+	  ★ 첫 시설 전에는 용돈 칩과 「다음 시설」 카드만 보인다(§2.2 0:00). 나머지는 프로필이 조건을 채울 때 나타난다.
+	  ★ 링 게이지는 원형 UIStroke 대신 얇은 진행바다(모바일 성능 우선). 매 초(Heartbeat 누적) 캐시로 다시 계산한다.
 ]]
 
-local ContextActionService = game:GetService("ContextActionService")
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
 local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
-local MovementConfig = require(ReplicatedStorage.Shared.Config.MovementConfig)
-local Upgrades = require(ReplicatedStorage.Shared.Config.Upgrades)
-local MovementController = require(script.Parent.MovementController)
-local SoundController = require(script.Parent.SoundController)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Keys = require(Shared.Config.Keys)
+local EconomyConfig = require(Shared.Config.EconomyConfig)
+local FacilityConfig = require(Shared.Config.FacilityConfig)
+local MissionConfig = require(Shared.Config.MissionConfig)
+local StudentConfig = require(Shared.Config.StudentConfig)
+local Format = require(Shared.Format)
+local Remotes = require(Shared.Remotes)
+local Types = require(Shared.Types)
 
-local WAIT_TIMEOUT = 10
+type Profile = Types.Profile
+type Listener = (Profile) -> ()
+export type SyncPacket = { seq: number, profile: Profile }
 
-local NOTICE_HOLD = 2.6
-local NOTICE_FADE = 0.35
+-- ── 기준 치수(§8.1) ──
+local BASE_HEIGHT = 375
+local SCALE_MIN = 0.9
+local SCALE_MAX = 1.6
+local TEXT_MIN = 14
+local TEXT_MAX = 32
+local CORNER = 8
+
+-- ── 색(§8.1) ──
+local PANEL = Color3.fromRGB(31, 41, 55)
+local PANEL_ALPHA = 0.15 -- α0.85
+local YELLOW = Color3.fromRGB(251, 191, 36)
+local GREEN = Color3.fromRGB(52, 211, 153)
+local BLUE = Color3.fromRGB(96, 165, 250)
+local RED = Color3.fromRGB(248, 113, 113) -- 도감 새 학생 점에만 쓴다
+local GOLD = Color3.fromRGB(245, 158, 11)
+local WHITE = Color3.fromRGB(255, 255, 255)
+local MUTED = Color3.fromRGB(209, 213, 219)
+local TRACK = Color3.fromRGB(55, 65, 81)
+
+-- ── 시간(§8.2·§9.1) ──
+local ROLL_SECONDS = 0.4 -- 용돈 숫자 롤 Quad Out
+local DELTA_SECONDS = 0.4 -- 「-가격」 표시
+local PUNCH_SCALE = 1.15
+local PUNCH_SECONDS = 0.25
+local PULSE_SECONDS = 0.8
+local SLIDE_SECONDS = 0.25
+local FLY_SECONDS = 0.5
+local TOAST_HOLD = 2.6
 local BANNER_HOLD = 4
+local FADE_SECONDS = 0.35
+local PAN_SECONDS = 0.4 -- §8.2 탭 → 카메라 팬
+local GO_HOME_COOLDOWN = 5 -- §11.5 GoHome 속도 제한과 같은 값
+local TICK_SECONDS = 1
+local GOLD_MULTIPLIER = 2 -- 배율 칩이 금색이 되는 기준
 
-local MODE_COLORS = {
-	SNEAK = Color3.fromRGB(150, 220, 255),
-	WALK = Color3.fromRGB(225, 225, 225),
-	RUN = Color3.fromRGB(255, 140, 140),
-}
+-- 부지 반폭. 기획서 §7.2 부지 120×120. 부지 중심은 월드 인스턴스에서 읽는다
+-- TODO(통합): 부지 크기 상수를 Config 로 옮기면 여기서 참조
+local PLOT_HALF = 60
 
---[[
-	장착 칸의 글리프. 이미지 에셋을 쓰지 않는 프로젝트라 이모지로 대신한다.
-	이름만 나열하면 세 개가 다 비슷한 글자 덩어리로 보이는데,
-	앞에 그림이 하나 붙으면 곁눈질로도 어느 것이 켜져 있는지 구분된다.
-]]
-local UPGRADE_GLYPHS = {
-	quietShoes = "👟",
-	balance = "⚖️",
-	instinct = "👁️",
-}
+-- 다른 컨트롤러 이름·패널 이름·소리 키
+-- 패널 이름은 PanelController.PanelName, 소리 키는 SoundConfig.DEFS 와 같아야 한다
+local PANEL_SETTINGS = "settings"
+local PANEL_CODEX = "codex"
+local PANEL_MISSIONS = "missions"
+local SOUND_AFFORD = "afford_ding"
 
-local CHIP_POP = 0.22
+-- 사용자에게 보이는 문구(≤12자)
+local TEXT_NEXT_CAPTION = "다음 시설"
+local TEXT_AFFORD = "살 수 있어요!"
+local TEXT_NO_INCOME = "스티커를 줍자!"
+local TEXT_GRADUATE = "졸업식을 열자!"
+local TEXT_GRADUATE_SUB = "강당 종을 치자!"
+local TEXT_GO_HOME = "우리 학교로"
+local TEXT_GO_HOME_SUB = "탭하면 돌아가요"
+local TEXT_BOARD = "스티커판"
 
--- 종까지 이만큼 남으면 숫자가 붉어진다. 달리기 색과 같은 값이다 —
--- "이제 뛸 때다"를 색으로 먼저 말한다.
-local BELL_URGENT = 5
-local BELL_LATE_COLOR = Color3.fromRGB(150, 150, 150)
+-- TODO(통합): 아이콘 이미지(용돈·원서·스티커·도감·미션·설정·집). 지금은 글리프로 대신한다
+local GLYPH_COINS = "💰"
+local GLYPH_TICKET = "🎫"
+local GLYPH_HOME = "🏠"
+local GLYPH_SETTINGS = "⚙️"
+local GLYPH_CODEX = "📖"
+local GLYPH_MISSIONS = "📋"
 
 local player = Players.LocalPlayer
 
 local HudController = {}
 
-local classLabel: TextLabel
-local starLabel: TextLabel
-local seatLabel: TextLabel
-local bellLabel: TextLabel
-local modeLabel: TextLabel
-local noticeLabel: TextLabel
-local bannerLabel: TextLabel
-local muteButton: TextButton
-local chips: { [string]: TextLabel } = {}
+-- ── 상태 ──
+local built = false
+local cached: Profile? = nil
+local cachedSeq = 0
+local listeners: { [number]: Listener } = {}
+local listenerSeq = 0
 
-local noticeToken = 0
+local lastSeenStudents: number? = nil -- 도감 빨간 점: 마지막으로 도감을 연 때의 보유 수
+local wasAffordable: boolean? = nil
+local onOwnPlot = true
+local goHomeAt = -math.huge
+local nextTap: (() -> ())? = nil
+local shownCardKey: string? = nil
+local plotCenters: { [number]: Vector3 } = {}
+local pulses: { [UIStroke]: Tween } = {}
+local held = false -- 졸업식 동안 숨기고 새 프로필을 그리지 않는다(§9.5)
+local heldFrom: Profile? = nil -- 숨기기 직전 프로필. 풀 때 이것과 비교해 롤·펀치를 낸다
+
+local toastToken = 0
 local bannerToken = 0
+local bannerQueue: { string } = {}
+local bannerBusy = false
 
--- 종이 울리는 시각(클라 os.clock 기준)과 이번 반에 종을 이미 울렸는가.
--- 서버는 "남은 초"만 보내주고, 초를 세는 것은 여기서 혼자 한다.
-local bellDeadline: number? = nil
-local bellRang = false
-local shownUpgrades: { [string]: boolean } = {}
+-- 순환 require 를 피하려고 Start 에서 늦게 잇는다(PanelController 가 이 모듈을 require 한다)
+local Camera: any = nil
+local Panel: any = nil
+local Sound: any = nil
 
-local function makeLabel(parent: Instance, name: string, size: number, font: Enum.Font): TextLabel
+-- ── UI 참조 ──
+local root: Frame
+local rootScale: UIScale
+local coinsChip: Frame
+local coinsLabel: TextLabel
+local coinsDelta: TextLabel
+local coinsValue: NumberValue
+local incomeChip: Frame
+local incomeLabel: TextLabel
+local incomeScale: UIScale
+local ticketChip: TextButton
+local ticketLabel: TextLabel
+local ticketStroke: UIStroke
+local ticketScale: UIScale
+local card: TextButton
+local cardCaption: TextLabel
+local cardName: TextLabel
+local cardPrice: TextLabel
+local cardSub: TextLabel
+local cardBar: Frame
+local cardFill: Frame
+local cardStroke: UIStroke
+local boardChip: Frame
+local boardLabel: TextLabel
+local boardFill: Frame
+local multChip: Frame
+local multLabel: TextLabel
+local multScale: UIScale
+local settingsButton: TextButton
+local codexButton: TextButton
+local codexDot: Frame
+local missionButton: TextButton
+local missionBadge: TextLabel
+local toastLabel: TextLabel
+local bannerLabel: TextLabel
+local flyer: TextLabel
+
+-- ── 생성 헬퍼 ──
+
+local function corner(parent: Instance, radius: number)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+end
+
+local function makeScale(parent: Instance): UIScale
+	local s = Instance.new("UIScale")
+	s.Parent = parent
+	return s
+end
+
+local function makeStroke(parent: Instance, color: Color3): UIStroke
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color
+	stroke.Thickness = 2
+	stroke.Transparency = 1
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = parent
+	return stroke
+end
+
+local function makePanel(parent: Instance, name: string, position: UDim2, size: UDim2): Frame
+	local frame = Instance.new("Frame")
+	frame.Name = name
+	frame.Position = position
+	frame.Size = size
+	frame.BackgroundColor3 = PANEL
+	frame.BackgroundTransparency = PANEL_ALPHA
+	frame.BorderSizePixel = 0
+	frame.Parent = parent
+	corner(frame, CORNER)
+	return frame
+end
+
+local function makeLabel(parent: Instance, name: string, font: Enum.Font, color: Color3): TextLabel
 	local label = Instance.new("TextLabel")
 	label.Name = name
 	label.BackgroundTransparency = 1
 	label.Font = font
-	label.TextSize = size
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0.35
+	label.TextColor3 = color
+	label.TextScaled = true
 	label.Text = ""
 	label.Parent = parent
+
+	local constraint = Instance.new("UITextSizeConstraint")
+	constraint.MinTextSize = TEXT_MIN
+	constraint.MaxTextSize = TEXT_MAX
+	constraint.Parent = label
 	return label
 end
+
+local function makeButton(parent: Instance, name: string, position: UDim2, size: UDim2): TextButton
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Position = position
+	button.Size = size
+	button.BackgroundColor3 = PANEL
+	button.BackgroundTransparency = PANEL_ALPHA
+	button.BorderSizePixel = 0
+	button.AutoButtonColor = true
+	button.Text = ""
+	button.Parent = parent
+	corner(button, CORNER)
+	return button
+end
+
+local function makeBar(parent: Instance, name: string, position: UDim2, size: UDim2, color: Color3): (Frame, Frame)
+	local track = Instance.new("Frame")
+	track.Name = name
+	track.Position = position
+	track.Size = size
+	track.BackgroundColor3 = TRACK
+	track.BorderSizePixel = 0
+	track.Parent = parent
+	corner(track, 2)
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BackgroundColor3 = color
+	fill.BorderSizePixel = 0
+	fill.Parent = track
+	corner(fill, 2)
+	return track, fill
+end
+
+-- ── 연출 헬퍼 ──
+
+local function tween(target: Instance, seconds: number, goal: { [string]: any }, style: Enum.EasingStyle?): Tween
+	local t = TweenService:Create(
+		target,
+		TweenInfo.new(seconds, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		goal
+	)
+	t:Play()
+	return t
+end
+
+--- 위젯을 잠깐 키웠다 되돌린다(§8.2 「펀치 1.15」)
+local function punch(scale: UIScale)
+	scale.Scale = PUNCH_SCALE
+	tween(scale, PUNCH_SECONDS, { Scale = 1 }, Enum.EasingStyle.Back)
+end
+
+--- 테두리 펄스 켜기/끄기. 켜진 것을 또 켜도 새로 시작하지 않는다
+local function pulse(stroke: UIStroke, on: boolean)
+	local running = pulses[stroke]
+	if on then
+		if running then
+			return
+		end
+		stroke.Transparency = 0.1
+		local t = TweenService:Create(
+			stroke,
+			TweenInfo.new(PULSE_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Transparency = 0.75 }
+		)
+		t:Play()
+		pulses[stroke] = t
+	elseif running then
+		running:Cancel()
+		pulses[stroke] = nil
+		stroke.Transparency = 1
+	end
+end
+
+--- 카드 내용이 바뀔 때 위에서 살짝 내려온다(§9.2 「카드 슬라이드 0.25초」)
+local function slideCard()
+	local target = card.Position
+	card.Position = UDim2.new(target.X.Scale, target.X.Offset, target.Y.Scale, target.Y.Offset - 10)
+	tween(card, SLIDE_SECONDS, { Position = target })
+end
+
+--- 루트 프레임 기준 px 좌표(UIScale 을 되돌린 값)
+local function rootLocal(gui: GuiObject): Vector2
+	local scale = rootScale.Scale
+	local center = gui.AbsolutePosition + gui.AbsoluteSize / 2
+	return (center - root.AbsolutePosition) / scale
+end
+
+--- 스티커판이 찼을 때 원서 아이콘이 원서 칩으로 날아간다(§8.2)
+local function flyTicket()
+	local from = rootLocal(boardChip)
+	local to = rootLocal(ticketChip)
+	flyer.Position = UDim2.fromOffset(from.X, from.Y)
+	flyer.TextTransparency = 0
+	flyer.Visible = true
+	local t = tween(flyer, FLY_SECONDS, { Position = UDim2.fromOffset(to.X, to.Y) }, Enum.EasingStyle.Quad)
+	t.Completed:Once(function()
+		flyer.Visible = false
+		if ticketChip.Visible then
+			punch(ticketScale)
+		end
+	end)
+end
+
+-- ── 월드 위치 읽기 ──
+
+local function plotModel(plotId: number): Model?
+	local plots = Workspace:FindFirstChild(Keys.PLOTS_FOLDER)
+	local plot = if plots then plots:FindFirstChild(Keys.plotName(plotId)) else nil
+	return if plot and plot:IsA("Model") then plot else nil
+end
+
+--- 부지 중심(월드). Shell 바닥 바운딩박스가 있으면 그것, 없으면 모델 피벗
+local function plotCenter(plotId: number): Vector3?
+	local known = plotCenters[plotId]
+	if known then
+		return known
+	end
+	local plot = plotModel(plotId)
+	if not plot then
+		return nil
+	end
+	local shell = plot:FindFirstChild(Keys.SHELL)
+	if shell and shell:IsA("Model") and shell:FindFirstChildWhichIsA("BasePart", true) then
+		local cf = shell:GetBoundingBox()
+		plotCenters[plotId] = cf.Position
+		return cf.Position
+	end
+	return plot:GetPivot().Position
+end
+
+local function padPosition(plotId: number, facilityId: string): Vector3?
+	local plot = plotModel(plotId)
+	local pads = if plot then plot:FindFirstChild(Keys.PADS_FOLDER) else nil
+	local pad = if pads then pads:FindFirstChild(facilityId) else nil
+	return if pad and pad:IsA("BasePart") then pad.Position else nil
+end
+
+local function partPosition(plotId: number, partName: string): Vector3?
+	local plot = plotModel(plotId)
+	local part = if plot then plot:FindFirstChild(partName, true) else nil
+	return if part and part:IsA("BasePart") then part.Position else nil
+end
+
+local function panTo(position: Vector3?)
+	if position and Camera and Camera.panTo then
+		pcall(Camera.panTo, position, PAN_SECONDS)
+	end
+end
+
+--- 구독자 한 명을 pcall 로 부른다. Listener 는 반환값이 없어 pcall 결과가 1개라 any 로 넘긴다
+local function notify(fn: Listener, profile: Profile)
+	local ok, err = pcall(fn :: any, profile)
+	if not ok then
+		warn(`[Hud] onProfile 구독자 오류: {err}`)
+	end
+end
+
+-- ── 파생값 ──
+
+local function facilityCount(profile: Profile): number
+	return FacilityConfig.count(profile.facilities)
+end
+
+--- 첫 시설을 지었거나 졸업한 적이 있으면 HUD 전체가 열린다
+local function unlocked(profile: Profile): boolean
+	return facilityCount(profile) > 0 or profile.graduations > 0
+end
+
+local function missionsDone(profile: Profile): number
+	local n = 0
+	for _, done in profile.missions.done do
+		if done then
+			n += 1
+		end
+	end
+	return n
+end
+
+--- prev 에 없고 now 에 있는 시설 하나. 없으면 nil
+local function newlyBuilt(prev: Profile?, now: Profile): string?
+	for _, id in FacilityConfig.ORDER do
+		if now.facilities[id] and not (prev and prev.facilities[id]) then
+			return id
+		end
+	end
+	return nil
+end
+
+-- ── 위젯 갱신 ──
+
+local function renderCoins(profile: Profile, prev: Profile?)
+	if prev then
+		tween(coinsValue, ROLL_SECONDS, { Value = profile.coins })
+	else
+		coinsValue.Value = profile.coins
+		coinsLabel.Text = Format.coins(profile.coins)
+	end
+
+	local builtId = newlyBuilt(prev, profile)
+	if builtId then
+		local price = FacilityConfig.priceOf(builtId, profile.graduations)
+		coinsDelta.Text = `-{Format.coins(price)}`
+		coinsDelta.TextTransparency = 0
+		coinsDelta.Position = UDim2.fromOffset(216, 12)
+		task.delay(DELTA_SECONDS, function()
+			tween(coinsDelta, FADE_SECONDS, { TextTransparency = 1, Position = UDim2.fromOffset(216, 0) })
+		end)
+	end
+end
+
+local function renderIncome(profile: Profile, prev: Profile?)
+	local visible = unlocked(profile)
+	incomeChip.Visible = visible
+	if not visible then
+		return
+	end
+	incomeLabel.Text = Format.income(EconomyConfig.incomePerSecond(profile))
+	if prev then
+		local grew = facilityCount(profile) > facilityCount(prev)
+			or StudentConfig.ownedCount(profile.students) > StudentConfig.ownedCount(prev.students)
+		if grew then
+			punch(incomeScale)
+		end
+	end
+end
+
+local function renderTickets(profile: Profile, prev: Profile?)
+	local visible = profile.tickets > 0 or profile.stats.totalPulls > 0
+	ticketChip.Visible = visible
+	if not visible then
+		pulse(ticketStroke, false)
+		return
+	end
+	ticketLabel.Text = `{GLYPH_TICKET} {profile.tickets}장`
+	pulse(ticketStroke, profile.tickets >= 1)
+	if prev and profile.tickets > prev.tickets then
+		punch(ticketScale)
+	end
+end
+
+local function renderBoard(profile: Profile, prev: Profile?)
+	boardChip.Visible = unlocked(profile)
+	boardLabel.Text = `{profile.stickerBoard}/{EconomyConfig.BOARD_CELLS}`
+	boardFill.Size = UDim2.fromScale(math.clamp(profile.stickerBoard / EconomyConfig.BOARD_CELLS, 0, 1), 1)
+	-- 칸이 줄었다 = 60칸을 채워 원서가 됐다(졸업은 판을 유지하므로 다른 이유가 없다)
+	if prev and boardChip.Visible and profile.stickerBoard < prev.stickerBoard then
+		flyTicket()
+	end
+end
+
+local function renderMultiplier(profile: Profile, prev: Profile?)
+	local mult = EconomyConfig.multiplier(profile)
+	local visible = mult > 1
+	multChip.Visible = visible
+	if not visible then
+		return
+	end
+	multLabel.Text = Format.multiplier(mult)
+	multLabel.TextColor3 = if mult >= GOLD_MULTIPLIER then GOLD else WHITE
+	if prev and mult ~= EconomyConfig.multiplier(prev) then
+		punch(multScale)
+	end
+end
+
+local function renderButtons(profile: Profile)
+	local visible = unlocked(profile)
+	settingsButton.Visible = visible
+	codexButton.Visible = visible
+	missionButton.Visible = visible
+
+	local owned = StudentConfig.ownedCount(profile.students)
+	if lastSeenStudents == nil then
+		lastSeenStudents = owned
+	end
+	codexDot.Visible = owned > (lastSeenStudents :: number)
+	missionBadge.Text = `{missionsDone(profile)}/{#MissionConfig.LIST}`
+end
+
+--- 「다음 시설」 카드. 매 초 다시 계산한다(링·예상 초·자기 부지 여부)
+local function renderCard(profile: Profile)
+	local nextRow = FacilityConfig.nextOf(profile.facilities)
+	local home = HudController.isOnOwnPlot()
+	local key: string
+	if not home then
+		key = "home"
+		cardCaption.Text = ""
+		cardName.Text = `{GLYPH_HOME} {TEXT_GO_HOME}`
+		cardPrice.Text = ""
+		cardSub.Text = TEXT_GO_HOME_SUB
+		cardBar.Visible = false
+		pulse(cardStroke, false)
+	elseif nextRow == nil then
+		key = "graduate"
+		cardCaption.Text = `{facilityCount(profile)}/{FacilityConfig.COUNT}`
+		cardName.Text = TEXT_GRADUATE
+		cardPrice.Text = ""
+		cardSub.Text = TEXT_GRADUATE_SUB
+		cardBar.Visible = true
+		cardFill.Size = UDim2.fromScale(1, 1)
+		cardFill.BackgroundColor3 = GOLD
+		pulse(cardStroke, true)
+	else
+		key = nextRow.id
+		local price = FacilityConfig.priceOf(nextRow.id, profile.graduations)
+		local eta = EconomyConfig.etaSeconds(profile, price)
+		local affordable = eta <= 0
+		cardCaption.Text = TEXT_NEXT_CAPTION
+		cardName.Text = nextRow.name
+		cardPrice.Text = `{GLYPH_COINS}{Format.coins(price)}`
+		cardSub.Text = if affordable
+			then TEXT_AFFORD
+			elseif eta == math.huge then TEXT_NO_INCOME
+			else `약 {Format.eta(eta)}`
+		cardBar.Visible = true
+		cardFill.Size = UDim2.fromScale(math.clamp(profile.coins / price, 0, 1), 1)
+		cardFill.BackgroundColor3 = GREEN
+		pulse(cardStroke, affordable)
+
+		-- 살 수 있게 되는 순간 한 번만 딩. 첫 프로필(접속 직후)은 울리지 않는다
+		if affordable and wasAffordable == false and Sound and Sound.play then
+			pcall(Sound.play, SOUND_AFFORD)
+		end
+		wasAffordable = affordable
+	end
+
+	if shownCardKey ~= key then
+		shownCardKey = key
+		slideCard()
+	end
+end
+
+local function render(profile: Profile, prev: Profile?)
+	renderCoins(profile, prev)
+	renderIncome(profile, prev)
+	renderTickets(profile, prev)
+	renderBoard(profile, prev)
+	renderMultiplier(profile, prev)
+	renderButtons(profile)
+	renderCard(profile)
+end
+
+-- ── 탭 처리 ──
+
+local function onCardTap()
+	local profile = cached
+	if not profile then
+		return
+	end
+	local plotId = HudController.myPlotId()
+	if not HudController.isOnOwnPlot() then
+		local now = os.clock()
+		if now - goHomeAt < GO_HOME_COOLDOWN then
+			return
+		end
+		goHomeAt = now
+		Remotes.GoHome:FireServer()
+		return
+	end
+	if nextTap then
+		nextTap()
+		return
+	end
+	if not plotId then
+		return
+	end
+	local nextRow = FacilityConfig.nextOf(profile.facilities)
+	if nextRow then
+		panTo(padPosition(plotId, nextRow.id))
+	else
+		panTo(partPosition(plotId, Keys.GRADUATION_BELL))
+	end
+end
+
+local function onTicketTap()
+	local plotId = HudController.myPlotId()
+	if plotId then
+		panTo(partPosition(plotId, Keys.ADMISSION_DESK))
+	end
+end
+
+local function openPanel(name: string)
+	if Panel and Panel.open then
+		pcall(Panel.open, name)
+	end
+end
+
+-- ── 토스트·배너 ──
+
+local function fadeLater(label: TextLabel, hold: number, token: number, current: () -> number, done: (() -> ())?)
+	task.delay(hold, function()
+		if current() ~= token then
+			return
+		end
+		local t = tween(label, FADE_SECONDS, { TextTransparency = 1, BackgroundTransparency = 1 })
+		t.Completed:Once(function()
+			if current() == token then
+				label.Visible = false
+				if done then
+					done()
+				end
+			end
+		end)
+	end)
+end
+
+local function showBanner(text: string)
+	bannerBusy = true
+	bannerToken += 1
+	local mine = bannerToken
+	bannerLabel.Text = text
+	bannerLabel.TextTransparency = 0
+	bannerLabel.Visible = true
+	local scale = bannerLabel:FindFirstChildOfClass("UIScale")
+	if scale then
+		punch(scale)
+	end
+	fadeLater(bannerLabel, BANNER_HOLD, mine, function()
+		return bannerToken
+	end, function()
+		bannerBusy = false
+		local queued = table.remove(bannerQueue, 1)
+		if queued then
+			showBanner(queued)
+		end
+	end)
+end
+
+-- ── GUI 조립(§8.2 표) ──
 
 local function buildGui()
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "Hud"
 	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = false -- 좌상단은 상단 인셋 아래에 둔다. 모바일에서 노치와 겹치지 않게
+	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 2
-	gui.Parent = player:WaitForChild("PlayerGui", WAIT_TIMEOUT)
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-	-- ── 좌상단 ──
-	classLabel = makeLabel(gui, "Class", 26, Enum.Font.GothamBold)
-	classLabel.Size = UDim2.fromOffset(320, 32)
-	classLabel.Position = UDim2.fromOffset(18, 14)
-	classLabel.TextXAlignment = Enum.TextXAlignment.Left
+	-- 상단 인셋만큼 아래에서 시작하는 안전 영역(스케일 없음)
+	local safe = Instance.new("Frame")
+	safe.Name = "Safe"
+	safe.Size = UDim2.fromScale(1, 1)
+	safe.BackgroundTransparency = 1
+	safe.Parent = gui
 
-	starLabel = makeLabel(gui, "Stars", 20, Enum.Font.GothamMedium)
-	starLabel.Size = UDim2.fromOffset(320, 24)
-	starLabel.Position = UDim2.fromOffset(18, 46)
-	starLabel.TextXAlignment = Enum.TextXAlignment.Left
-	starLabel.TextColor3 = Color3.fromRGB(255, 226, 140)
-
-	--[[
-		오늘 앉아야 할 자리. 교실 안에서만 보인다.
-
-		★ 색은 교실에 뜨는 팻말·윤곽과 같은 값이다(SeatMarkerController.MARK_COLOR).
-		  좌상단 글자와 저 멀리 빛나는 책상이 같은 것을 가리킨다는 사실을
-		  설명 없이 알리는 방법은 색을 맞추는 것뿐이다.
-	]]
-	seatLabel = makeLabel(gui, "Seat", 20, Enum.Font.GothamMedium)
-	seatLabel.Size = UDim2.fromOffset(320, 24)
-	seatLabel.Position = UDim2.fromOffset(18, 70)
-	seatLabel.TextXAlignment = Enum.TextXAlignment.Left
-	seatLabel.TextColor3 = Color3.fromRGB(120, 220, 160)
-
-	--[[
-		소리 켬/끔. 버튼이 곧 표시등이다 — 껐다는 사실이 화면에 남아 있지 않으면
-		음소거해놓고 잊은 사람에게는 "소리가 안 나는 게임"이 된다.
-
-		우상단이 아니라 좌상단 아래에 둔다. 우상단은 로블록스 플레이어 목록 자리고,
-		모바일에서는 겹친다. 우하단은 ContextActionService 가 만드는
-		달리기/살금 터치 버튼 자리다.
-	]]
-	muteButton = Instance.new("TextButton")
-	muteButton.Name = "Mute"
-	muteButton.Size = UDim2.fromOffset(96, 30)
-	muteButton.Position = UDim2.fromOffset(18, 102)
-	muteButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	muteButton.BackgroundTransparency = 0.55
-	muteButton.BorderSizePixel = 0
-	muteButton.AutoButtonColor = true
-	muteButton.Font = Enum.Font.GothamMedium
-	muteButton.TextSize = 16
-	muteButton.TextColor3 = Color3.new(1, 1, 1)
-	muteButton.Text = ""
-	muteButton.Parent = gui
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = muteButton
-
-	--[[
-		── 하단 중앙: 장착한 업그레이드 ──
-
-		산 물건이 화면 어디에도 안 보이면, 별을 쓴 것이 실제로 무엇을 바꿨는지
-		알 방법이 없다. 그렇다고 크게 띄우면 이 HUD 의 규칙("덜어내는 것")이 깨지므로,
-		이동 모드 바로 위에 작은 칸으로 눕힌다. 아무것도 없으면 줄 자체가 안 보인다.
-
-		AutomaticSize 를 쓰는 이유는 칸 개수가 0~3 으로 변하기 때문이다.
-		너비를 못박으면 하나만 켜졌을 때 가운데가 아니라 왼쪽에 치우쳐 보인다.
-	]]
-	local chipRow = Instance.new("Frame")
-	chipRow.Name = "Equipped"
-	chipRow.BackgroundTransparency = 1
-	chipRow.AnchorPoint = Vector2.new(0.5, 1)
-	chipRow.Position = UDim2.new(0.5, 0, 1, -44)
-	chipRow.Size = UDim2.fromOffset(0, 26)
-	chipRow.AutomaticSize = Enum.AutomaticSize.X
-	chipRow.Parent = gui
-
-	local rowLayout = Instance.new("UIListLayout")
-	rowLayout.FillDirection = Enum.FillDirection.Horizontal
-	rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	rowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	rowLayout.Padding = UDim.new(0, 6)
-	rowLayout.Parent = chipRow
-
-	for order, key in Upgrades.ORDER do
-		local def = Upgrades.DEFS[key]
-		local chip = makeLabel(chipRow, key, 15, Enum.Font.GothamMedium)
-		chip.LayoutOrder = order
-		chip.Size = UDim2.fromOffset(0, 26)
-		chip.AutomaticSize = Enum.AutomaticSize.X
-		chip.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		chip.BackgroundTransparency = 0.5
-		chip.TextStrokeTransparency = 1
-		chip.Text = `{UPGRADE_GLYPHS[key] or "•"} {def.name}`
-		chip.Visible = false
-
-		local chipCorner = Instance.new("UICorner")
-		chipCorner.CornerRadius = UDim.new(0, 8)
-		chipCorner.Parent = chip
-
-		local pad = Instance.new("UIPadding")
-		pad.PaddingLeft = UDim.new(0, 10)
-		pad.PaddingRight = UDim.new(0, 10)
-		pad.Parent = chip
-
-		chips[key] = chip
+	-- 상단바 인셋은 접속 직후 0 이었다가 나중에 채워진다. 한 번만 읽으면 용돈 칩이 Roblox 버튼 밑에 깔린다
+	local safePadding = Instance.new("UIPadding")
+	local function applyInset()
+		safePadding.PaddingTop = UDim.new(0, GuiService:GetGuiInset().Y)
 	end
+	applyInset()
+	GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(applyInset)
+	safePadding.Parent = safe
 
-	-- ── 하단 중앙: 이동 모드 ──
-	-- 모바일 터치 버튼(ContextActionService 가 자동 생성)은 오른쪽 아래에 뜨므로 겹치지 않는다.
-	modeLabel = makeLabel(gui, "Mode", 18, Enum.Font.GothamMedium)
-	modeLabel.Size = UDim2.new(1, 0, 0, 24)
-	modeLabel.Position = UDim2.new(0.5, 0, 1, -46)
-	modeLabel.AnchorPoint = Vector2.new(0.5, 0)
-	modeLabel.TextTransparency = 0.25
+	-- 루트: Size 1/scale × UIScale scale = 화면 전체. 안의 Offset 은 812×375 기준 px
+	root = Instance.new("Frame")
+	root.Name = "Root"
+	root.BackgroundTransparency = 1
+	root.Parent = safe
+	rootScale = makeScale(root)
 
-	--[[
-		── 상단 중앙: 종까지 남은 시간 ──
+	-- 용돈 칩 (12, 12) 200×32
+	coinsChip = makePanel(root, "Coins", UDim2.fromOffset(12, 12), UDim2.fromOffset(200, 32))
+	local coinsGlyph = makeLabel(coinsChip, "Glyph", Enum.Font.GothamBold, YELLOW)
+	coinsGlyph.Position = UDim2.fromOffset(8, 4)
+	coinsGlyph.Size = UDim2.fromOffset(24, 24)
+	coinsGlyph.Text = GLYPH_COINS
+	coinsLabel = makeLabel(coinsChip, "Value", Enum.Font.GothamBold, YELLOW)
+	coinsLabel.Position = UDim2.fromOffset(38, 4)
+	coinsLabel.Size = UDim2.fromOffset(154, 24)
+	coinsLabel.TextXAlignment = Enum.TextXAlignment.Left
+	coinsValue = Instance.new("NumberValue")
+	coinsValue.Name = "CoinsValue"
+	coinsValue.Parent = coinsChip
+	coinsValue.Changed:Connect(function(value)
+		coinsLabel.Text = Format.coins(value)
+	end)
+	coinsDelta = makeLabel(root, "CoinsDelta", Enum.Font.GothamBold, WHITE)
+	coinsDelta.Position = UDim2.fromOffset(216, 12)
+	coinsDelta.Size = UDim2.fromOffset(80, 32)
+	coinsDelta.TextXAlignment = Enum.TextXAlignment.Left
+	coinsDelta.TextTransparency = 1
 
-		이 HUD 의 규칙("덜어내는 것")을 어기고 화면 한복판 위에 숫자를 놓는 이유는,
-		이것이 지금 이 게임에 하나뿐인 "재촉하는 것"이기 때문이다. 좌상단에 두면
-		달리는 동안 아무도 안 본다. 안 보는 시계는 없는 시계다.
+	-- 수입 칩 (12, 52) 160×24
+	incomeChip = makePanel(root, "Income", UDim2.fromOffset(12, 52), UDim2.fromOffset(160, 24))
+	incomeScale = makeScale(incomeChip)
+	incomeLabel = makeLabel(incomeChip, "Value", Enum.Font.GothamMedium, GREEN)
+	incomeLabel.Position = UDim2.fromOffset(8, 3)
+	incomeLabel.Size = UDim2.fromOffset(144, 18)
+	incomeLabel.TextXAlignment = Enum.TextXAlignment.Left
+	incomeChip.Visible = false
 
-		★ 놓치면 실패가 아니라 별 하나다. 그래서 크게 띄우되 붉게 깜빡이지는 않는다 —
-		  죽음을 알리는 경고처럼 생기면, 놓친 사람이 죽은 줄 알고 손을 놓는다.
-	]]
-	bellLabel = makeLabel(gui, "Bell", 30, Enum.Font.GothamBold)
-	bellLabel.Size = UDim2.fromOffset(200, 40)
-	bellLabel.Position = UDim2.new(0.5, 0, 0, 14)
-	bellLabel.AnchorPoint = Vector2.new(0.5, 0)
-	bellLabel.Visible = false
+	-- 원서 칩 (12, 84) 160×28. 탭 → 접수대로 팬
+	ticketChip = makeButton(root, "Tickets", UDim2.fromOffset(12, 84), UDim2.fromOffset(160, 28))
+	ticketScale = makeScale(ticketChip)
+	ticketStroke = makeStroke(ticketChip, BLUE)
+	ticketLabel = makeLabel(ticketChip, "Value", Enum.Font.GothamBold, BLUE)
+	ticketLabel.Position = UDim2.fromOffset(8, 3)
+	ticketLabel.Size = UDim2.fromOffset(144, 22)
+	ticketLabel.TextXAlignment = Enum.TextXAlignment.Left
+	ticketChip.Visible = false
+	ticketChip.Activated:Connect(onTicketTap)
 
-	-- ── 알림 한 줄 ──
-	noticeLabel = makeLabel(gui, "Notice", 22, Enum.Font.GothamMedium)
-	noticeLabel.Size = UDim2.new(1, 0, 0, 30)
-	noticeLabel.Position = UDim2.fromScale(0.5, 0.72)
-	noticeLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-	noticeLabel.TextTransparency = 1
-	noticeLabel.TextColor3 = Color3.fromRGB(255, 240, 200)
+	-- 「다음 시설」 카드 (306, 12) 200×64, 가운데 정렬
+	card = makeButton(root, "NextFacility", UDim2.new(0.5, 0, 0, 12), UDim2.fromOffset(200, 64))
+	card.AnchorPoint = Vector2.new(0.5, 0)
+	cardStroke = makeStroke(card, GREEN)
+	cardCaption = makeLabel(card, "Caption", Enum.Font.GothamMedium, MUTED)
+	cardCaption.Position = UDim2.fromOffset(10, 4)
+	cardCaption.Size = UDim2.fromOffset(80, 14)
+	cardCaption.TextXAlignment = Enum.TextXAlignment.Left
+	cardName = makeLabel(card, "Name", Enum.Font.GothamBold, WHITE)
+	cardName.Position = UDim2.fromOffset(10, 18)
+	cardName.Size = UDim2.fromOffset(110, 22)
+	cardName.TextXAlignment = Enum.TextXAlignment.Left
+	cardPrice = makeLabel(card, "Price", Enum.Font.GothamBold, YELLOW)
+	cardPrice.Position = UDim2.fromOffset(120, 18)
+	cardPrice.Size = UDim2.fromOffset(70, 22)
+	cardPrice.TextXAlignment = Enum.TextXAlignment.Right
+	cardSub = makeLabel(card, "Sub", Enum.Font.GothamMedium, MUTED)
+	cardSub.Position = UDim2.fromOffset(10, 40)
+	cardSub.Size = UDim2.fromOffset(180, 14)
+	cardSub.TextXAlignment = Enum.TextXAlignment.Left
+	cardBar, cardFill = makeBar(card, "Ring", UDim2.fromOffset(10, 56), UDim2.fromOffset(180, 4), GREEN)
+	card.Activated:Connect(onCardTap)
 
-	-- ── 수료 배너 ──
-	bannerLabel = makeLabel(gui, "Banner", 34, Enum.Font.GothamBold)
-	bannerLabel.Size = UDim2.new(1, 0, 0, 48)
-	bannerLabel.Position = UDim2.fromScale(0.5, 0.3)
-	bannerLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-	bannerLabel.TextTransparency = 1
-	bannerLabel.TextColor3 = Color3.fromRGB(255, 226, 140)
-end
+	-- 스티커판 미니 게이지 (556, 12) 96×64 = 가운데 +150
+	boardChip = makePanel(root, "Board", UDim2.new(0.5, 150, 0, 12), UDim2.fromOffset(96, 64))
+	local boardCaption = makeLabel(boardChip, "Caption", Enum.Font.GothamMedium, MUTED)
+	boardCaption.Position = UDim2.fromOffset(6, 4)
+	boardCaption.Size = UDim2.fromOffset(84, 14)
+	boardCaption.Text = TEXT_BOARD
+	boardLabel = makeLabel(boardChip, "Value", Enum.Font.GothamBold, WHITE)
+	boardLabel.Position = UDim2.fromOffset(6, 20)
+	boardLabel.Size = UDim2.fromOffset(84, 26)
+	local _boardBar, fill = makeBar(boardChip, "Ring", UDim2.fromOffset(8, 54), UDim2.fromOffset(80, 4), YELLOW)
+	boardFill = fill
+	boardChip.Visible = false
 
-local function fadeOut(label: TextLabel, delay: number, token: number, current: () -> number)
-	task.delay(delay, function()
-		if current() ~= token then
-			return
+	-- 배율 칩 (556, 84) 96×24
+	multChip = makePanel(root, "Multiplier", UDim2.new(0.5, 150, 0, 84), UDim2.fromOffset(96, 24))
+	multScale = makeScale(multChip)
+	multLabel = makeLabel(multChip, "Value", Enum.Font.GothamBold, WHITE)
+	multLabel.Position = UDim2.fromOffset(6, 3)
+	multLabel.Size = UDim2.fromOffset(84, 18)
+	multChip.Visible = false
+
+	-- 오른쪽 버튼 열 (744, 12/80/148) 56×56 — 우하 예약 영역(y ≥ 263)을 넘지 않는다
+	settingsButton = makeButton(root, "Settings", UDim2.new(1, -12, 0, 12), UDim2.fromOffset(56, 56))
+	settingsButton.AnchorPoint = Vector2.new(1, 0)
+	local settingsGlyph = makeLabel(settingsButton, "Glyph", Enum.Font.GothamBold, WHITE)
+	settingsGlyph.Position = UDim2.fromOffset(12, 12)
+	settingsGlyph.Size = UDim2.fromOffset(32, 32)
+	settingsGlyph.Text = GLYPH_SETTINGS
+	settingsButton.Visible = false
+	settingsButton.Activated:Connect(function()
+		openPanel(PANEL_SETTINGS)
+	end)
+
+	codexButton = makeButton(root, "Codex", UDim2.new(1, -12, 0, 80), UDim2.fromOffset(56, 56))
+	codexButton.AnchorPoint = Vector2.new(1, 0)
+	local codexGlyph = makeLabel(codexButton, "Glyph", Enum.Font.GothamBold, WHITE)
+	codexGlyph.Position = UDim2.fromOffset(12, 12)
+	codexGlyph.Size = UDim2.fromOffset(32, 32)
+	codexGlyph.Text = GLYPH_CODEX
+	codexDot = Instance.new("Frame")
+	codexDot.Name = "NewDot"
+	codexDot.AnchorPoint = Vector2.new(1, 0)
+	codexDot.Position = UDim2.new(1, -4, 0, 4)
+	codexDot.Size = UDim2.fromOffset(12, 12)
+	codexDot.BackgroundColor3 = RED
+	codexDot.BorderSizePixel = 0
+	codexDot.Visible = false
+	codexDot.Parent = codexButton
+	corner(codexDot, 6)
+	codexButton.Visible = false
+	codexButton.Activated:Connect(function()
+		local profile = cached
+		if profile then
+			lastSeenStudents = StudentConfig.ownedCount(profile.students)
+			codexDot.Visible = false
 		end
-		TweenService:Create(label, TweenInfo.new(NOTICE_FADE), { TextTransparency = 1 }):Play()
+		openPanel(PANEL_CODEX)
 	end)
+
+	missionButton = makeButton(root, "Missions", UDim2.new(1, -12, 0, 148), UDim2.fromOffset(56, 56))
+	missionButton.AnchorPoint = Vector2.new(1, 0)
+	local missionGlyph = makeLabel(missionButton, "Glyph", Enum.Font.GothamBold, WHITE)
+	missionGlyph.Position = UDim2.fromOffset(12, 8)
+	missionGlyph.Size = UDim2.fromOffset(32, 28)
+	missionGlyph.Text = GLYPH_MISSIONS
+	missionBadge = makeLabel(missionButton, "Badge", Enum.Font.GothamBold, YELLOW)
+	missionBadge.Position = UDim2.fromOffset(4, 38)
+	missionBadge.Size = UDim2.fromOffset(48, 14)
+	missionButton.Visible = false
+	missionButton.Activated:Connect(function()
+		openPanel(PANEL_MISSIONS)
+	end)
+
+	-- 토스트 (406, 300) 406×28 가운데
+	toastLabel = makeLabel(root, "Toast", Enum.Font.GothamMedium, WHITE)
+	toastLabel.AnchorPoint = Vector2.new(0.5, 0)
+	toastLabel.Position = UDim2.new(0.5, 0, 0, 300)
+	toastLabel.Size = UDim2.fromOffset(406, 28)
+	toastLabel.BackgroundColor3 = PANEL
+	toastLabel.BackgroundTransparency = PANEL_ALPHA
+	toastLabel.Visible = false
+	corner(toastLabel, CORNER)
+	local toastPadding = Instance.new("UIPadding")
+	toastPadding.PaddingLeft = UDim.new(0, 12)
+	toastPadding.PaddingRight = UDim.new(0, 12)
+	toastPadding.Parent = toastLabel
+
+	-- 배너(미션·졸업) 카드 아래 가운데, 4초
+	bannerLabel = makeLabel(root, "Banner", Enum.Font.GothamBold, YELLOW)
+	bannerLabel.AnchorPoint = Vector2.new(0.5, 0)
+	bannerLabel.Position = UDim2.new(0.5, 0, 0, 120)
+	bannerLabel.Size = UDim2.fromOffset(406, 40)
+	bannerLabel.TextStrokeTransparency = 0.4
+	bannerLabel.Visible = false
+	makeScale(bannerLabel)
+
+	-- 스티커판 → 원서 칩으로 날아가는 아이콘
+	flyer = makeLabel(root, "Flyer", Enum.Font.GothamBold, BLUE)
+	flyer.AnchorPoint = Vector2.new(0.5, 0.5)
+	flyer.Size = UDim2.fromOffset(28, 28)
+	flyer.Text = GLYPH_TICKET
+	flyer.Visible = false
+	flyer.ZIndex = 5
+
+	gui.Parent = player:WaitForChild("PlayerGui")
 end
 
-local function refreshMute()
-	local off = SoundController.isMuted()
-	muteButton.Text = if off then "🔇 소리 끔" else "🔊 소리 켬"
-	muteButton.TextTransparency = if off then 0.35 else 0
+local function applyScale()
+	local camera = Workspace.CurrentCamera
+	local height = if camera then camera.ViewportSize.Y else BASE_HEIGHT
+	local scale = math.clamp(height / BASE_HEIGHT, SCALE_MIN, SCALE_MAX)
+	rootScale.Scale = scale
+	root.Size = UDim2.fromScale(1 / scale, 1 / scale)
 end
 
-local function toggleMute()
-	SoundController.toggleMute()
-	refreshMute()
+-- ── 공개 API ──
+
+--- 서버 ProfileSync. seq 가 지금 것보다 크지 않으면 버린다(§11.3)
+function HudController.setProfile(packet: SyncPacket)
+	if typeof(packet) ~= "table" or typeof(packet.seq) ~= "number" or typeof(packet.profile) ~= "table" then
+		warn("[Hud] ProfileSync 형태가 이상함")
+		return
+	end
+	if packet.seq <= cachedSeq then
+		return
+	end
+	local prev = cached
+	cachedSeq = packet.seq
+	cached = packet.profile
+
+	if built and not held then
+		render(packet.profile, prev)
+	end
+	for _, fn in listeners do
+		notify(fn, packet.profile)
+	end
 end
 
---[[
-	장착 칸 갱신. ProfileUpdated 는 산 직후에도, 접속할 때도 똑같이 온다.
-	그래서 "이번에 새로 생긴 것"만 튀어오르게 하고 나머지는 조용히 켠다 —
-	재접속할 때마다 세 칸이 다 같이 뛰면 그건 피드백이 아니라 소음이다.
-]]
-local function refreshChips(owned: { [string]: boolean }?)
-	for key, chip in chips do
-		local has = owned ~= nil and owned[key] == true
-		chip.Visible = has
+--- 로컬 캐시된 프로필. 첫 ProfileSync 전에는 nil
+function HudController.profile(): Profile?
+	return cached
+end
 
-		if has and not shownUpgrades[key] then
-			-- 새로 산 것. 살짝 크게 떴다가 제자리로 — TRANS_BACK 대신 Back/Out 이다
-			chip.TextSize = 21
-			TweenService
-				:Create(
-					chip,
-					TweenInfo.new(CHIP_POP, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-					{ TextSize = 15 }
-				)
-				:Play()
+--- 프로필이 바뀔 때마다 부른다. 이미 캐시가 있으면 즉시 한 번 부른다. 반환값은 구독 해제 함수
+function HudController.onProfile(fn: Listener): () -> ()
+	listenerSeq += 1
+	local id = listenerSeq
+	listeners[id] = fn
+	local current = cached
+	if current then
+		task.spawn(notify, fn, current)
+	end
+	return function()
+		listeners[id] = nil
+	end
+end
+
+--- 캐시로 위젯 전부 다시 그린다(MissionDone 등)
+function HudController.refresh()
+	local profile = cached
+	if built and profile and not held then
+		render(profile, profile)
+	end
+end
+
+--- 졸업식(§9.5) 동안 HUD 를 숨긴다. 서버는 0초에 프로필을 초기화하지만, 용돈 14·배율 펀치·「책상 세트」 카드는
+--- 9.0초 교실1 컷에서 보여야 한다. 풀 때 식 전 프로필과 비교해 한 번에 그린다
+function HudController.hold(on: boolean)
+	if on == held then
+		return
+	end
+	held = on
+	if on then
+		heldFrom = cached
+		if built then
+			root.Visible = false
 		end
-		shownUpgrades[key] = has
+		return
+	end
+	local from = heldFrom
+	heldFrom = nil
+	local profile = cached
+	if built then
+		root.Visible = true
+		if profile then
+			render(profile, from)
+		end
 	end
 end
 
-function HudController.onProfile(packet)
-	if not classLabel then
+--- 2.6초 토스트
+function HudController.toast(text: string)
+	if not built then
 		return
 	end
-	classLabel.Text = `{packet.grade}학년 {packet.class}반`
-	starLabel.Text = `★ {packet.stars}`
-	refreshChips(packet.upgrades)
-
-	--[[
-		종 시계를 서버 시각에 맞춘다. 이 패킷은 반이 시작할 때와 물건을 살 때 오는데,
-		둘 다 시계를 다시 맞춰도 되는 순간이다. 반 도중에 어떤 이유로 한 번 더 와도
-		"남은 초"라서 그때의 남은 시간으로 저절로 교정된다.
-
-		★ bellRang 을 여기서 되돌리는 것이 중요하다. 안 되돌리면 한 번 지각한 뒤로는
-		  다음 반부터 종이 영영 안 울린다.
-	]]
-	if typeof(packet.bellSeconds) == "number" then
-		bellDeadline = os.clock() + packet.bellSeconds
-		bellRang = packet.bellSeconds <= 0
-		bellLabel.Visible = true
-	else
-		bellDeadline = nil
-		bellLabel.Visible = false
-	end
-end
-
---[[
-	교실 밖으로 나가면 시계를 내린다. 다음 프로필 갱신(교실 재입장)까지 기다리면
-	운동장에 서 있는 내내 이미 끝난 반의 숫자가 0 을 가리키고 있다.
-]]
-function HudController.onTransition(to: string)
-	if not bellLabel or to == "class" then
-		return
-	end
-	bellDeadline = nil
-	bellLabel.Visible = false
-end
-
---[[
-	앉을 자리 표시. nil 이면 줄 자체가 사라진다 — 운동장에서는 앉을 자리가 없다.
-	빈 문자열을 넣어 자리만 비워두지 않는 이유는, 그 빈 줄만큼 아래 것들이
-	밀려 있는 화면이 "뭔가 안 뜬 화면"으로 보이기 때문이다.
-]]
-function HudController.onAssignedSeat(text: string?)
-	if not seatLabel then
-		return
-	end
-	seatLabel.Text = if text then `🪑 {text}` else ""
-end
-
-function HudController.onNotice(message: string)
-	if not noticeLabel then
-		return
-	end
-	noticeToken += 1
-	local mine = noticeToken
-
-	noticeLabel.Text = message
-	noticeLabel.TextTransparency = 0
-
-	fadeOut(noticeLabel, NOTICE_HOLD, mine, function()
-		return noticeToken
+	toastToken += 1
+	local mine = toastToken
+	toastLabel.Text = text
+	toastLabel.TextTransparency = 0
+	toastLabel.BackgroundTransparency = PANEL_ALPHA
+	toastLabel.Visible = true
+	fadeLater(toastLabel, TOAST_HOLD, mine, function()
+		return toastToken
 	end)
 end
 
-function HudController.onGradeCleared(payload)
-	if not bannerLabel then
+--- 4초 배너(미션·졸업). 떠 있는 배너가 있으면 뒤에 줄을 선다
+-- TODO(통합): 도감 카드(FeedbackController)가 떠 있으면 그 뒤로 큐잉(§2.2 0:12)
+function HudController.banner(text: string)
+	if not built then
 		return
 	end
-	bannerToken += 1
-	local mine = bannerToken
+	if bannerBusy then
+		table.insert(bannerQueue, text)
+		return
+	end
+	showBanner(text)
+end
 
-	local minutes = math.floor(payload.totalSeconds / 60)
-	local seconds = math.floor(payload.totalSeconds % 60)
-	bannerLabel.Text = `🎓 {payload.grade}학년 수료!  {minutes}분 {seconds}초 · ★{payload.stars}`
-	bannerLabel.TextTransparency = 0
+--- 내 부지 번호. 배정 전이면 nil
+function HudController.myPlotId(): number?
+	local value = player:GetAttribute(Keys.ATTR_PLOT)
+	return if typeof(value) == "number" then value else nil
+end
 
-	fadeOut(bannerLabel, BANNER_HOLD, mine, function()
-		return bannerToken
-	end)
+--- 캐릭터가 내 부지 120×120 안에 있는가. 캐릭터가 없으면 마지막 값을 돌려준다
+function HudController.isOnOwnPlot(): boolean
+	local plotId = HudController.myPlotId()
+	if not plotId then
+		return true
+	end
+	local character = player.Character
+	local rootPart = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if not (rootPart and rootPart:IsA("BasePart")) then
+		return onOwnPlot
+	end
+	local center = plotCenter(plotId)
+	if not center then
+		-- 모델이 아직 없다 = 스트리밍 밖 = 멀리 있다
+		onOwnPlot = false
+		return false
+	end
+	local offset = rootPart.Position - center
+	onOwnPlot = math.abs(offset.X) <= PLOT_HALF and math.abs(offset.Z) <= PLOT_HALF
+	return onOwnPlot
+end
+
+--- 「다음 시설」 카드 탭을 가로챈다(PadController 가 패드 위치를 안다). nil 이면 기본 동작(패드로 팬)
+function HudController.setNextFacilityTap(fn: (() -> ())?)
+	nextTap = fn
 end
 
 function HudController.Start()
+	if built then
+		return
+	end
 	buildGui()
+	built = true
 
-	-- 터치는 버튼이 받고, 키보드/게임패드는 여기서 받는다. 버튼이 이미 화면에 있으므로
-	-- createTouchButton 은 false 다 — 켜면 우하단에 같은 기능이 하나 더 생긴다.
-	refreshMute()
-	muteButton.Activated:Connect(toggleMute)
-	ContextActionService:BindAction("Mute", function(_name, state)
-		if state == Enum.UserInputState.Begin then
-			toggleMute()
+	-- 순환 require 를 피해 여기서 잇는다. 없어도 HUD 는 뜬다
+	local controllers = script.Parent
+	local function link(name: string): any
+		local module = controllers:FindFirstChild(name)
+		if not module then
+			warn(`[Hud] {name} 이 없어 연결하지 않음`)
+			return nil
 		end
-		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.M, Enum.KeyCode.ButtonY)
+		local ok, result = pcall(require, module)
+		if not ok then
+			warn(`[Hud] {name} require 실패: {result}`)
+			return nil
+		end
+		return result
+	end
+	Camera = link("CameraController")
+	Panel = link("PanelController")
+	Sound = link("SoundController")
 
-	--[[
-		기본 체력바를 끈다. 이 게임에는 체력이 없다 —
-		화면에 체력바가 있으면 "맞으면 깎이는 게임"으로 읽힌다.
-		백팩도 끈다. 들고 다니는 물건이 하나도 없다.
-	]]
-	pcall(function()
-		StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
-		StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+	applyScale()
+	local camera = Workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(applyScale)
+	end
+
+	-- 부지 배정·캐릭터 교체 때 카드 상태(우리 학교로)를 바로 맞춘다
+	player:GetAttributeChangedSignal(Keys.ATTR_PLOT):Connect(function()
+		plotCenters = {}
+		HudController.refresh()
 	end)
 
-	-- 이동 모드는 이벤트가 아니라 폴링으로 표시한다.
-	-- 표시 하나 때문에 컨트롤러에 시그널을 만들 이유가 없다.
-	RunService.RenderStepped:Connect(function()
-		local mode = MovementController.getMode()
-		modeLabel.Text = MovementConfig.MODES[mode].label
-		modeLabel.TextColor3 = MODE_COLORS[mode]
-
-		if not bellDeadline then
+	-- 매 초 링·예상 초·자기 부지 여부 재계산
+	local acc = 0
+	RunService.Heartbeat:Connect(function(dt)
+		acc += dt
+		if acc < TICK_SECONDS then
 			return
 		end
-
-		local left = bellDeadline - os.clock()
-		if left > 0 then
-			-- ceil 이라 "1"이 1초 내내 떠 있다가 0 을 건너뛰고 종으로 넘어간다.
-			-- floor 를 쓰면 마지막 1초가 "0"으로 표시되어, 아직 갈 수 있는데 늦은 줄 안다.
-			bellLabel.Text = `🔔 {math.ceil(left)}`
-			bellLabel.TextColor3 = if left <= BELL_URGENT then MODE_COLORS.RUN else Color3.new(1, 1, 1)
-			return
+		acc = 0
+		local profile = cached
+		if profile and not held then
+			renderCard(profile)
 		end
-
-		if not bellRang then
-			bellRang = true
-			-- "bell" 이 아니라 "late" 다. 학년 수료 종과 같은 소리를 내면
-			-- 놓친 순간에 축하 소리가 난다.
-			SoundController.onCue("late")
-		end
-		-- 숫자를 0 에 세워두지 않고 말로 바꾼다. 0 은 "시간이 다 됐다"까지만 말하지만,
-		-- 여기서 알려야 할 것은 "퍼펙트는 날아갔고 통과는 아직 가능하다"이다.
-		bellLabel.Text = "🔔 지각"
-		bellLabel.TextColor3 = BELL_LATE_COLOR
 	end)
+
+	local profile = cached
+	if profile then
+		render(profile, nil)
+	end
 end
 
 return HudController

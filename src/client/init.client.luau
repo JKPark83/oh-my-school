@@ -1,133 +1,207 @@
---!nonstrict
+--!strict
 --[[
-	클라이언트 부트스트랩. 순서와 리모트 배선을 아는 유일한 곳이다.
+	클라이언트 부트스트랩. 컨트롤러 시작 순서와 리모트 배선을 아는 유일한 곳이다(구현계획 §3.7).
 
-	★ Phase 5 부터 첫 화면은 운동장이다. 교실은 5000 스터드 밖에 있고
-	  StreamingEnabled 때문에 그동안 내려오지도 않는다.
-	  그래서 컨트롤러를 두 묶음으로 나눈다:
-
-	    허브에서도 도는 것   — 카메라, 이동, HUD, 사운드, 전환 화면
-	    교실이 있어야 하는 것 — 예고 신호, 학생 렌더, 성공/실패 연출
-
-	  뒤쪽은 신발장을 눌러 Transition 이 오는 순간 한 번만 붙인다.
-	  RoomRef.await 를 부트 시점에 부르면 운동장에 서 있는 20초 동안 기다리다 터진다.
-
-	★ TeacherStateChanged 의 version 필터는 여기 한 곳에만 있다.
-	  RemoteEvent 는 어트리뷰트·프로퍼티 복제와 순서가 보장되지 않으므로
-	  단조 증가 version 으로 뒤바뀐 패킷을 버린다. 컨트롤러는 통과한 것만 받는다.
+	  ★ 순서: Remotes.wait() → Hud → Panel → Pad → StudentRender → Feedback → Tutorial → Camera → Sound → Transition.
+	    Hud 가 프로필 캐시를 들고 있으므로 가장 먼저, Panel 은 Hud 를 읽으므로 바로 다음이다.
+	  ★ 컨트롤러 Start 는 각각 pcall 이다. 하나가 죽어도 나머지는 뜬다 — 검정 화면보다 반쪽 HUD 가 낫다.
+	  ★ ProfileSync 는 HudController.setProfile 하나로만 들어간다(seq 필터도 거기). GameEvent 는 kind 별 표로
+	    나눠 보내고 각 호출도 pcall 이다. 컨트롤러끼리 이벤트를 직접 잇지 않는다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local Types = require(Shared:WaitForChild("Types"))
 
-local RoomRef = require(script.RoomRef)
-local CameraController = require(script.Controllers.CameraController)
-local FeedbackController = require(script.Controllers.FeedbackController)
-local HudController = require(script.Controllers.HudController)
-local MovementController = require(script.Controllers.MovementController)
-local SeatMarkerController = require(script.Controllers.SeatMarkerController)
-local SignalController = require(script.Controllers.SignalController)
-local SoundController = require(script.Controllers.SoundController)
-local StudentRenderController = require(script.Controllers.StudentRenderController)
-local TeacherPoseController = require(script.Controllers.TeacherPoseController)
-local TransitionController = require(script.Controllers.TransitionController)
+type Profile = Types.Profile
 
--- 전환 연출이 덮고 있는 동안 교실이 내려온다. 넉넉하게 잡되 무한은 아니다 —
--- 무한 대기는 화면에 아무것도 안 나오는 침묵하는 버그가 된다.
-local ROOM_TIMEOUT = 20
+local Controllers = script:WaitForChild("Controllers")
 
-CameraController.Start()
-MovementController.Start()
-HudController.Start()
-SoundController.Start()
-TransitionController.Start()
+-- 서버가 RemoteEvents 폴더를 만든 뒤에야 나머지가 의미 있다
+Remotes.wait()
 
--- ── 교실이 있어야 붙는 컨트롤러 ───────────────────────────────────
-local roomBound = false
-local binding = false
+-- Roblox 기본 HUD 중 체력·인벤토리만 끈다. 채팅은 둔다(§8.2)
+pcall(function()
+	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+end)
 
-local function bindRoom()
-	if roomBound or binding then
-		return
+-- ── 컨트롤러 로드 ──
+-- 모듈이 아직 없거나 require 가 실패해도 부팅은 계속한다. 빠진 컨트롤러는 빈 표로 대신한다
+
+local function load(name: string): any
+	local module = Controllers:FindFirstChild(name)
+	if not module then
+		warn(`[Client] {name} 모듈이 없음`)
+		return {}
 	end
-	binding = true
-
-	local ok, room = pcall(RoomRef.await, ROOM_TIMEOUT)
-	binding = false
+	local ok, result = pcall(require, module)
 	if not ok then
-		warn(`[Client] 교실을 찾지 못했다: {room}`)
-		return
+		warn(`[Client] {name} require 실패: {result}`)
+		return {}
 	end
-
-	roomBound = true
-	MovementController.bindRoom(room)
-	SignalController.Start(room)
-	TeacherPoseController.Start(room)
-	StudentRenderController.Start(room)
-	FeedbackController.Start(room)
-	SeatMarkerController.Start(room)
+	return result
 end
 
--- ── 리모트 배선 ───────────────────────────────────────────────────
-local lastVersion = 0
+local HudController = load("HudController")
+local PanelController = load("PanelController")
+local PadController = load("PadController")
+local StudentRenderController = load("StudentRenderController")
+local FeedbackController = load("FeedbackController")
+local TutorialController = load("TutorialController")
+local CameraController = load("CameraController")
+local SoundController = load("SoundController")
+local TransitionController = load("TransitionController")
 
-Remotes.TeacherStateChanged.OnClientEvent:Connect(function(packet)
-	if packet.version <= lastVersion then
+--- 컨트롤러의 함수를 pcall 로 부른다. 함수가 없으면 조용히 건너뛴다(구현 전 컨트롤러 허용)
+local function call(controller: any, name: string, method: string, ...: any)
+	local fn = controller[method]
+	if typeof(fn) ~= "function" then
 		return
 	end
-	lastVersion = packet.version
+	local ok, err = pcall(fn, ...)
+	if not ok then
+		warn(`[Client] {name}.{method} 오류: {err}`)
+	end
+end
 
-	-- 몸(판서·어깨)이 먼저다. 예고 신호 세 개는 같은 프레임에 떠야 하는데,
-	-- 그중 가장 늦게 눈에 들어오는 것이 몸짓이라 순서를 앞에 둔다.
-	TeacherPoseController.onTeacherState(packet.state, packet.duration)
-	SignalController.onTeacherState(packet.state, packet.duration)
+local function start(controller: any, name: string)
+	if typeof(controller.Start) ~= "function" then
+		warn(`[Client] {name}.Start 가 없어 건너뜀`)
+		return
+	end
+	local ok, err = pcall(controller.Start)
+	if not ok then
+		warn(`[Client] {name}.Start 실패: {err}`)
+	end
+end
+
+-- ── 시작 순서(구현계획 §3.7) ──
+start(HudController, "HudController")
+start(PanelController, "PanelController")
+start(PadController, "PadController")
+start(StudentRenderController, "StudentRenderController")
+start(FeedbackController, "FeedbackController")
+start(TutorialController, "TutorialController")
+start(CameraController, "CameraController")
+start(SoundController, "SoundController")
+start(TransitionController, "TransitionController")
+
+-- ── 설정 반영 ──
+-- 프로필 settings 가 바뀔 때만 각 컨트롤러에 알린다. 첫 프로필은 무조건 한 번 반영한다
+-- CameraController.setShakeEnabled / SoundController.setEnabled / FeedbackController.setHapticEnabled 는
+-- 구현계획 §3.4 계약 밖이다. 없으면 SoundController.setMuted 로만 대신한다
+
+local lastSettings: { shake: boolean?, sfx: boolean?, haptic: boolean? } = {}
+
+local function applySettings(profile: Profile)
+	local settings = profile.settings
+	if typeof(settings) ~= "table" then
+		return
+	end
+	if settings.shake ~= lastSettings.shake then
+		call(CameraController, "CameraController", "setShakeEnabled", settings.shake)
+	end
+	if settings.sfx ~= lastSettings.sfx then
+		if typeof(SoundController.setEnabled) == "function" then
+			call(SoundController, "SoundController", "setEnabled", settings.sfx)
+		else
+			call(SoundController, "SoundController", "setMuted", not settings.sfx)
+		end
+	end
+	if settings.haptic ~= lastSettings.haptic then
+		call(FeedbackController, "FeedbackController", "setHapticEnabled", settings.haptic)
+	end
+	lastSettings = { shake = settings.shake, sfx = settings.sfx, haptic = settings.haptic }
+end
+
+-- ── 리모트 배선 ──
+
+-- ProfileSync → Hud 하나. seq 필터는 setProfile 안에 있다
+Remotes.ProfileSync.OnClientEvent:Connect(function(packet: any)
+	call(HudController, "HudController", "setProfile", packet)
 end)
 
-Remotes.Caught.OnClientEvent:Connect(function(reason: string)
-	SoundController.onCaught()
-	FeedbackController.onCaught(reason)
-end)
+-- Hud 캐시가 바뀔 때 설정을 따라간다(setProfile 이 seq 를 거른 뒤라 뒤바뀐 패킷은 오지 않는다)
+call(HudController, "HudController", "onProfile", applySettings)
 
-Remotes.ClassCleared.OnClientEvent:Connect(function(payload)
-	SoundController.onCleared()
-	FeedbackController.onCleared(payload)
-	SeatMarkerController.onCleared()
-end)
+-- GameEvent kind → 받는 컨트롤러 표(구현계획 §3.7). 각 줄이 독립 pcall 이라 앞 것이 죽어도 뒤는 간다
+type Handler = (payload: any) -> ()
+local dispatch: { [string]: { Handler } } = {
+	FacilityBuilt = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "purchase", payload)
+		end,
+		function()
+			call(PadController, "PadController", "refresh")
+		end,
+		function()
+			call(TutorialController, "TutorialController", "refresh")
+		end,
+	},
+	StudentJoined = {
+		function(payload)
+			call(StudentRenderController, "StudentRenderController", "onStudentJoined", payload)
+		end,
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "student", payload)
+		end,
+	},
+	GachaResult = {
+		function(payload)
+			call(PanelController, "PanelController", "onGachaResult", payload)
+		end,
+	},
+	MissionDone = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "mission", payload)
+		end,
+		function()
+			call(HudController, "HudController", "refresh")
+		end,
+	},
+	Graduated = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "graduated", payload)
+		end,
+	},
+	SkinApplied = {
+		function(payload)
+			call(PadController, "PadController", "applySkin", payload)
+		end,
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "skin", payload)
+		end,
+	},
+	StickerCollected = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "sticker", payload)
+		end,
+		function(payload)
+			call(PadController, "PadController", "confirmSticker", payload)
+		end,
+	},
+	Deny = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "deny", payload)
+		end,
+	},
+}
 
--- 진행도 스냅샷. HUD 표시와 클라 이동 보정(균형감각)의 유일한 근거다.
-Remotes.ProfileUpdated.OnClientEvent:Connect(function(packet)
-	MovementController.onProfile(packet)
-	HudController.onProfile(packet)
-end)
-
-Remotes.GradeCleared.OnClientEvent:Connect(function(payload)
-	SoundController.onGradeCleared()
-	HudController.onGradeCleared(payload)
-end)
-
-Remotes.Notice.OnClientEvent:Connect(function(message: string)
-	HudController.onNotice(message)
-end)
-
-Remotes.Cue.OnClientEvent:Connect(function(key: string)
-	SoundController.onCue(key)
-end)
-
-Remotes.Transition.OnClientEvent:Connect(function(packet)
-	TransitionController.onTransition(packet)
-	SoundController.onTransition(packet.to)
-	-- 감속 커브는 교실에서만 전부 쓴다. 밖에서는 달리기를 제한 없이 쓸 수 있어야 한다.
-	MovementController.onTransition(packet.to)
-	-- 교실에서만 의미가 있는 표시(내 자리, 종 시계)를 밖에서는 내린다.
-	-- 앞 반의 자리와 시계가 운동장까지 따라오면 그건 틀린 정보다.
-	SeatMarkerController.onTransition(packet.to)
-	HudController.onTransition(packet.to)
-
-	-- 교실로 들어가는 첫 전환에서 나머지 컨트롤러를 붙인다.
-	-- 검은 화면이 이 대기를 가려주므로 여기가 유일하게 기다려도 되는 자리다.
-	if packet.to == "class" then
-		task.spawn(bindRoom)
+Remotes.GameEvent.OnClientEvent:Connect(function(packet: any)
+	if typeof(packet) ~= "table" or typeof(packet.kind) ~= "string" then
+		warn("[Client] GameEvent 형태가 이상함")
+		return
+	end
+	local handlers = dispatch[packet.kind]
+	if not handlers then
+		warn(`[Client] 모르는 GameEvent: {packet.kind}`)
+		return
+	end
+	for _, handler in handlers do
+		handler(packet)
 	end
 end)

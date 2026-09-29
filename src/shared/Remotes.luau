@@ -1,63 +1,48 @@
 --!nonstrict
 --[[
-	리모트 정의 한 곳.
-	서버가 만들고, 클라는 기다렸다 잡는다. 이름 오타로 인한 nil 참조를 없애기 위해
-	양쪽 모두 이 모듈만 통해서 접근한다.
-
-	Phase 1에서 실제로 쓰는 것만 만든다. 필요해질 때 추가한다.
+	RemoteEvent 7개. 기획서 §11.5.
+	  서버: Remotes.init() 을 부팅 첫 줄에서 부른다. 폴더와 이벤트를 만든다.
+	  클라: Remotes.wait() 가 30초까지 기다린다. 못 찾으면 warn 하고 다시 기다린다(assert 없음).
+	  이후 Remotes.SetSkin 처럼 이름으로 꺼내 쓴다.
+	  GameEvent 는 kind 필드로 종류를 구분하는 단일 이벤트다. 서버는 Remotes.event() 로만 보낸다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local WAIT_TIMEOUT = 10
+local FOLDER_NAME = "RemoteEvents"
+local WAIT_TIMEOUT = 30
 
---[[
-	★ 클라 → 서버 리모트가 하나도 없다. 의도한 것이다.
-
-	업그레이드 구매는 Phase 4 에서 RequestUpgrade 리모트였지만, Phase 5 에서
-	허브 상점의 ProximityPrompt 로 옮기면서 없앴다. 프롬프트는 어느 매대가
-	발화했는지를 엔진이 넘겨주므로, 클라이언트가 업그레이드 키를 고를 여지 자체가 사라진다.
-	착석(좌석 프롬프트)과 같은 이유이고, 같은 방식이다.
-]]
 local NAMES = {
+	-- 클라 → 서버
+	"SetSkin", -- (facilityId: string, skinIndex: number)
+	"RollGacha", -- ()
+	"Graduate", -- ()
+	"SetSetting", -- (key: "shake"|"sfx"|"haptic", value: boolean)
+	"GoHome", -- ()
 	-- 서버 → 클라
-	"TeacherStateChanged", -- 선생님 상태 변경(유일한 상태 채널)
-	"Caught", -- 적발 통보 + 판정 근거
-	"ClassCleared", -- 착석 성공. 검증을 통과한 뒤에만 나간다
-	"ProfileUpdated", -- 진행도/별/업그레이드 스냅샷. HUD와 클라 이동 보정의 근거
-	"GradeCleared", -- 12반까지 수료
-	"Transition", -- 허브 ↔ 교실 이동. 화면을 덮어 스트리밍 대기를 가린다
-	"Notice", -- HUD 한 줄 알림. 상점 결과처럼 연출이 필요 없는 통보
-	"Cue", -- 짧은 소리 하나만 재생시킨다. 상태를 바꾸지 않는다
+	"ProfileSync", -- { seq, profile }
+	"GameEvent", -- { kind, ... }
 }
 
--- 인스턴스 폴더 이름은 이 모듈(ReplicatedStorage.Shared.Remotes)과 헷갈리지 않게 따로 둔다.
-local FOLDER_NAME = "RemoteEvents"
+local Remotes = {}
+Remotes.NAMES = NAMES
 
-local folder: Folder
-if RunService:IsServer() then
-	local existing = ReplicatedStorage:FindFirstChild(FOLDER_NAME)
-	if existing then
-		folder = existing :: Folder
-	else
+local ready = false
+
+--- 서버 전용. 폴더와 이벤트를 만들고 필드에 건다
+function Remotes.init()
+	assert(RunService:IsServer(), "Remotes.init 은 서버에서만 부른다")
+	if ready then
+		return
+	end
+	local folder = ReplicatedStorage:FindFirstChild(FOLDER_NAME)
+	if not folder then
 		folder = Instance.new("Folder")
 		folder.Name = FOLDER_NAME
 		folder.Parent = ReplicatedStorage
 	end
-else
-	local found = ReplicatedStorage:WaitForChild(FOLDER_NAME, WAIT_TIMEOUT)
-	assert(
-		found,
-		`{FOLDER_NAME} 폴더가 복제되지 않았다. 서버 부트스트랩이 실패했을 가능성이 높다.`
-	)
-	folder = found :: Folder
-end
-
-local Remotes = {}
-
-for _, name in NAMES do
-	if RunService:IsServer() then
+	for _, name in NAMES do
 		local remote = folder:FindFirstChild(name)
 		if not remote then
 			remote = Instance.new("RemoteEvent")
@@ -65,11 +50,47 @@ for _, name in NAMES do
 			remote.Parent = folder
 		end
 		Remotes[name] = remote
-	else
+	end
+	ready = true
+end
+
+--- 클라 전용. 서버가 만든 이벤트를 기다린다. 30초마다 warn 하고 계속 기다린다
+function Remotes.wait()
+	assert(RunService:IsClient(), "Remotes.wait 는 클라이언트에서만 부른다")
+	if ready then
+		return
+	end
+	local folder = ReplicatedStorage:WaitForChild(FOLDER_NAME, WAIT_TIMEOUT)
+	while not folder do
+		warn("[Remotes] 서버 이벤트 폴더를 30초째 기다리는 중")
+		folder = ReplicatedStorage:WaitForChild(FOLDER_NAME, WAIT_TIMEOUT)
+	end
+	for _, name in NAMES do
 		local remote = folder:WaitForChild(name, WAIT_TIMEOUT)
-		assert(remote, `리모트 '{name}' 가 복제되지 않았다.`)
+		while not remote do
+			warn(`[Remotes] {name} 을 30초째 기다리는 중`)
+			remote = folder:WaitForChild(name, WAIT_TIMEOUT)
+		end
 		Remotes[name] = remote
 	end
+	ready = true
+end
+
+--- 서버 전용. GameEvent 발송. player 가 nil 이면 전원
+function Remotes.event(player: Player?, kind: string, payload: { [string]: any }?)
+	local packet = payload or {}
+	packet.kind = kind
+	local remote = Remotes.GameEvent
+	if player then
+		remote:FireClient(player, packet)
+	else
+		remote:FireAllClients(packet)
+	end
+end
+
+--- 서버 전용. Deny 이벤트 단축
+function Remotes.deny(player: Player, reason: "coins" | "cooldown" | "owner")
+	Remotes.event(player, "Deny", { reason = reason })
 end
 
 return Remotes

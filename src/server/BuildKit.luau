@@ -12,7 +12,7 @@
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local RoomKeys = require(ReplicatedStorage.Shared.Config.RoomKeys)
+local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 
 local BuildKit = {}
 
@@ -24,8 +24,15 @@ export type Opts = {
 	collide: boolean?,
 	cast: boolean?,
 	shape: Enum.PartType?,
-	fade: boolean?, -- 카메라를 가리면 반투명해진다. RoomKeys.FADE_TAG 참고
+	fade: boolean?, -- 카메라를 가리면 반투명해진다. Keys.FADE_TAG 참고
+	light: boolean?, -- 천장등. 지붕 파트에만 켠다. 아랫면에 SurfaceLight 를 단다
 }
+
+-- 천장등. 지붕이 그림자를 드리워 방 안이 Ambient 만으로는 어둡다.
+-- 그림자를 끄는 것은 저사양 폰 때문이다 — 부지당 13개(교실1·현관 3 + 시설 10)가 켜진다.
+local LIGHT_COLOR = Color3.fromRGB(255, 244, 226)
+local LIGHT_BRIGHTNESS = 1.2
+local LIGHT_RANGE = 16 -- 지붕 아랫면에서 바닥까지 12~14
 
 function BuildKit.part(parent: Instance, name: string, size: Vector3, position: Vector3, opts: Opts): Part
 	local p = Instance.new("Part")
@@ -45,7 +52,18 @@ function BuildKit.part(parent: Instance, name: string, size: Vector3, position: 
 
 	-- 태그는 여기 한 곳에서 붙인다. 짓는 쪽은 fade = true 한 줄만 쓰면 된다.
 	if opts.fade then
-		CollectionService:AddTag(p, RoomKeys.FADE_TAG)
+		CollectionService:AddTag(p, Keys.FADE_TAG)
+	end
+
+	if opts.light then
+		local light = Instance.new("SurfaceLight")
+		light.Face = Enum.NormalId.Bottom
+		light.Angle = 90
+		light.Color = LIGHT_COLOR
+		light.Brightness = LIGHT_BRIGHTNESS
+		light.Range = LIGHT_RANGE
+		light.Shadows = false
+		light.Parent = p
 	end
 
 	return p
@@ -88,6 +106,21 @@ function BuildKit.surfaceText(
 	label.Parent = gui
 
 	return label
+end
+
+--- Model/Folder 바로 아래 Attachment 는 엔진이 가장 가까운 조상 Model 의 피벗 기준으로 WorldCFrame 을 계산한다.
+--- Geometry 는 CFrame 에 월드 CFrame 을 넣으므로, 피벗을 고정한 뒤 그 기준의 로컬 CFrame 으로 바꿔 준다.
+--- 시설·실루엣 모델을 만든 직후 한 번 부른다(Workspace 에 넣기 전).
+function BuildKit.localizeAttachments(model: Model)
+	local pivot = model:GetPivot()
+	-- PrimaryPart 가 남아 있으면 피벗이 그 파트를 따라가서, 클라 등장 연출(파트를 내렸다 올림) 동안 자리도 같이 내려간다
+	model.PrimaryPart = nil
+	model.WorldPivot = pivot
+	for _, d in model:GetDescendants() do
+		if d:IsA("Attachment") and not d.Parent:IsA("BasePart") then
+			d.CFrame = pivot:ToObjectSpace(d.CFrame)
+		end
+	end
 end
 
 return BuildKit

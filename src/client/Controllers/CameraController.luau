@@ -1,23 +1,17 @@
---!nonstrict
+--!strict
 --[[
-	3인칭 어깨너머 고정 카메라.
+	카메라. 기획서 §9.1(흔들림)·§9.5(졸업식 오빗)·§8.4(흔들림 끔).
 
-	★ 1인칭 전환을 막는다.
-	  이 게임은 "선생님이 나를 보는가"보다 "내 몸이 지금 얼마나 튀는가"를 봐야 하는
-	  게임이다. 1인칭에서는 자기 캐릭터가 미끄러지는 게 안 보이고,
-	  그러면 감속 커브라는 시스템 자체가 플레이어에게 전달되지 않는다.
+	평소에는 로블록스 기본 카메라(Custom)를 그대로 쓴다. 줌 8~40, FOV 65.
+	직접 CFrame 으로 굴리는 것은 연출 중(panTo/orbit/cutTo)뿐이고, restore() 로 Custom 에 돌아온다.
 
-	카메라를 직접 CFrame 으로 굴리지 않는다. Humanoid.CameraOffset 과
-	줌 거리 제한만 걸면 기본 카메라가 알아서 처리한다. 직접 굴리면
-	충돌 처리·모바일 제스처·게임패드를 전부 다시 짜야 한다.
+	★ 흔들림은 트라우마 모델이다. shake(t) 는 트라우마를 더하고, 실제 흔들림 크기는 트라우마² 다.
+	  작은 충격은 거의 안 보이고 큰 충격은 확 보인다. 트라우마는 초당 DECAY 만큼 줄어든다.
+	  흔들림·FOV 펀치는 카메라가 다 움직인 뒤(RenderPriority Camera+1)에 CFrame 위에 곱해 얹는다.
+	  기본 카메라는 매 프레임 자기 CFrame 을 새로 계산하므로 얹은 오프셋이 누적되지 않는다.
 
-	★ 대신 가리는 벽을 지운다. 벽에 등을 붙이면 카메라가 벽 쪽으로 밀려
-	  화면이 벽면으로 꽉 찬다. 기본 카메라는 이걸 "카메라를 앞으로 당기기"로
-	  해결하는데, 좁은 교실에서는 당길 자리가 없다.
-
-	  카메라를 옮기는 대신 막고 선 것을 반투명하게 만든다. 지워도 되는 것은
-	  RoomKeys.FADE_TAG 가 붙은 구조물뿐이다 — 사람과 가구는 그대로 둔다.
-	  뒤돌아섰을 때 선생님이 사라지면 그건 해결이 아니라 더 큰 문제다.
+	★ 가리는 벽을 지운다. 카메라와 나 사이에 낀 Keys.FADE_TAG 구조물만 반투명하게 만든다.
+	  LocalTransparencyModifier 는 클라이언트 전용이라 서버 값을 건드리지 않는다.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -26,60 +20,227 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local RoomKeys = require(ReplicatedStorage.Shared.Config.RoomKeys)
+local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 
-local WAIT_TIMEOUT = 10
-
--- 오른쪽 어깨 뒤. 캐릭터가 화면 정중앙을 가리지 않게 살짝 왼쪽으로 밀어낸다.
-local SHOULDER_OFFSET = Vector3.new(1.75, 0.5, 0)
-
--- 줌 최소/최대를 같은 값으로 묶어 고정한다. 최소값이 0.5 보다 크면 1인칭이 봉쇄된다.
-local CAMERA_DISTANCE = 11
-
--- 기본값(70)보다 살짝 좁힌다. 교실이 넓어 보이면 거리 감각이 무뎌진다.
+local ZOOM_MIN = 8
+local ZOOM_MAX = 40
 local FIELD_OF_VIEW = 65
+
+-- §9.1 트라우마 모델
+local SHAKE_MAX_OFFSET = 0.6 -- studs
+local SHAKE_MAX_ROLL = math.rad(1.5)
+local SHAKE_DECAY = 1.2 -- 초당 트라우마 감소
+local SHAKE_FREQ = 18 -- 노이즈 주파수(Hz)
+
+-- FOV 펀치 65 → 59 → 65
+local FOV_PUNCH_DEPTH = 6
+local FOV_PUNCH_SECONDS = 0.3
+
+-- panTo: 목표를 바라본 뒤 이만큼 있다가 Custom 으로 돌아온다
+local PAN_HOLD = 1.2
+
+-- orbit: seconds 동안 이 각도만큼 돈다
+local ORBIT_SWEEP = math.rad(90)
+
+local FADE = 0.88
 
 local player = Players.LocalPlayer
 
 local CameraController = {}
-
--- 연출에서 잠깐 줌인했다가 되돌릴 때 기준값이 필요하다.
 CameraController.FIELD_OF_VIEW = FIELD_OF_VIEW
 
-local function onCharacter(character: Model)
-	local humanoid = character:WaitForChild("Humanoid", WAIT_TIMEOUT) :: Humanoid
-	assert(humanoid, "캐릭터에 Humanoid 가 없다.")
-	humanoid.CameraOffset = SHOULDER_OFFSET
+-- 연출 상태. nil 이면 기본 카메라(Custom)
+type Pan = { kind: "pan", from: CFrame, to: CFrame, t0: number, seconds: number }
+type Orbit = {
+	kind: "orbit",
+	center: Vector3,
+	radius: number,
+	pitch: number,
+	angle0: number,
+	t0: number,
+	seconds: number,
+}
+type Hold = { kind: "hold", cframe: CFrame }
+type Scripted = Pan | Orbit | Hold
 
-	-- 리스폰 시 카메라 인스턴스가 새로 만들어질 수 있으므로 여기서 같이 잡는다.
-	Workspace.CurrentCamera.FieldOfView = FIELD_OF_VIEW
+local scripted: Scripted? = nil
+local scriptedToken = 0
+
+local shakeEnabled = true
+local trauma = 0
+local punchT0 = -math.huge
+
+local function camera(): Camera?
+	return Workspace.CurrentCamera
+end
+
+local function currentHumanoid(): Humanoid?
+	local character = player.Character
+	return if character then character:FindFirstChildOfClass("Humanoid") else nil
+end
+
+local function goScriptable(state: Scripted)
+	local cam = camera()
+	if not cam then
+		return
+	end
+	scriptedToken += 1
+	scripted = state
+	cam.CameraType = Enum.CameraType.Scriptable
+end
+
+--- Custom 카메라로 복귀. 진행 중인 연출은 버린다
+function CameraController.restore()
+	scriptedToken += 1
+	scripted = nil
+	local cam = camera()
+	if not cam then
+		return
+	end
+	cam.CameraType = Enum.CameraType.Custom
+	local humanoid = currentHumanoid()
+	if humanoid then
+		cam.CameraSubject = humanoid
+	end
+	cam.FieldOfView = FIELD_OF_VIEW
+end
+
+--- seconds 동안 지금 자리에서 worldPos 를 바라보도록 돌린 뒤 PAN_HOLD 후 Custom 복귀
+function CameraController.panTo(worldPos: Vector3, seconds: number)
+	local cam = camera()
+	if not cam then
+		return
+	end
+	if scripted and scripted.kind == "orbit" then
+		return -- 졸업식 오빗이 우선이다
+	end
+	local from = cam.CFrame
+	local to = CFrame.lookAt(from.Position, worldPos)
+	goScriptable({ kind = "pan", from = from, to = to, t0 = os.clock(), seconds = math.max(seconds, 0.01) })
+	local mine = scriptedToken
+	task.delay(seconds + PAN_HOLD, function()
+		if scriptedToken == mine then
+			CameraController.restore()
+		end
+	end)
+end
+
+--- center 둘레를 radius 거리, pitchDeg 내려다보는 각도로 seconds 동안 돈다. 끝나면 마지막 프레임에 머문다
+function CameraController.orbit(center: Vector3, radius: number, pitchDeg: number, seconds: number)
+	local cam = camera()
+	if not cam then
+		return
+	end
+	local offset = cam.CFrame.Position - center
+	local angle0 = math.atan2(offset.X, offset.Z)
+	goScriptable({
+		kind = "orbit",
+		center = center,
+		radius = radius,
+		pitch = math.rad(pitchDeg),
+		angle0 = angle0,
+		t0 = os.clock(),
+		seconds = math.max(seconds, 0.01),
+	})
+end
+
+--- 즉시 이 CFrame 으로. restore() 전까지 머문다
+function CameraController.cutTo(cframe: CFrame)
+	goScriptable({ kind = "hold", cframe = cframe })
+end
+
+--- 트라우마를 더한다(0~1). 실제 흔들림은 트라우마² 에 비례
+function CameraController.shake(amount: number)
+	if not shakeEnabled then
+		return
+	end
+	trauma = math.clamp(trauma + amount, 0, 1)
+end
+
+--- FOV 65 → 59 → 65, 0.3초
+function CameraController.fovPunch()
+	if not shakeEnabled then
+		return
+	end
+	punchT0 = os.clock()
+end
+
+--- 접근성 「흔들림 끔」. false 면 shake/fovPunch 가 아무것도 안 한다
+function CameraController.setShakeEnabled(enabled: boolean)
+	shakeEnabled = enabled
+	if not enabled then
+		trauma = 0
+		punchT0 = -math.huge
+	end
+end
+
+local function orbitCFrame(state: Orbit, now: number): CFrame
+	local alpha = math.clamp((now - state.t0) / state.seconds, 0, 1)
+	local angle = state.angle0 + ORBIT_SWEEP * alpha
+	local flat = math.cos(state.pitch) * state.radius
+	local pos = state.center
+		+ Vector3.new(math.sin(angle) * flat, math.sin(state.pitch) * state.radius, math.cos(angle) * flat)
+	return CFrame.lookAt(pos, state.center)
+end
+
+local function scriptedCFrame(state: Scripted, now: number): CFrame
+	if state.kind == "pan" then
+		local alpha = math.clamp((now - state.t0) / state.seconds, 0, 1)
+		return state.from:Lerp(state.to, 1 - (1 - alpha) ^ 3)
+	elseif state.kind == "orbit" then
+		return orbitCFrame(state, now)
+	end
+	return state.cframe
+end
+
+-- 카메라가 다 움직인 뒤 연출 CFrame + 흔들림 + FOV 펀치를 얹는다
+local function updateFx(dt: number)
+	local cam = camera()
+	if not cam then
+		return
+	end
+	local now = os.clock()
+
+	local state = scripted
+	local shaking = trauma > 0
+	if state or shaking then
+		local base = if state then scriptedCFrame(state, now) else cam.CFrame
+		if shaking then
+			trauma = math.max(0, trauma - SHAKE_DECAY * dt)
+			local k = trauma * trauma
+			local t = now * SHAKE_FREQ
+			local dx = math.noise(t, 0.5) * SHAKE_MAX_OFFSET * k
+			local dy = math.noise(t, 10.5) * SHAKE_MAX_OFFSET * k
+			local roll = math.noise(t, 20.5) * SHAKE_MAX_ROLL * k
+			base = base * CFrame.new(dx, dy, 0) * CFrame.Angles(0, 0, roll)
+		end
+		cam.CFrame = base
+	end
+
+	local punch = now - punchT0
+	if punch < FOV_PUNCH_SECONDS then
+		cam.FieldOfView = FIELD_OF_VIEW - FOV_PUNCH_DEPTH * math.sin(math.pi * punch / FOV_PUNCH_SECONDS)
+	elseif cam.FieldOfView ~= FIELD_OF_VIEW then
+		cam.FieldOfView = FIELD_OF_VIEW
+	end
 end
 
 --[[
 	카메라와 나 사이를 막고 선 구조물을 반투명하게 만든다.
-
-	★ Transparency 가 아니라 LocalTransparencyModifier 를 쓴다. 이건 클라이언트
-	  전용 속성이라 서버가 만든 원래 Transparency 를 건드리지 않는다. 원래 값을
-	  어딘가에 백업해뒀다가 되돌릴 필요도 없다 — 0 으로 되돌리면 끝이다.
-
-	★ 지운 것을 기억해뒀다가 되돌린다. 매 프레임 새로 계산한 목록에 없는 파트는
-	  더 이상 안 가린다는 뜻이므로 원래대로 돌려놓는다. 기억하지 않으면
-	  한 번 지나간 벽이 영영 반투명하게 남는다.
+	지운 것을 기억해뒀다가, 다음 프레임 목록에 없으면 되돌린다.
 ]]
-local FADE = 0.88
-
 local faded: { [BasePart]: true } = {}
 
 local function updateFade()
 	local character = player.Character
-	local head = character and character:FindFirstChild("Head") :: BasePart?
-	local camera = Workspace.CurrentCamera
+	local head = if character then character:FindFirstChild("Head") else nil
+	local cam = camera()
 
 	local blocking: { [BasePart]: true } = {}
-	if head and camera then
+	if head and head:IsA("BasePart") and cam and character then
 		-- 캐릭터 자신은 제외한다. 안 그러면 내 뒤통수가 나를 가린 것으로 잡힌다.
-		for _, p in camera:GetPartsObscuringTarget({ head.Position }, { character }) do
-			if CollectionService:HasTag(p, RoomKeys.FADE_TAG) then
+		for _, p in cam:GetPartsObscuringTarget({ head.Position }, { character }) do
+			if p:IsA("BasePart") and CollectionService:HasTag(p, Keys.FADE_TAG) then
 				blocking[p] = true
 				p.LocalTransparencyModifier = FADE
 			end
@@ -100,18 +261,27 @@ local function updateFade()
 	end
 end
 
+local function onCharacter()
+	-- 리스폰 시 카메라 인스턴스가 새로 만들어질 수 있으므로 여기서 같이 잡는다.
+	local cam = camera()
+	if cam then
+		cam.FieldOfView = FIELD_OF_VIEW
+	end
+end
+
 function CameraController.Start()
 	player.CameraMode = Enum.CameraMode.Classic
-	player.CameraMinZoomDistance = CAMERA_DISTANCE
-	player.CameraMaxZoomDistance = CAMERA_DISTANCE
+	player.CameraMinZoomDistance = ZOOM_MIN
+	player.CameraMaxZoomDistance = ZOOM_MAX
 
 	if player.Character then
-		onCharacter(player.Character)
+		onCharacter()
 	end
 	player.CharacterAdded:Connect(onCharacter)
 
-	-- 카메라가 다 움직인 뒤에 계산해야 한 프레임 늦지 않는다.
-	RunService:BindToRenderStep("CameraFade", Enum.RenderPriority.Camera.Value + 1, updateFade)
+	-- 카메라가 다 움직인 뒤에 얹어야 한 프레임 늦지 않는다. 흔들림을 얹은 뒤에 가림 계산.
+	RunService:BindToRenderStep("CameraFx", Enum.RenderPriority.Camera.Value + 1, updateFx)
+	RunService:BindToRenderStep("CameraFade", Enum.RenderPriority.Camera.Value + 2, updateFade)
 end
 
 return CameraController

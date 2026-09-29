@@ -2,7 +2,6 @@
   "name": "oh-my-school",
   "tree": {
     "$className": "DataModel",
-
     "ServerScriptService": {
       "Server": {
         "$path": "src/server"
@@ -11,56 +10,72 @@
         "$path": "ServerPackages"
       }
     },
-
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
       }
     },
-
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "Client": {
           "$path": "src/client"
         }
+      },
+      "$properties": {
+        "LoadCharacterAppearance": true
       }
     },
-
     "Workspace": {
       "$properties": {
         "StreamingEnabled": true,
-        "StreamingIntegrityMode": "PauseOutsideLoadedArea"
+        "StreamingIntegrityMode": "PauseOutsideLoadedArea",
+        "StreamingTargetRadius": 384,
+        "StreamingMinRadius": 192,
+        "StreamOutBehavior": "Opportunistic",
+        "ModelStreamingBehavior": "Legacy"
       }
     },
-
     "Lighting": {
       "$properties": {
         "Technology": "Future",
         "ClockTime": 10,
         "GeographicLatitude": 37.5,
-
         "Brightness": 1.5,
         "ExposureCompensation": 0,
-        "OutdoorAmbient": [0.34, 0.35, 0.39],
-        "Ambient": [0.15, 0.15, 0.17],
+        "OutdoorAmbient": [
+          0.34,
+          0.35,
+          0.39
+        ],
+        "Ambient": [
+          0.15,
+          0.15,
+          0.17
+        ],
         "EnvironmentDiffuseScale": 0.45,
         "EnvironmentSpecularScale": 0.1,
         "GlobalShadows": true,
         "ShadowSoftness": 0.35
       },
-
       "Haze": {
         "$className": "Atmosphere",
         "$properties": {
           "Density": 0.08,
           "Offset": 0.25,
-          "Color": [0.85, 0.86, 0.83],
-          "Decay": [0.42, 0.45, 0.5],
+          "Color": [
+            0.85,
+            0.86,
+            0.83
+          ],
+          "Decay": [
+            0.42,
+            0.45,
+            0.5
+          ],
           "Glare": 0,
           "Haze": 0.2
         }
       },
-
       "Bloom": {
         "$className": "BloomEffect",
         "$properties": {
@@ -68,6 +83,20 @@
           "Size": 18,
           "Threshold": 1.7
         }
+      }
+    },
+    "Players": {
+      "$properties": {
+        "MaxPlayers": 12,
+        "RespawnTime": 2
+      }
+    },
+    "ReplicatedFirst": {
+      "$path": "src/first"
+    },
+    "SoundService": {
+      "$properties": {
+        "RespectFilteringEnabled": true
       }
     }
   }

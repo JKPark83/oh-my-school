@@ -1,17 +1,13 @@
---!nonstrict
+--!strict
 --[[
-	허브 ↔ 교실 전환 화면.
+	화면 전환 오버레이. 기획서 §9.5(졸업식 검은 화면)·§8.4(플래시 제한).
+	  fadeTo(alpha, seconds)   검은 오버레이를 alpha(0 투명 ~ 1 불투명)로
+	  cut()                    즉시 투명
+	  flash(alpha, seconds)    흰 플래시. α ≤ 0.7, ≤ 0.08초, 1초에 한 번까지
+	  message(text, seconds)   가운데 문구를 seconds 동안
 
-	★ 이 검은 화면의 진짜 일은 연출이 아니라 은폐다.
-	  서버는 화면을 덮으라고 보낸 다음 RequestStreamAroundAsync 로 5000 스터드 밖
-	  교실이 내려오기를 기다린다. 그 대기 시간이 그대로 보이면 "렉"이고,
-	  실내화로 갈아신는 연출이 덮으면 "학교에 들어가는 장면"이 된다.
-
-	  그래서 페이드인은 서버의 TRANSITION_HOLD 보다 확실히 짧아야 하고,
-	  페이드아웃은 텔레포트가 끝난 뒤에 시작해야 한다.
-
-	FeedbackController 의 오버레이와 따로 두는 이유는, 그쪽은 성공/실패 타이밍에
-	맞춰진 물건이라서다. 두 연출이 같은 프레임을 공유하면 서로의 트윈을 잡아먹는다.
+	★ 이 오버레이는 다른 GUI 보다 위(DisplayOrder 8)다. 전환 중에는 아무것도 보이면 안 된다.
+	  FeedbackController 의 연출과 같은 프레임을 쓰지 않는다 — 트윈이 서로를 잡아먹는다.
 ]]
 
 local Players = game:GetService("Players")
@@ -19,43 +15,88 @@ local TweenService = game:GetService("TweenService")
 
 local WAIT_TIMEOUT = 10
 
-local FADE_IN = 0.18
-local HOLD = 0.42 -- 서버 TRANSITION_HOLD(0.55)보다 짧다. 끝나기 전에 페이드아웃이 시작된다
-local FADE_OUT = 0.3
+-- §8.4 플래시 제한
+local FLASH_MAX_ALPHA = 0.7
+local FLASH_MAX_SECONDS = 0.08
+local FLASH_MIN_INTERVAL = 1
 
-local MESSAGES = {
-	class = "실내화로 갈아신는 중…",
-	hub = "복도로 나가는 중…",
-}
+local MESSAGE_FADE = 0.2
 
 local player = Players.LocalPlayer
 
 local TransitionController = {}
 
-local overlay: Frame
-local label: TextLabel
-local token = 0
+local overlay: Frame? = nil
+local flashFrame: Frame? = nil
+local label: TextLabel? = nil
 
-function TransitionController.onTransition(packet)
-	if not overlay then
+local overlayTween: Tween? = nil
+local labelToken = 0
+local lastFlash = -math.huge
+
+local function stopOverlayTween()
+	local tween = overlayTween
+	if tween then
+		tween:Cancel()
+		overlayTween = nil
+	end
+end
+
+--- 검은 오버레이를 alpha 불투명도로 seconds 에 걸쳐
+function TransitionController.fadeTo(alpha: number, seconds: number)
+	local frame = overlay
+	if not frame then
 		return
 	end
-	token += 1
-	local mine = token
+	stopOverlayTween()
+	local goal = { BackgroundTransparency = 1 - math.clamp(alpha, 0, 1) }
+	if seconds <= 0 then
+		frame.BackgroundTransparency = goal.BackgroundTransparency
+		return
+	end
+	local tween = TweenService:Create(frame, TweenInfo.new(seconds, Enum.EasingStyle.Sine), goal)
+	overlayTween = tween
+	tween:Play()
+end
 
-	label.Text = MESSAGES[packet.to] or ""
-	overlay.BackgroundTransparency = 1
-	label.TextTransparency = 1
+--- 즉시 투명
+function TransitionController.cut()
+	TransitionController.fadeTo(0, 0)
+end
 
-	TweenService:Create(overlay, TweenInfo.new(FADE_IN), { BackgroundTransparency = 0 }):Play()
-	TweenService:Create(label, TweenInfo.new(FADE_IN), { TextTransparency = 0.15 }):Play()
+--- 흰 플래시. 접근성 한도(α 0.7, 0.08초, 초당 1회)를 넘는 값은 깎는다
+function TransitionController.flash(alpha: number, seconds: number)
+	local frame = flashFrame
+	if not frame then
+		return
+	end
+	local now = os.clock()
+	if now - lastFlash < FLASH_MIN_INTERVAL then
+		return
+	end
+	lastFlash = now
+	local a = math.clamp(alpha, 0, FLASH_MAX_ALPHA)
+	local s = math.clamp(seconds, 0, FLASH_MAX_SECONDS)
+	frame.BackgroundTransparency = 1 - a
+	TweenService:Create(frame, TweenInfo.new(s, Enum.EasingStyle.Linear), { BackgroundTransparency = 1 }):Play()
+end
 
-	task.delay(FADE_IN + HOLD, function()
-		if token ~= mine then
+--- 가운데 문구를 seconds 동안 보여준다
+function TransitionController.message(text: string, seconds: number)
+	local target = label
+	if not target then
+		return
+	end
+	labelToken += 1
+	local mine = labelToken
+	target.Text = text
+	target.TextTransparency = 1
+	TweenService:Create(target, TweenInfo.new(MESSAGE_FADE), { TextTransparency = 0 }):Play()
+	task.delay(seconds, function()
+		if labelToken ~= mine then
 			return
 		end
-		TweenService:Create(overlay, TweenInfo.new(FADE_OUT), { BackgroundTransparency = 1 }):Play()
-		TweenService:Create(label, TweenInfo.new(FADE_OUT), { TextTransparency = 1 }):Play()
+		TweenService:Create(target, TweenInfo.new(MESSAGE_FADE), { TextTransparency = 1 }):Play()
 	end)
 end
 
@@ -67,26 +108,37 @@ function TransitionController.Start()
 	gui.DisplayOrder = 8 -- 성공/실패 연출보다도 위. 전환 중에는 아무것도 보이면 안 된다
 	gui.Parent = player:WaitForChild("PlayerGui", WAIT_TIMEOUT)
 
-	overlay = Instance.new("Frame")
-	overlay.Name = "Overlay"
-	overlay.Size = UDim2.fromScale(1, 1)
-	overlay.BackgroundColor3 = Color3.new(0, 0, 0)
-	overlay.BackgroundTransparency = 1
-	overlay.BorderSizePixel = 0
-	overlay.Parent = gui
+	local black = Instance.new("Frame")
+	black.Name = "Overlay"
+	black.Size = UDim2.fromScale(1, 1)
+	black.BackgroundColor3 = Color3.new(0, 0, 0)
+	black.BackgroundTransparency = 1
+	black.BorderSizePixel = 0
+	black.Parent = gui
+	overlay = black
 
-	label = Instance.new("TextLabel")
-	label.Name = "Message"
-	label.Size = UDim2.new(1, 0, 0, 34)
-	label.Position = UDim2.fromScale(0.5, 0.5)
-	label.AnchorPoint = Vector2.new(0.5, 0.5)
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamMedium
-	label.TextSize = 24
-	label.TextColor3 = Color3.fromRGB(235, 235, 235)
-	label.TextTransparency = 1
-	label.Text = ""
-	label.Parent = gui
+	local white = Instance.new("Frame")
+	white.Name = "Flash"
+	white.Size = UDim2.fromScale(1, 1)
+	white.BackgroundColor3 = Color3.new(1, 1, 1)
+	white.BackgroundTransparency = 1
+	white.BorderSizePixel = 0
+	white.Parent = gui
+	flashFrame = white
+
+	local text = Instance.new("TextLabel")
+	text.Name = "Message"
+	text.Size = UDim2.new(1, 0, 0, 34)
+	text.Position = UDim2.fromScale(0.5, 0.5)
+	text.AnchorPoint = Vector2.new(0.5, 0.5)
+	text.BackgroundTransparency = 1
+	text.Font = Enum.Font.GothamMedium
+	text.TextSize = 24
+	text.TextColor3 = Color3.fromRGB(235, 235, 235)
+	text.TextTransparency = 1
+	text.Text = ""
+	text.Parent = gui
+	label = text
 end
 
 return TransitionController
