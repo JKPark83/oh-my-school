@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<!--
+  썸네일 B 1920×1080 — 「전학생을 모은다」.
+  전설의 전학생 3명(코스모·금동이·백호)을 금테 카드로 앞에 펼치고,
+  뒤에 평범(회색)·반장(파랑)·전교1등(보라) 카드를 깔아 등급 색을 한눈에 보여 준다(기획서 §4).
+  등급은 색 + 테두리 두께 + 등급 글자로 함께 구분한다(색각 접근성). 뽑기 기계·레버·동전은 그리지 않는다.
+-->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1920px; height:1080px; overflow:hidden; background:#9ccfff; }
+  svg { display:block; }
+</style>
+<script src="kit.js"></script>
+</head>
+<body>
+<svg id="art" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+<script>
+const K = KIT, OL = K.OL;
+const S = (w = 6) => `stroke="${OL}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"`;
+const FONT = `font-family="Apple SD Gothic Neo, AppleSDGothicNeo-Heavy, sans-serif" font-weight="900"`;
+
+// 등급: 색, 테두리 두께(UI 2/3/4/6px 비율을 카드 크기에 맞춰 키움), 별 개수(기여 1~4)
+const TIER = {
+  normal: { name: '평범', color: '#9ca3af', dark: '#6b7280', border: 12, stars: 1 },
+  captain: { name: '반장', color: '#60a5fa', dark: '#3b82f6', border: 16, stars: 2 },
+  top: { name: '전교1등', color: '#a78bfa', dark: '#7c5cf0', border: 20, stars: 3 },
+  legend: { name: '전설', color: '#f59e0b', dark: '#d97706', border: 28, stars: 4 },
+};
+
+let clipN = 0;
+// 카드 한 장. (x,y) 는 카드 가운데. bg 는 안쪽 배경(그라디언트 id 또는 색), deco 는 안쪽 장식 SVG.
+function card({ x, y, w, h, rot = 0, tier, name, kid, kidScale, kidDy, bg, deco = '' }) {
+  const t = TIER[tier];
+  const b = t.border;
+  const id = `cardClip${clipN++}`;
+  const iw = w - b * 2, ih = h - b * 2;
+  const r = 34;
+  const plateH = h * 0.16;
+  const plateY = h / 2 - b - plateH - 22;
+  const sr = w * 0.04, gap = sr * 2.3;
+  const pillW = t.stars * gap + sr * 1.2, pillH = sr * 2.9;
+  let starRow = `<rect x="${-pillW / 2}" y="${h / 2 - pillH / 2}" width="${pillW}" height="${pillH}" rx="${pillH / 2}" fill="#fff" ${S(6)}/>`;
+  for (let i = 0; i < t.stars; i++) starRow += K.star((i - (t.stars - 1) / 2) * gap, h / 2 + sr * 0.08, sr, '#ffd43b', S(4));
+  const kidY = -h * 0.05 + 210 * kidScale + (kidDy || 0);
+  const nameSize = Math.min(plateH * 0.62, (w - b * 2 - 60) / name.length);
+  const chipW = 36 + t.name.length * w * 0.085, chipH = w * 0.13;
+  return `<g transform="translate(${x} ${y}) rotate(${rot})">
+    <rect x="${-w / 2 + 10}" y="${-h / 2 + 18}" width="${w}" height="${h}" rx="${r}" fill="${OL}" opacity=".22"/>
+    <rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="${r}" fill="${t.color}" ${S(7)}/>
+    <rect x="${-w / 2 + 6}" y="${-h / 2 + 6}" width="${w - 12}" height="${h * 0.3}" rx="${r - 6}" fill="#fff" opacity=".28"/>
+    <clipPath id="${id}"><rect x="${-iw / 2}" y="${-ih / 2}" width="${iw}" height="${ih}" rx="${r - b / 2}"/></clipPath>
+    <g clip-path="url(#${id})">
+      <rect x="${-iw / 2}" y="${-ih / 2}" width="${iw}" height="${ih}" fill="${bg}"/>
+      ${deco}
+      <g transform="translate(0 ${kidY}) scale(${kidScale})">${K.chibi({ shadow: false, ...kid })}</g>
+    </g>
+    <rect x="${-iw / 2}" y="${-ih / 2}" width="${iw}" height="${ih}" rx="${r - b / 2}" fill="none" ${S(6)}/>
+    ${starRow}
+    <rect x="${-iw / 2 + 18}" y="${plateY}" width="${iw - 36}" height="${plateH}" rx="${plateH / 2}" fill="#fff" ${S(6)}/>
+    <text x="0" y="${plateY + plateH / 2 + nameSize * 0.36}" text-anchor="middle" font-size="${nameSize}" ${FONT} fill="${OL}" letter-spacing="${nameSize * 0.06}">${name}</text>
+    <g transform="translate(0 ${-h / 2})">
+      <rect x="${-chipW / 2}" y="${-chipH / 2}" width="${chipW}" height="${chipH}" rx="${chipH / 2}" fill="${t.dark}" ${S(6)}/>
+      <text x="0" y="${chipH * 0.24}" text-anchor="middle" font-size="${chipH * 0.64}" ${FONT} fill="#fff" stroke="${OL}" stroke-width="${chipH * 0.12}" paint-order="stroke" stroke-linejoin="round">${t.name}</text>
+    </g>
+  </g>`;
+}
+
+// 안쪽 장식
+const dots = (n, w, h, fill, rMax, seed) => {
+  let s = '', v = seed;
+  const rnd = () => ((v = (v * 9301 + 49297) % 233280) / 233280);
+  for (let i = 0; i < n; i++) s += `<circle cx="${(rnd() - .5) * w}" cy="${(rnd() - .5) * h}" r="${1.5 + rnd() * rMax}" fill="${fill}" opacity="${.5 + rnd() * .5}"/>`;
+  return s;
+};
+const snow = (x, y, r) => `<g transform="translate(${x} ${y})" stroke="#fff" stroke-width="${r * .22}" stroke-linecap="round">
+  <path d="M 0 ${-r} L 0 ${r} M ${-r * .87} ${-r / 2} L ${r * .87} ${r / 2} M ${-r * .87} ${r / 2} L ${r * .87} ${-r / 2}"/></g>`;
+
+let g = `<defs>${K.defs}
+  <linearGradient id="bgSky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5fb4ff"/><stop offset=".55" stop-color="#a9c8ff"/><stop offset="1" stop-color="#d9c8ff"/></linearGradient>
+  <radialGradient id="bgGlow" cx=".5" cy=".58" r=".5">
+    <stop offset="0" stop-color="#fffbe6" stop-opacity=".95"/><stop offset=".45" stop-color="#fff3c4" stop-opacity=".45"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <linearGradient id="inSpace" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2d2f8f"/><stop offset="1" stop-color="#6d7cff"/></linearGradient>
+  <radialGradient id="inGold" cx=".5" cy=".4" r=".7">
+    <stop offset="0" stop-color="#fffbe8"/><stop offset=".6" stop-color="#ffeaa0"/><stop offset="1" stop-color="#ffd166"/></radialGradient>
+  <linearGradient id="inIce" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#bfe6ff"/><stop offset="1" stop-color="#e9f7ff"/></linearGradient>
+  <linearGradient id="inBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d7e9ff"/><stop offset="1" stop-color="#f1f7ff"/></linearGradient>
+  <linearGradient id="inPurple" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6dbff"/><stop offset="1" stop-color="#f6f1ff"/></linearGradient>
+  <linearGradient id="inGrey" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e5e7eb"/><stop offset="1" stop-color="#f7f7f8"/></linearGradient>
+</defs>`;
+
+// 배경: 하늘 → 연보라, 가운데 따뜻한 빛, 도감 칸을 닮은 옅은 격자 점
+g += `<rect width="1920" height="1080" fill="url(#bgSky)"/>`;
+for (let yy = 60; yy < 1080; yy += 90) for (let xx = (yy / 90) % 2 ? 45 : 0; xx < 1920; xx += 90)
+  g += `<rect x="${xx + 30}" y="${yy + 30}" width="30" height="30" rx="8" fill="#fff" opacity=".12"/>`;
+g += `<ellipse cx="960" cy="640" rx="900" ry="520" fill="url(#bgGlow)"/>`;
+
+// 색종이(빨강 없이)
+const confetti = [[120, 300, '#ffd43b', 20], [230, 180, '#34d399', -30], [1760, 170, '#60a5fa', 25], [1830, 330, '#ffd43b', -15],
+  [70, 560, '#a78bfa', 40], [1860, 600, '#34d399', -40], [300, 980, '#60a5fa', 10], [1620, 1000, '#a78bfa', -20],
+  [560, 110, '#ff9fc0', 30], [1380, 90, '#34d399', -25], [40, 860, '#ffd43b', 15], [1880, 880, '#ff9fc0', 35]];
+for (const [cx, cy, c, rot] of confetti)
+  g += `<rect x="${cx - 14}" y="${cy - 7}" width="28" height="14" rx="4" fill="${c}" ${S(4)} transform="rotate(${rot} ${cx} ${cy})"/>`;
+
+// 뒷줄 카드: 평범(회색) · 반장(파랑) · 전교1등(보라). 바깥쪽일수록 작고 많이 기운다
+g += card({ x: 110, y: 615, w: 260, h: 370, rot: -18, tier: 'normal', name: '김하늘', bg: 'url(#inGrey)',
+  kid: { hairStyle: 'long', hair: '#5a3a2a', top: '#ffb454', acc: ['hairpin'], eyes: 'happy', mouth: 'smile' }, kidScale: .84 });
+g += card({ x: 1810, y: 615, w: 260, h: 370, rot: 18, tier: 'normal', name: '이준서', bg: 'url(#inGrey)',
+  kid: { top: '#ffd43b', acc: ['cap:#3b82f6'], eyes: 'happy', mouth: 'grin' }, kidScale: .84 });
+g += card({ x: 300, y: 620, w: 310, h: 440, rot: -11, tier: 'captain', name: '채원', bg: 'url(#inBlue)',
+  deco: dots(14, 310, 440, '#fff', 6, 3),
+  kid: { hairStyle: 'bob', hair: '#4a2f24', top: '#34d399', acc: ['armband:#60a5fa', 'bow:#60a5fa'], armL: 20, mouth: 'grin' }, kidScale: .96 });
+g += card({ x: 1620, y: 620, w: 310, h: 440, rot: 11, tier: 'top', name: '하율', bg: 'url(#inPurple)',
+  deco: dots(14, 310, 440, '#fff', 6, 7),
+  kid: { hairStyle: 'long', hair: '#2e2230', top: '#a78bfa', acc: ['glasses:#e0a100', 'medal:#60a5fa'], mouth: 'smile' }, kidScale: .96 });
+
+// 앞줄: 전설 3명(코스모 · 금동이 · 백호). 금동이가 가운데 맨 앞
+const spaceDeco = dots(40, 400, 540, '#fff', 3.5, 11) + [[-130, -170, 16], [130, -150, 12], [-140, 60, 10], [140, 40, 14]]
+  .map(([sx, sy, r]) => K.star(sx, sy, r, '#fff6b3', '')).join('');
+const goldDeco = [[-150, -170, 20], [150, -190, 16], [-160, 30, 14], [160, 10, 18]].map(([sx, sy, r]) => K.sparkle(sx, sy, r, '#fff')).join('');
+const iceDeco = [[-140, -170, 18], [130, -190, 14], [-150, 40, 12], [145, 30, 16]].map(([sx, sy, r]) => snow(sx, sy, r)).join('');
+
+g += card({ x: 590, y: 625, w: 380, h: 530, rot: -5, tier: 'legend', name: '코스모', bg: 'url(#inSpace)', deco: spaceDeco,
+  kid: { outfit: 'space', top: '#f2f6fc', pants: '#dfe8f5', hair: '#3a2a2a', acc: ['helmet'], mouth: 'grin', armL: 110, armR: 20 }, kidScale: .94, kidDy: 16 });
+g += card({ x: 1330, y: 625, w: 380, h: 530, rot: 5, tier: 'legend', name: '백호', bg: 'url(#inIce)', deco: iceDeco,
+  kid: { outfit: 'tiger', top: '#fbfdff', pants: '#fbfdff', acc: ['tigerHood'], mouth: 'grin', armL: 20, armR: 110 }, kidScale: 1.03, kidDy: 10 });
+g += card({ x: 960, y: 615, w: 430, h: 585, rot: 0, tier: 'legend', name: '금동이', bg: 'url(#inGold)', deco: goldDeco,
+  kid: { hairStyle: 'pigtails', hair: '#3a2a2a', outfit: 'gold', top: '#ffcf3a', skirt: '#f5b400', acc: ['crown', 'tie:#7c3aed'], mouth: 'grin', armL: 125, armR: 125 }, kidScale: 1.18, kidDy: 16 });
+
+// 전설 카드 둘레 반짝임
+g += K.sparkle(725, 320, 30, '#fff') + K.sparkle(1200, 320, 26, '#fff') + K.sparkle(1560, 350, 20, '#fff') + K.sparkle(365, 350, 20, '#fff')
+   + K.sparkle(590, 960, 22, '#fffbd0') + K.sparkle(1330, 960, 24, '#fffbd0');
+
+// 제목 + 부제
+g += K.title({ x: 960, y: 190, size: 150, spans: [['교장이 ', 'url(#kitTitleYellow)'], ['되어보자!', 'url(#kitTitleWhite)']] });
+g += `<g transform="translate(960 1010)">
+  <rect x="-300" y="-46" width="600" height="92" rx="46" fill="#a78bfa" ${S(8)}/>
+  <text x="0" y="18" text-anchor="middle" font-size="52" ${FONT} fill="#fff" stroke="${OL}" stroke-width="10" paint-order="stroke" stroke-linejoin="round">전학생 24명을 모아요!</text>
+</g>`;
+
+document.getElementById('art').innerHTML = g;
+</script>
+</body>
+</html>

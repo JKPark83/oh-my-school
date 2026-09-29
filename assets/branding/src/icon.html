@@ -2,84 +2,85 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<!--
+  게임 아이콘 512×512. 모티프 하나: 학교 앞에서 「교장」 명패 뒤에 선 꼬마 교장.
+  명패 두 글자가 100px 로 줄어도 읽히도록 크게 둔다. 로블록스가 모서리를 둥글게 자르므로
+  중요한 것은 가장자리 40px 안쪽에 둔다.
+-->
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:512px; height:512px; overflow:hidden; background:#000; }
-  .stage { position:relative; width:512px; height:512px; overflow:hidden;
-           font-family:"Apple SD Gothic Neo", sans-serif; }
-  .bg { position:absolute; inset:0;
-    background: radial-gradient(80% 75% at 50% 34%, #35604e 0%, #1f3f34 52%, #0e211d 100%); }
-  .bg::after { content:""; position:absolute; inset:0;
-    background:
-      repeating-linear-gradient(112deg, rgba(255,255,255,.05) 0 2px, transparent 2px 22px),
-      repeating-linear-gradient(64deg, rgba(255,255,255,.035) 0 2px, transparent 2px 28px); }
-  .frame { position:absolute; inset:0; border:14px solid #8f6d45; border-radius:2px; z-index:30; }
-  .vignette { position:absolute; inset:0; z-index:25; pointer-events:none;
-    background: radial-gradient(88% 82% at 50% 42%, transparent 42%, rgba(0,0,0,.72) 100%); }
-  svg { display:block; overflow:visible; position:absolute; inset:0; }
+  html,body { width:512px; height:512px; overflow:hidden; background:#8fd6ff; }
+  svg { display:block; }
 </style>
+<script src="kit.js"></script>
 </head>
 <body>
-<div class="stage">
-  <div class="bg"></div>
+<svg id="art" width="512" height="512" viewBox="0 0 512 512"></svg>
+<script>
+const K = KIT, OL = K.OL;
+const win = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="#8fd3ff" stroke="${OL}" stroke-width="4"/>
+  <path d="M ${x + 6} ${y + h - 8} L ${x + w - 10} ${y + 6}" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".6"/>`;
 
-  <svg viewBox="0 0 512 512">
-    <defs>
-      <linearGradient id="skin" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#f7d3ad"/><stop offset=".6" stop-color="#dcae84"/>
-        <stop offset="1" stop-color="#8d6a4f"/></linearGradient>
-      <linearGradient id="hair" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#332a25"/><stop offset="1" stop-color="#0a0908"/></linearGradient>
-      <filter id="redGlow" x="-100%" y="-100%" width="300%" height="300%">
-        <feGaussianBlur stdDeviation="10" result="b"/>
-        <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-      <filter id="drop" x="-40%" y="-40%" width="180%" height="180%">
-        <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000" flood-opacity=".65"/></filter>
-    </defs>
+let g = `<defs>${K.defs}
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#4fb8ff"/><stop offset=".7" stop-color="#a9e2ff"/><stop offset="1" stop-color="#d6f2ff"/></linearGradient>
+  <radialGradient id="glow" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".55" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d99a5b"/><stop offset="1" stop-color="#b87436"/></linearGradient>
+  <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff3a8"/><stop offset=".5" stop-color="#ffd23f"/><stop offset="1" stop-color="#f2a516"/></linearGradient>
+</defs>`;
 
-    <g filter="url(#drop)">
-      <!-- 어깨 -->
-      <rect x="52" y="374" width="408" height="150" rx="12" fill="#26313f"/>
-      <rect x="52" y="374" width="408" height="8" fill="#5c7091" opacity=".55"/>
-      <path d="M222 374 L256 434 L290 374 Z" fill="#e9eef5"/>
-      <path d="M250 424 L272 444 L258 512 L242 444 Z" fill="#c0242f"/>
-      <rect x="330" y="374" width="130" height="150" fill="#000" opacity=".22"/>
-      <!-- 목 -->
-      <rect x="214" y="338" width="90" height="46" fill="#a87f5e"/>
-      <!-- 머리 -->
-      <rect x="122" y="74" width="272" height="270" rx="18" fill="url(#skin)"/>
-      <rect x="318" y="74" width="76" height="270" fill="#000" opacity=".16"/>
-      <path d="M110 136 q14 -76 148 -76 q134 0 148 76 l0 26 l-296 0 z" fill="url(#hair)"/>
-      <rect x="110" y="52" width="296" height="86" rx="20" fill="url(#hair)"/>
-      <!-- 안경 -->
-      <g stroke="#e8eef5" stroke-width="10" fill="#0a0e13" fill-opacity=".45">
-        <rect x="140" y="172" width="110" height="80" rx="14"/>
-        <rect x="272" y="172" width="110" height="80" rx="14"/>
-      </g>
-      <rect x="250" y="204" width="24" height="10" fill="#e8eef5"/>
-      <!-- 붉은 눈 -->
-      <g filter="url(#redGlow)">
-        <rect x="160" y="198" width="72" height="28" rx="9" fill="#ff2b3a"/>
-        <rect x="292" y="198" width="72" height="28" rx="9" fill="#ff2b3a"/>
-      </g>
-      <!-- 눈썹 -->
-      <rect x="136" y="150" width="116" height="16" rx="8" fill="#1a1512" transform="rotate(9 194 158)"/>
-      <rect x="266" y="150" width="116" height="16" rx="8" fill="#1a1512" transform="rotate(-9 324 158)"/>
-      <!-- 입 -->
-      <rect x="212" y="282" width="98" height="38" rx="12" fill="#4a2122"/>
-      <rect x="212" y="282" width="98" height="10" rx="5" fill="#f0eae4" opacity=".85"/>
-    </g>
+// 하늘
+g += `<rect width="512" height="512" fill="url(#sky)"/>`;
+g += `<circle cx="256" cy="230" r="250" fill="url(#glow)"/>`;
+// 구름
+g += `<g fill="#fff" opacity=".95">
+  <ellipse cx="70" cy="64" rx="46" ry="20"/><circle cx="58" cy="54" r="20"/><circle cx="86" cy="48" r="24"/>
+  <ellipse cx="448" cy="58" rx="42" ry="17"/><circle cx="438" cy="48" r="17"/><circle cx="462" cy="44" r="20"/></g>`;
 
-    <!-- 타이틀 -->
-    <g font-family="Apple SD Gothic Neo" font-weight="900" paint-order="stroke"
-       stroke-linejoin="round" text-anchor="middle">
-      <text x="256" y="470" font-size="122" fill="#ffffff" stroke="#0b0f13" stroke-width="22" letter-spacing="-6">얼음<tspan fill="#ff2b3a">!</tspan></text>
-      <text x="256" y="470" font-size="122" fill="#ffffff" letter-spacing="-6">얼음<tspan fill="#ff2b3a">!</tspan></text>
-    </g>
-  </svg>
+// 학교: 왼쪽 시계탑 동, 오른쪽 깃발 동
+g += `<g>
+  <rect x="-10" y="226" width="200" height="230" fill="#fff1d6" stroke="${OL}" stroke-width="6"/>
+  <rect x="322" y="226" width="200" height="230" fill="#fff1d6" stroke="${OL}" stroke-width="6"/>
+  <rect x="-16" y="212" width="212" height="26" rx="8" fill="#ff9b54" stroke="${OL}" stroke-width="6"/>
+  <rect x="316" y="212" width="212" height="26" rx="8" fill="#ff9b54" stroke="${OL}" stroke-width="6"/>
+  ${win(14, 256, 40, 44)}${win(66, 256, 40, 44)}${win(360, 256, 40, 44)}${win(412, 256, 40, 44)}${win(464, 256, 40, 44)}
+  ${win(14, 320, 40, 44)}${win(66, 320, 40, 44)}${win(412, 320, 40, 44)}${win(464, 320, 40, 44)}
+  <rect x="30" y="118" width="112" height="100" fill="#fff1d6" stroke="${OL}" stroke-width="6"/>
+  <path d="M 20 124 L 86 76 L 152 124 Z" fill="#ff9b54" stroke="${OL}" stroke-width="6" stroke-linejoin="round"/>
+  <circle cx="86" cy="168" r="34" fill="#fff" stroke="${OL}" stroke-width="6"/>
+  <path d="M 86 168 L 86 146 M 86 168 L 102 176" stroke="${OL}" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="86" cy="168" r="4" fill="${OL}"/>
+  <rect x="416" y="100" width="7" height="116" rx="3" fill="#8a93a8" stroke="${OL}" stroke-width="3"/>
+  <path d="M 423 106 Q 448 98 470 108 L 470 146 Q 448 136 423 144 Z" fill="#ffd43b" stroke="${OL}" stroke-width="5" stroke-linejoin="round"/>
+  ${K.star(446, 125, 11, '#fff')}
+</g>`;
+// 잔디 띠
+g += `<rect x="-10" y="404" width="532" height="120" fill="#6fdc8c"/>`;
 
-  <div class="vignette"></div>
-  <div class="frame"></div>
-</div>
+// 꼬마 교장
+g += `<g transform="translate(256 515) scale(1.32)">${K.chibi({
+  cowlick: true, outfit: 'blazer', top: '#2f3f7a', acc: ['bowtie:#ffcf3a', 'badge'],
+  mouth: 'grin', armL: 128, armR: 128, shadow: false,
+})}</g>`;
+
+// 반짝임
+g += K.sparkle(438, 196, 20, '#fff') + K.sparkle(66, 262, 14, '#fff') + K.sparkle(468, 330, 11, '#fff', .9);
+
+// 책상 + 명패
+g += `<rect x="-10" y="468" width="532" height="60" fill="url(#wood)" stroke="${OL}" stroke-width="6"/>
+  <rect x="-10" y="468" width="532" height="9" fill="#fff" opacity=".25"/>
+  <g>
+    <path d="M 104 484 L 118 388 L 394 388 L 408 484 Z" fill="#8a5424" stroke="${OL}" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M 122 474 L 132 400 L 380 400 L 390 474 Z" fill="url(#plate)" stroke="#b97a12" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 140 408 L 372 408" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".7"/>
+    <text x="256" y="465" text-anchor="middle" font-family="Apple SD Gothic Neo" font-weight="900" font-size="80"
+          letter-spacing="14" fill="${OL}">교장</text>
+  </g>`;
+
+document.getElementById('art').innerHTML = g;
+</script>
 </body>
 </html>

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<!--
+  썸네일 A 1920×1080 — 「학교가 커진다」.
+  꼬마 교장이 초록 링 패드 위에 서 있고, 그 뒤로 새 시설이 땅에서 솟는다(기획서 §1 핵심 규칙).
+  오른쪽은 이미 지은 학교(시계탑 본관 + 체육관), 앞마당에는 칭찬스티커와 등교하는 전학생들.
+-->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1920px; height:1080px; overflow:hidden; background:#8fd6ff; }
+  svg { display:block; }
+</style>
+<script src="kit.js"></script>
+</head>
+<body>
+<svg id="art" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+<script>
+const K = KIT, OL = K.OL;
+const S = (w = 6) => `stroke="${OL}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"`;
+const kid = (x, y, s, o) => `<g transform="translate(${x} ${y}) scale(${s})">${K.chibi(o)}</g>`;
+const win = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="7" fill="#8fd3ff" ${S(5)}/>
+  <path d="M ${x + 9} ${y + h - 12} L ${x + w - 14} ${y + 9}" stroke="#fff" stroke-width="7" stroke-linecap="round" opacity=".6"/>`;
+const windows = (x0, y0, cols, rows, w, h, gx, gy) => {
+  let s = '';
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) s += win(x0 + c * (w + gx), y0 + r * (h + gy), w, h);
+  return s;
+};
+const cloud = (x, y, k) => `<g transform="translate(${x} ${y}) scale(${k})" fill="#fff">
+  <ellipse cx="0" cy="0" rx="110" ry="42"/><circle cx="-40" cy="-22" r="46"/><circle cx="30" cy="-36" r="58"/><circle cx="84" cy="-8" r="36"/></g>`;
+const tree = (x, y, k) => `<g transform="translate(${x} ${y}) scale(${k})">
+  <rect x="-12" y="-70" width="24" height="74" rx="6" fill="#a86a3c" ${S(5)}/>
+  <circle cx="0" cy="-120" r="72" fill="#3fc27a" ${S(6)}/><circle cx="-24" cy="-146" r="26" fill="#fff" opacity=".18"/></g>`;
+// 원형 팻말(시설 종류 아이콘)
+const sign = (x, y, icon) => {
+  let i = '';
+  if (icon === 'note') i = `<path d="M -6 12 L -6 -16 L 14 -20 L 14 6" fill="none" ${S(5)}/><circle cx="-11" cy="13" r="7" fill="${OL}"/><circle cx="9" cy="8" r="7" fill="${OL}"/>`;
+  if (icon === 'book') i = `<path d="M -20 -12 Q -10 -18 0 -12 Q 10 -18 20 -12 L 20 14 Q 10 8 0 14 Q -10 8 -20 14 Z" fill="#fff" ${S(4)}/><path d="M 0 -12 L 0 14" ${S(4)}/>`;
+  if (icon === 'flask') i = `<path d="M -6 -18 L 6 -18 M -4 -18 L -4 -4 L -16 14 L 16 14 L 4 -4 L 4 -18" fill="#b8f3d8" ${S(4)}/>`;
+  if (icon === 'ball') i = `<circle r="18" fill="#fff" ${S(4)}/><path d="M 0 -7 L 7 -2 L 4 6 L -4 6 L -7 -2 Z" fill="${OL}"/><path d="M 0 -7 L 0 -18 M 7 -2 L 17 -6 M 4 6 L 10 15 M -4 6 L -10 15 M -7 -2 L -17 -6" ${S(3)}/>`;
+  if (icon === 'spoon') i = `<ellipse cx="-8" cy="-8" rx="7" ry="10" fill="#fff" ${S(4)}/><path d="M -8 2 L -8 18" ${S(5)}/><path d="M 8 -18 L 8 18 M 3 -18 L 3 -6 Q 8 -2 13 -6 L 13 -18" fill="none" ${S(4)}/>`;
+  return `<g transform="translate(${x} ${y})"><circle r="30" fill="#fff" ${S(5)}/>${i}</g>`;
+};
+
+let g = `<defs>${K.defs}
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#46b1ff"/><stop offset=".55" stop-color="#9fdcff"/><stop offset="1" stop-color="#d9f3ff"/></linearGradient>
+  <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8ee8a3"/><stop offset="1" stop-color="#4fcf7c"/></linearGradient>
+  <linearGradient id="yard" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffe9c4"/><stop offset="1" stop-color="#ffd9a0"/></linearGradient>
+  <radialGradient id="padGlow" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#6bffc4" stop-opacity=".9"/><stop offset=".6" stop-color="#34d399" stop-opacity=".45"/><stop offset="1" stop-color="#34d399" stop-opacity="0"/></radialGradient>
+  <linearGradient id="beam" x1="0" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#7dffc9" stop-opacity=".6"/><stop offset="1" stop-color="#7dffc9" stop-opacity="0"/></linearGradient>
+  <radialGradient id="sun" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <filter id="blur12"><feGaussianBlur stdDeviation="12"/></filter>
+</defs>`;
+
+// ── 하늘
+g += `<rect width="1920" height="1080" fill="url(#sky)"/>`;
+g += `<circle cx="1500" cy="120" r="420" fill="url(#sun)" opacity=".7"/>`;
+g += cloud(1020, 150, 1) + cloud(1780, 250, .8) + cloud(820, 330, .55) + cloud(1540, 110, .5);
+
+// ── 땅
+g += `<path d="M 0 700 L 0 610 Q 160 560 330 620 Q 470 580 620 660 L 620 700 Z" fill="#a9ecbd"/>
+  <path d="M 1640 700 L 1640 640 Q 1780 590 1920 630 L 1920 700 Z" fill="#a9ecbd"/>`;
+g += `<rect x="0" y="690" width="1920" height="390" fill="url(#grass)"/>`;
+g += tree(70, 712, .9) + tree(200, 700, .6);
+g += `<path d="M 1170 720 L 1310 720 L 1640 1080 L 860 1080 Z" fill="url(#yard)"/>`;
+
+// ── 체육관(오른쪽 끝, 반쯤 잘림)
+g += `<g>
+  <rect x="1690" y="500" width="300" height="222" fill="#e9f6ff" ${S()}/>
+  <path d="M 1676 512 Q 1840 380 2004 512 Z" fill="#2fc4a0" ${S()}/>
+  ${windows(1720, 560, 3, 1, 62, 58, 26, 0)}
+  ${sign(1840, 470, 'ball')}
+</g>`;
+g += tree(1672, 724, .8);
+
+// ── 본관(시계탑)
+g += `<g>
+  <rect x="880" y="398" width="780" height="324" fill="#fff1d6" ${S()}/>
+  <rect x="868" y="380" width="804" height="34" rx="10" fill="#ff9b54" ${S()}/>
+  ${windows(906, 444, 3, 2, 70, 76, 24, 34)}
+  ${windows(1374, 444, 3, 2, 70, 76, 24, 34)}
+  <rect x="1180" y="262" width="160" height="460" fill="#fff6e4" ${S()}/>
+  <path d="M 1164 270 L 1260 186 L 1356 270 Z" fill="#ff9b54" ${S()}/>
+  <circle cx="1260" cy="338" r="54" fill="#fff" ${S(7)}/>
+  <path d="M 1260 338 L 1260 302 M 1260 338 L 1284 352" ${S(7)}/>
+  <circle cx="1260" cy="338" r="6" fill="${OL}"/>
+  <rect x="1256" y="120" width="8" height="70" fill="#8a93a8" ${S(3)}/>
+  <path d="M 1264 124 Q 1290 116 1314 126 L 1314 164 Q 1290 154 1264 162 Z" fill="#ffd43b" ${S(5)}/>
+  ${K.star(1288, 143, 10, '#fff')}
+  ${win(1212, 430, 96, 70)}
+  <path d="M 1196 604 L 1324 604 L 1334 620 L 1186 620 Z" fill="#ff9b54" ${S(5)}/>
+  <rect x="1212" y="620" width="96" height="102" rx="6" fill="#bfe6ff" ${S(5)}/>
+  <path d="M 1260 620 L 1260 722" ${S(4)}/>
+  ${sign(1000, 408, 'note')}${sign(1560, 408, 'book')}${sign(1094, 408, 'flask')}
+</g>`;
+// 창문 속 학생(이미 앉아 있는 친구들)
+const peek = (id, x, y, o) => `<clipPath id="${id}"><rect x="${x}" y="${y}" width="70" height="76" rx="7"/></clipPath>
+  <g clip-path="url(#${id})"><g transform="translate(${x + 35} ${y + 122}) scale(.33)">${K.chibi({ shadow: false, ...o })}</g></g>
+  <rect x="${x}" y="${y}" width="70" height="76" rx="7" fill="none" ${S(5)}/>`;
+g += peek('w1', 1000, 444, { hairStyle: 'bob', hair: '#3a2a2a', top: '#ffb454' });
+g += peek('w2', 1468, 444, { acc: ['cap:#34d399'], top: '#60a5fa' });
+g += peek('w3', 906, 554, { hairStyle: 'pigtails', hair: '#6b3f2a', top: '#ff9fc0', eyes: 'happy' });
+g += peek('w4', 1562, 554, { hair: '#2e2230', top: '#a78bfa', acc: ['glasses:#2a2550'] });
+// 화단
+g += `<g>${[900, 980, 1060, 1130, 1390, 1470, 1550, 1630].map((x) => `<ellipse cx="${x}" cy="724" rx="44" ry="22" fill="#3fc27a" ${S(5)}/>`).join('')}</g>`;
+
+// ── 솟아오르는 새 시설(급식실): 먼지 구름 위로 튀어 오르는 중
+const puffs = [[590, 730, 34], [644, 740, 40], [712, 746, 38], [780, 740, 40], [838, 728, 34], [718, 760, 150, 22]];
+const puff = (p, extra) => p.length === 3 ? `<circle cx="${p[0]}" cy="${p[1]}" r="${p[2]}" ${extra}/>` : `<ellipse cx="${p[0]}" cy="${p[1]}" rx="${p[2]}" ry="${p[3]}" ${extra}/>`;
+// 「짠!」 효과선: 지붕 위로 짧게 솟는 선(방금 올라온 느낌)
+const pop = [[612, 420, 452], [652, 398, 446], [798, 398, 446], [838, 420, 452]]
+  .map(([x, y1, y2]) => `<path d="M ${x} ${y1} L ${x} ${y2}" stroke="${K.OL}" stroke-width="16" stroke-linecap="round"/><path d="M ${x} ${y1} L ${x} ${y2}" stroke="#fff" stroke-width="7" stroke-linecap="round"/>`).join('');
+g += `<g>
+  <g transform="translate(0 -30)">
+    <rect x="580" y="520" width="290" height="214" fill="#fff7e8" ${S()}/>
+    <rect x="568" y="500" width="314" height="34" rx="10" fill="#60a5fa" ${S()}/>
+    ${windows(604, 560, 3, 1, 66, 66, 22, 0)}
+    <rect x="680" y="652" width="90" height="82" rx="6" fill="#bfe6ff" ${S(5)}/>
+    ${sign(725, 474, 'spoon')}
+    ${pop}
+  </g>
+  ${puffs.map((p) => puff(p, `fill="#fff" ${S(6)}`)).join('')}
+  ${puffs.map((p) => puff(p.length === 3 ? [p[0], p[1], p[2] - 3] : [p[0], p[1], p[2] - 3, p[3] - 3], 'fill="#fff"')).join('')}
+</g>`;
+g += K.sparkle(725, 330, 26, '#fff') + K.sparkle(560, 560, 16, '#fff');
+
+// ── 패드(초록 링) + 빛기둥
+g += `<g>
+  <ellipse cx="450" cy="930" rx="250" ry="78" fill="url(#padGlow)"/>
+  <path d="M 290 930 L 330 560 L 570 560 L 610 930 Z" fill="url(#beam)" opacity=".55" filter="url(#blur12)"/>
+  <ellipse cx="450" cy="930" rx="190" ry="56" fill="#b6ffdf" stroke="#1faa76" stroke-width="10"/>
+  <ellipse cx="450" cy="930" rx="190" ry="56" fill="none" stroke="#34d399" stroke-width="22" opacity=".9"/>
+  <ellipse cx="450" cy="930" rx="150" ry="42" fill="none" stroke="#fff" stroke-width="6" opacity=".9"/>
+</g>`;
+
+// ── 칭찬스티커(앞마당)
+g += K.sticker(130, 1000, 44, -12) + K.sticker(900, 1000, 40, 8) + K.sticker(760, 860, 30, -6)
+   + K.sticker(1840, 1000, 40, 10) + K.sticker(170, 780, 30, 6);
+
+// ── 학생들
+g += kid(1040, 880, .62, { hairStyle: 'bob', hair: '#6b3f2a', top: '#ff9fc0', skirt: '#6aa8ff', acc: ['hairpin'], armR: 110 });
+g += kid(1230, 1010, .86, { top: '#6aa8ff', acc: ['cap:#3b82f6'], eyes: 'happy', armL: 118 });
+g += kid(1470, 960, .78, { hairStyle: 'pigtails', hair: '#2e2230', top: '#4ee0a6', skirt: '#ffb454', acc: ['armband:#60a5fa'], eyes: 'wink', armR: 120 });
+g += kid(1690, 1040, .9, { hairStyle: 'long', hair: '#5a3526', top: '#a78bfa', acc: ['glasses:#e0a500', 'medal:#7c3aed'], armL: 115 });
+
+// ── 꼬마 교장(패드 위)
+g += kid(450, 940, 1.08, { cowlick: true, outfit: 'blazer', top: '#2f3f7a', acc: ['bowtie:#ffcf3a', 'badge'], mouth: 'grin', armL: 40, armR: 122 });
+g += K.sparkle(270, 660, 22, '#fff') + K.sparkle(640, 800, 18, '#fff');
+
+// ── 제목
+g += K.title({ x: 84, y: 200, size: 176, anchor: 'start', rot: -3, spans: [['교장이', 'url(#kitTitleYellow)']] });
+g += K.title({ x: 96, y: 386, size: 176, anchor: 'start', rot: -3, spans: [['되어보자!', 'url(#kitTitleWhite)']] });
+
+g += `<g transform="rotate(-3 96 470)">
+  <rect x="96" y="428" width="452" height="76" rx="38" fill="#34d399" ${S(6)}/>
+  <rect x="112" y="436" width="420" height="14" rx="7" fill="#fff" opacity=".35"/>
+  <text x="322" y="483" text-anchor="middle" font-family="Apple SD Gothic Neo" font-weight="900" font-size="44" fill="#fff"
+        stroke="${OL}" stroke-width="8" paint-order="stroke" stroke-linejoin="round">내 학교를 쑥쑥 키워요</text></g>`;
+
+document.getElementById('art').innerHTML = g;
+</script>
+</body>
+</html>
