@@ -1,0 +1,636 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>출시 전 확인 목록</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --text: #1a1d21;
+  --muted: #5b646f;
+  --faint: #868f99;
+  --line: #dde1e6;
+  --accent: #17695a;
+  --accent-soft: #e0efe9;
+  --warn: #875200;
+  --warn-soft: #fbf0db;
+  --code-bg: #eef0f3;
+  --bar-bg: rgba(244, 245, 247, 0.92);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101316;
+    --surface: #171b1f;
+    --text: #e5e8eb;
+    --muted: #9ba4ae;
+    --faint: #6f7882;
+    --line: #2a3037;
+    --accent: #5fc4a6;
+    --accent-soft: #17302a;
+    --warn: #e3ad5c;
+    --warn-soft: #2d2415;
+    --code-bg: #1d2226;
+    --bar-bg: rgba(16, 19, 22, 0.92);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101316;
+  --surface: #171b1f;
+  --text: #e5e8eb;
+  --muted: #9ba4ae;
+  --faint: #6f7882;
+  --line: #2a3037;
+  --accent: #5fc4a6;
+  --accent-soft: #17302a;
+  --warn: #e3ad5c;
+  --warn-soft: #2d2415;
+  --code-bg: #1d2226;
+  --bar-bg: rgba(16, 19, 22, 0.92);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.65 "IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.wrap { max-width: 780px; margin: 0 auto; padding: 0 16px 72px; }
+code, pre, .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+code { font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+b { font-weight: 600; }
+
+header.top { padding: 36px 0 4px; }
+.eyebrow { font-size: 13px; color: var(--muted); }
+h1 { font-size: 27px; line-height: 1.3; margin: 4px 0 12px; font-weight: 700; letter-spacing: -0.01em; }
+.lede { color: var(--muted); margin: 0 0 8px; }
+.meta { font-size: 13px; color: var(--faint); margin: 12px 0 0; }
+
+.bar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  margin: 18px -16px 0; padding: 10px 16px;
+  background: var(--bar-bg);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+}
+.track { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+.num { font: 600 14px/1 "IBM Plex Mono", ui-monospace, monospace; min-width: 56px; text-align: right; }
+.toggle {
+  font: inherit; font-size: 13px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 12px; cursor: pointer; white-space: nowrap;
+}
+.toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.overview { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 18px; }
+.overview a {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); text-decoration: none;
+}
+.overview a:hover { border-color: var(--accent); }
+.overview .n { font: 600 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--faint); width: 12px; }
+.overview .l { flex: 1; font-weight: 500; }
+
+.count { font: 500 13px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); white-space: nowrap; }
+.count.all { color: var(--accent); }
+
+section { margin-top: 44px; scroll-margin-top: 56px; }
+section > h2 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 20px; margin: 0 0 4px; }
+.sec-intro { color: var(--muted); margin: 0 0 4px; }
+.sub {
+  margin-top: 16px; padding: 16px 18px 8px; scroll-margin-top: 56px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+}
+.sub.first { background: var(--warn-soft); border-color: var(--warn); }
+.sub h3 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 16px; margin: 0 0 6px; }
+.intro { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
+
+ul.checks { list-style: none; margin: 0; padding: 0; }
+ul.checks > li {
+  display: grid; grid-template-columns: 20px 1fr; column-gap: 10px;
+  padding: 11px 0; border-top: 1px solid var(--line);
+}
+ul.checks > li:first-child { border-top: 0; }
+ul.checks > li > input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--accent); cursor: pointer; }
+ul.checks > li > label { cursor: pointer; }
+ul.checks > li.done > label { color: var(--muted); }
+.detail { grid-column: 2; color: var(--muted); font-size: 14px; margin-top: 4px; }
+.detail ul { margin: 2px 0 0; padding-left: 18px; }
+.detail li { margin: 2px 0; }
+.tag {
+  display: inline-block; font-size: 11.5px; font-weight: 500; line-height: 1.6;
+  padding: 0 7px; border-radius: 999px; vertical-align: 1px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.tag.live { background: var(--warn-soft); color: var(--warn); }
+
+.measures { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
+.m { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.m input {
+  width: 92px; font: inherit; font-size: 16px; color: var(--text);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+}
+.m input.wide { width: 170px; }
+.m input:disabled { opacity: 0.6; }
+input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.table-wrap { overflow-x: auto; margin: 8px 0 4px; }
+table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13.5px; color: var(--text); }
+th, td { text-align: left; vertical-align: top; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; color: var(--muted); font-size: 12.5px; }
+
+.code { margin: 10px 0 8px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--code-bg); }
+.code-h {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line);
+}
+.code pre { margin: 0; padding: 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.55; color: var(--text); word-break: normal; overflow-wrap: normal; }
+.code pre code { background: none; padding: 0; font-size: inherit; }
+button.copy {
+  font: inherit; font-size: 12px; color: var(--text); cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px;
+}
+
+ul.done-list { list-style: none; margin: 0; padding: 0; }
+ul.done-list > li { position: relative; padding: 7px 0 7px 28px; color: var(--muted); border-top: 1px solid var(--line); }
+ul.done-list > li:first-child { border-top: 0; }
+ul.done-list > li::before {
+  content: ""; position: absolute; left: 6px; top: 12px; width: 6px; height: 11px;
+  border: solid var(--accent); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.note { font-size: 14px; color: var(--muted); margin: 8px 0 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+
+body.only-open ul.checks > li.done, body.only-open #s0 { display: none; }
+footer { margin-top: 48px; font-size: 13px; color: var(--faint); }
+@media (max-width: 480px) {
+  h1 { font-size: 23px; }
+  .sub { padding: 14px 14px 6px; }
+}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">교장이 되어보자! · 출시 준비</div>
+  <h1>사람이 직접 확인할 것</h1>
+  <p class="lede">코드로 할 수 있는 W7·W8 작업은 끝났다. 남은 건 실기기, 여러 계정, 대시보드, 아이 테스트처럼 사람이 해야 하는 일이다. 기준은 기획서 §12.1 성능, §12.2 안전, §7.5 방문객, §13.1 7·8주 게이트다.</p>
+  <p class="lede">측정값은 해당 항목의 칸에 적는다. 결과를 알려 주면 광원 줄이기, 메시 다시 만들기, 다이얼 튜닝 같은 코드 쪽 후속은 이어서 처리한다.</p>
+  <p class="meta">2026-09-29 기준 · 원본 <code>docs/직접-확인-목록.md</code> · <span id="store">체크 상태는 이 브라우저에만 저장된다</span></p>
+</header>
+
+<div class="bar">
+  <div class="track"><div class="fill" id="fill"></div></div>
+  <span class="num" id="total">0 / 0</span>
+  <button class="toggle" id="only-open" type="button" aria-pressed="false">남은 것만</button>
+</div>
+
+<nav class="overview" aria-label="목차">
+  <a href="#s0"><span class="n">0</span><span class="l">이미 확인한 것</span><span class="count all">9개</span></a>
+  <a href="#s1"><span class="n">1</span><span class="l">출시를 막는 것</span><span class="count" data-count="s1"></span></a>
+  <a href="#s2"><span class="n">2</span><span class="l">눈으로 볼 것</span><span class="count" data-count="s2"></span></a>
+  <a href="#s3"><span class="n">3</span><span class="l">아이 테스트</span><span class="count" data-count="s3"></span></a>
+  <a href="#s4"><span class="n">4</span><span class="l">기타</span><span class="count" data-count="s4"></span></a>
+</nav>
+
+<!-- 0 -->
+<section id="s0">
+  <h2>0. 이미 확인한 것 <span class="count all">2026-09-29 · Studio 1인</span></h2>
+  <div class="sub">
+    <ul class="done-list">
+      <li>검사 통과: stylua, selene, luau-lsp 오류 0. <code>check-config.py</code> 23/23 일치(시뮬 상수 = <code>EconomyConfig</code>·<code>GachaConfig</code>)</li>
+      <li>부팅 오류·경고 0. 패드로 시설 14개 전부 지음</li>
+      <li>졸업: 누르자마자 잠기고(2초 뒤에도 부지 값 그대로), 약 8초 뒤 한 번에 시설 0 · 전학생 +1 · 졸업 1. 철거 뒤 남은 시설 모델 0</li>
+      <li>귀가(GoHome) 버튼으로 자기 부지 스폰에 도착</li>
+      <li>설정 토글 3개를 연달아 눌러도 셋 다 반영</li>
+      <li>Studio 정지 때 <code>[Metrics] … 요약</code> 한 줄이 찍힘</li>
+      <li>전용 메시 8명(하율·도현·지안·은우·서하·코스모·금동이·백호) 원형이 서기·앉기 모두 대체 없이 제 모습으로 뜸</li>
+      <li>저사양 다이얼: 10초 평균 FPS &lt; 30 이면 렌더 부지 4 → 2, 애니메이션 48 → 24, 파티클 120 → 80. 기준을 일부러 올려 켜지는 것과 오류 없음을 확인했고, 정상 FPS 에서는 켜지지 않았다</li>
+      <li>커밋·푸시: 7개 커밋으로 나눠 <code>origin/principal-tycoon</code> 에 올림</li>
+    </ul>
+    <p class="note">혼자서는 확인할 수 없어 1-3 2인 테스트로 넘긴 것: 방문객 별, 교장 의자에서 방문객 내리기, 부지를 넘겨받은 뒤 스티커 재생성.</p>
+  </div>
+</section>
+
+<!-- 1 -->
+<section id="s1" data-scope>
+  <h2>1. 출시를 막는 것 <span class="count" data-count="s1"></span></h2>
+  <p class="sec-intro">전부 통과해야 출시한다.</p>
+
+  <div class="sub first">
+    <h3>먼저 할 일</h3>
+    <ul class="checks">
+      <li data-id="publish-private"><p class="t"><b>비공개로 첫 게시</b> — Studio 에서 File → Publish to Roblox As… 로 개인 계정에 새 게임으로 올리고, 공개 범위는 비공개로 둔다</p>
+        <div class="detail">아직 PlaceId 가 0 이다. 1-1 실기기, 1-3 부지 넘겨받기, 1-4 라이브, 1-5, 1-6 이 이 게시를 기다린다. 게시한 뒤 알려 주면 PlaceId 와 서버 쪽을 이어서 확인한다.</div></li>
+    </ul>
+  </div>
+
+  <div class="sub" id="s1-1" data-scope>
+    <h3>1-1. 실기기 성능 <span class="count" data-count="s1-1"></span></h3>
+    <p class="intro">갤럭시 A34 / iPhone 11 급 폰. 비공개로 게시한 게임에 폰의 로블록스 앱으로 들어간다.</p>
+    <ul class="checks">
+      <li data-id="fps"><p class="t"><b>FPS 45 이상</b> — 자기 부지 14개를 다 지은 상태(1회차 약 19분)에서 교실·강당 안을 걷고, 광장에서 이웃 부지를 바라볼 때</p>
+        <div class="detail">
+          채팅창에 <code>/console</code> 을 쳐 개발자 콘솔을 연다. 콘솔이나 설정의 성능 통계 중 보이는 쪽에서 FPS 를 읽는다.
+          Client 로그에 <code>[StudentRender] 저사양 다이얼 켬: 평균 N FPS</code> 가 찍히면 이미 30 FPS 아래로 떨어졌다는 뜻이다.
+          <div class="measures">
+            <label class="m">갤럭시 A34 <input data-m="m-fps-a34" inputmode="decimal" maxlength="24" placeholder="FPS"></label>
+            <label class="m">iPhone 11 <input data-m="m-fps-ip11" inputmode="decimal" maxlength="24" placeholder="FPS"></label>
+          </div>
+        </div></li>
+      <li data-id="memory"><p class="t"><b>메모리</b> — 개발자 콘솔 Memory 탭에서 클라이언트 전체 ≤ 600MB, 그중 텍스처(NPC 19장) ≤ 40MB 정도인지</p>
+        <div class="detail">
+          <div class="measures">
+            <label class="m">클라이언트 <input data-m="m-mem-client" maxlength="40" placeholder="MB"></label>
+            <label class="m">텍스처 <input data-m="m-mem-texture" maxlength="40" placeholder="MB"></label>
+          </div>
+        </div></li>
+      <li data-id="perf-decision"><p class="t"><b>측정값으로 두 가지를 정한다</b> — 숫자를 알려 주면 코드와 기획서를 같이 고친다</p>
+        <div class="detail">
+          <div class="table-wrap"><table>
+            <thead><tr><th>결과</th><th>광원(부지당 13, 천장 SurfaceLight)</th><th>학생 메시(약 9,300~9,900 tri, 1024² 텍스처)</th></tr></thead>
+            <tbody>
+              <tr><td>45 FPS 이상, 메모리 여유</td><td>13 유지</td><td>그대로 두고 기획서 §12.1 수치를 실측에 맞게 고친다</td></tr>
+              <tr><td>45 FPS 미만</td><td>부지당 ≤ 6 으로 줄인다</td><td>maxTriangles 6000 으로 다시 만든다</td></tr>
+            </tbody>
+          </table></div>
+        </div></li>
+    </ul>
+  </div>
+
+  <div class="sub" id="s1-2" data-scope>
+    <h3>1-2. 12명 서버 <span class="count" data-count="s1-2"></span></h3>
+    <ul class="checks">
+      <li data-id="heartbeat"><p class="t"><b>서버 Heartbeat ≤ 8ms</b> — 사람이 찬 라이브 서버에서 개발자 콘솔 Server 쪽(Server Stats / Server Jobs)을 본다</p>
+        <div class="detail">
+          12명을 못 모으면 Studio Test 탭 → Clients and Servers 에서 인원을 최대로 두고 대신 잰다.
+          <div class="measures">
+            <label class="m">Heartbeat <input data-m="m-heartbeat" inputmode="decimal" maxlength="24" placeholder="ms"></label>
+          </div>
+        </div></li>
+      <li data-id="server-mem"><p class="t"><b>서버 메모리</b> — 30분 동안 계속 오르지 않고 평평한지</p>
+        <div class="detail">
+          <div class="measures">
+            <label class="m">시작 → 30분 <input class="wide" data-m="m-server-mem" maxlength="40" placeholder="예: 900 → 920MB"></label>
+          </div>
+        </div></li>
+    </ul>
+  </div>
+
+  <div class="sub" id="s1-3" data-scope>
+    <h3>1-3. 2인 테스트 <span class="count" data-count="s1-3"></span></h3>
+    <p class="intro">기획서 §7.5 점검표. 방문객이 주인을 늦추는 것이 하나도 없어야 한다. Studio Test 탭 → Clients and Servers, 플레이어 2. A 는 주인, B 는 A 부지를 찾아간 방문객이다.</p>
+    <ul class="checks">
+      <li data-id="pad"><p class="t"><b>패드</b> — B 가 A 의 패드 위에 서 있어도 A 의 자동 구매가 막히지 않고, B 에게는 반응이 없다</p></li>
+      <li data-id="sticker-yellow"><p class="t"><b>노란 스티커</b> — B 가 밟아도 아무 일 없음</p></li>
+      <li data-id="star"><p class="t"><b>하늘색 별</b> <span class="tag">이번에 고침</span></p>
+        <div class="detail"><ul>
+          <li>B 가 밟으면 B 스티커판 +1, B 의 미션 1 「스티커 30개」도 +1</li>
+          <li>별 위에 서서 비비거나 여러 번 지나가도 같은 별은 한 번만 센다</li>
+          <li>한 부지에서 60초에 최대 2개. B 화면에서만 별이 사라지고 A 화면에는 그대로 보인다</li>
+          <li>A 가 자기 별을 밟으면 반응 없음</li>
+        </ul></div></li>
+      <li data-id="chair"><p class="t"><b>교장 의자</b> <span class="tag">이번에 고침</span> — B 가 A 의 교장 의자에 앉으면 바로 일어나 옆으로 비켜난다. A 는 곧바로 앉을 수 있고 미션 3 이 된다</p></li>
+      <li data-id="grad-visitor"><p class="t"><b>졸업 중 방문객</b> — B 가 A 의 강당 안에 있을 때 A 가 졸업한다</p>
+        <div class="detail">색종이·컷·소리는 A 화면에만 나오고, 철거 때 B 가 튕기거나 끼지 않는다.</div></li>
+      <li data-id="no-collide"><p class="t"><b>서로 부딪히지 않음</b> — 문·교문·캐릭터끼리</p></li>
+      <li data-id="tutorial"><p class="t"><b>튜토리얼</b> — 새 계정의 발자국·빛기둥·화살표·카메라 팬이 방문객 때문에 꼬이지 않는다</p></li>
+      <li data-id="plot-handover"><p class="t"><b>부지 넘겨받기</b> <span class="tag">이번에 고침</span> <span class="tag live">라이브</span> — Studio 는 재입장이 안 되니 라이브에서 계정 두 개로 한다</p>
+        <div class="detail">A 가 서버를 잡아 두는 동안 B 가 스티커를 몇 장 줍자마자(15초 안에) 나갔다가 곧바로 다시 들어온다. B 부지의 노란 스티커가 하나도 빠짐없이 다시 뜨는지 본다(책상 3장, 복도·운동장을 지었으면 각각 +2·+3).</div></li>
+    </ul>
+  </div>
+
+  <div class="sub" id="s1-4" data-scope>
+    <h3>1-4. 실제 DataStore <span class="count" data-count="s1-4"></span></h3>
+    <p class="intro">Studio 에서 Game Settings → Security → <i>Enable Studio Access to API Services</i> 를 켜고, ServerScriptService 에 불리언 어트리뷰트 <code>UseLiveDataStore = true</code> 를 단다. 출력에 <code>[DataService] PrincipalProfile_Dev</code> 가 Mock 없이 찍혀야 한다.</p>
+    <ul class="checks">
+      <li data-id="ds-persist"><p class="t"><b>이어하기</b> — 시설 몇 개 짓기 → 정지 → 다시 플레이: 그대로 이어진다</p></li>
+      <li data-id="ds-grad-quit"><p class="t"><b>졸업 중 퇴장</b> — 졸업 홀드를 끝내자마자(8초 안에) 정지 → 다시 플레이: 시설 0 · 졸업 +1 · 용돈 14</p></li>
+      <li data-id="ds-leaderboard"><p class="t"><b>리더보드 분리</b> — Studio 졸업은 <code>Graduations_Dev</code> 에만 들어간다. 라이브 광장 졸업왕 보드에 Studio 기록이 보이지 않아야 한다</p></li>
+      <li data-id="ds-cleanup"><p class="t"><b>뒷정리</b> — 끝나면 <code>UseLiveDataStore</code> 어트리뷰트를 지운다(평소 Studio 는 Mock)</p></li>
+      <li data-id="ds-live-session"><p class="t"><b>서버 옮기기</b> <span class="tag live">라이브</span> — 한 서버에서 나가자마자 다른 서버로 들어가도 진행이 이어진다</p>
+        <div class="detail">「다시 들어와 주세요」로 킥되면 다시 들어왔을 때 이어지는지 본다(세션 잠금).</div></li>
+    </ul>
+  </div>
+
+  <div class="sub" id="s1-5" data-scope>
+    <h3>1-5. Creator Dashboard 설정 <span class="count" data-count="s1-5"></span></h3>
+    <ul class="checks">
+      <li data-id="dash-account"><p class="t"><b>게시 계정</b> — 메시는 게임 소유자 개인 계정에 올라가 있다. 그룹 게임으로 옮기면 전부 깨지니 같은 계정으로 게시한다</p></li>
+      <li data-id="dash-questionnaire"><p class="t"><b>Experience Guidelines 설문</b> — 기획서 §12.2 표대로 답한다</p>
+        <div class="detail"><ul>
+          <li>유료 무작위 없음, 무료 무작위 있음(확률 상시 표시)</li>
+          <li>자유 텍스트 없음, 폭력 없음, 도박 묘사 없음, 외부 링크 없음, 음성 끔</li>
+        </ul></div></li>
+      <li data-id="dash-rating-shot"><p class="t"><b>등급 스크린샷</b> — 등급이 「전체(Minimal)」로 나온 화면을 남긴다(W8 게이트)</p></li>
+      <li data-id="dash-voice"><p class="t"><b>채팅</b> — 음성 채팅 끔. 채팅은 TextChatService 기본</p></li>
+      <li data-id="dash-server"><p class="t"><b>서버</b> — 인원 12, 비공개 서버 끔</p></li>
+      <li data-id="dash-http"><p class="t"><b>보안</b> — HTTP 요청 끔, 서드파티 텔레포트·판매 끔</p></li>
+      <li data-id="dash-devices"><p class="t"><b>기기</b> — 폰 · 태블릿 · 컴퓨터</p></li>
+      <li data-id="dash-store"><p class="t"><b>스토어 페이지</b> — 한국어 설명, 장르, 원본 언어 한국어</p>
+        <div class="detail">아이콘 <code>assets/branding/icon.png</code>, 썸네일 <code>thumbnail-a-campus.png</code> → <code>thumbnail-b-collection.png</code> 순서.</div></li>
+      <li data-id="dash-softlaunch"><p class="t"><b>소프트 런치</b> — 비공개로 확인한 다음 공개로 바꾼다. 문제가 생기면 Version History 에서 되돌린다</p></li>
+    </ul>
+  </div>
+
+  <div class="sub" id="s1-6" data-scope>
+    <h3>1-6. 첫 라이브 서버 로그 <span class="count" data-count="s1-6"></span></h3>
+    <p class="intro">라이브 서버에 들어가 개발자 콘솔 Server 로그를 본다.</p>
+    <ul class="checks">
+      <li data-id="log-charbuilder"><p class="t"><code>[CharacterBuilder]</code> 경고 없음 — 있으면 메시 로드 실패, 곧 소유 계정 문제다</p></li>
+      <li data-id="log-devcheat"><p class="t"><code>[DevCheat]</code> 줄 <b>없음</b> — Studio 에서만 켜진다</p></li>
+      <li data-id="log-policy-metrics"><p class="t"><code>[Policy] &lt;UserId&gt; ArePaidRandomItemsRestricted=…</code> 와 <code>[Metrics] … 세션 시작</code> 이 찍힘</p></li>
+      <li data-id="log-sound"><p class="t"><code>[SoundController]</code> 경고 없음</p></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="s2" data-scope>
+  <h2>2. 눈으로 볼 것 <span class="count" data-count="s2"></span></h2>
+
+  <div class="sub" id="s2-1" data-scope>
+    <h3>2-1. 전용 메시 8명 <span class="count" data-count="s2-1"></span></h3>
+    <p class="intro">Studio 에서 플레이 → Test 탭에서 보기를 Server 로 바꾼다 → 명령 바에 아래를 붙여 넣는다. 광장 가운데에 앞줄은 선 모습, 뒷줄은 의자 높이 블록 위에 앉은 모습이 선다. Client 로 돌아가 걸어가서 본다.</p>
+    <div class="code">
+      <div class="code-h"><span>명령 바 · Server 보기</span><button class="copy" type="button">복사</button></div>
+<pre><code>local RS = game:GetService("ReplicatedStorage")
+local CB = require(RS.Shared.CharacterBuilder)
+local SC = require(RS.Shared.Config.StudentConfig)
+local DEDICATED = { HAYUL = true, DOHYUN = true, JIAN = true, EUNWOO = true, SEOHA = true, COSMO = true, GEUMDONG = true, BAEKHO = true }
+local old = workspace:FindFirstChild("MeshLineup") if old then old:Destroy() end
+local lineup = Instance.new("Model") lineup.Name = "MeshLineup" lineup.Parent = workspace
+local origin = CFrame.new(0, 0.15, 30) -- 광장 바닥
+local i = 0
+for _, row in SC.LIST do
+  if DEDICATED[row.mesh] then
+    i += 1
+    local x = (i - 4.5) * 5
+    local cfg = CB.studentConfig(row.id)
+    cfg.sitting = false -- 앞줄: 선 모습
+    local stand = CB.build(row.id .. "_stand", origin * CFrame.new(x, 0, 0), cfg)
+    if stand then stand.Parent = lineup end
+    cfg.sitting = true -- 뒷줄: 의자 면 높이 반투명 블록 위에 앉은 모습
+    local seat = origin * CFrame.new(x, 0, 8)
+    local block = Instance.new("Part")
+    block.Anchored = true
+    block.Transparency = 0.5
+    block.Size = Vector3.new(3, CB.SIT_HIP * cfg.scale, 3)
+    block.CFrame = seat * CFrame.new(0, block.Size.Y / 2, 0)
+    block.Parent = lineup
+    local sit = CB.build(row.id .. "_sit", seat, cfg)
+    if sit then sit.Parent = lineup end
+    print(row.id, row.name, stand and stand:GetAttribute("Variant"), sit and sit:GetAttribute("Variant"))
+  end
+end</code></pre>
+    </div>
+    <ul class="checks">
+      <li data-id="mesh-sit"><p class="t"><b>앉은 높이</b> — 엉덩이가 블록 윗면에 맞는다. 특히 도현(hip 1.05)과 백호(hip 1.00)가 뜨거나 파묻히지 않는지</p></li>
+      <li data-id="mesh-jian"><p class="t"><b>지안</b> — 땋은 머리와 왼팔이 몸통에 붙어 있다</p></li>
+      <li data-id="mesh-props"><p class="t"><b>소품</b> — 메시에 붙어 함께 나온다(하율 금테 안경, 도현 트로피, 지안 책, 은우 고글, 서하 바이올린 등)</p></li>
+      <li data-id="mesh-facing"><p class="t"><b>방향</b> — 도현·은우·백호는 -Z 를 보고 생성했다. 왼팔(ArmLeft)이 캐릭터의 왼쪽(-X)에 있고 손 들기가 오른팔로 된다</p></li>
+      <li data-id="mesh-legend"><p class="t"><b>전설</b> — 코스모·금동이·백호의 크기와 파티클이 과하지 않다</p></li>
+      <li data-id="mesh-classroom"><p class="t"><b>교실 좌석</b> — 실제 교실 좌석에서도 본다. 뽑기는 <code>DevCheat.GiveTickets:Invoke(player, 50)</code></p></li>
+    </ul>
+  </div>
+
+  <div class="sub" id="s2-2" data-scope>
+    <h3>2-2. 졸업식·브랜딩 <span class="count" data-count="s2-2"></span></h3>
+    <ul class="checks">
+      <li data-id="grad-ceremony"><p class="t"><b>졸업식 12초</b> — 강당 좌석에 학생이 앉아 있고, 학사모·색종이·교실 컷이 어색하지 않다</p></li>
+      <li data-id="thumb-diff"><p class="t"><b>썸네일과 게임의 차이</b> — 받아들일지 정한다</p>
+        <div class="detail"><ul>
+          <li>썸네일의 금동이는 왕관, 게임 메시는 금색 리본 올림머리다</li>
+          <li>썸네일 캐릭터는 일반형이다</li>
+        </ul></div></li>
+      <li data-id="branding-readme"><p class="t"><code>assets/branding/README.md</code> 를 한 번 읽어 본다 — 예전 썸네일 2장은 지웠다</p></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 3 -->
+<section id="s3" data-scope>
+  <h2>3. 아이 테스트 <span class="count" data-count="s3"></span></h2>
+  <p class="sec-intro">W7 게이트. 7·9·11세 각 1명, 각 30분 이상.</p>
+  <div class="sub">
+    <p class="intro">Studio 플레이(Mock 이라 매번 새 계정)나 라이브 새 계정으로 한다. 도와주지 말고 옆에서 보기만 한다. 서버 출력에서 <code>[Metrics]</code> 줄을 모아 보내 주면 판정과 튜닝을 한다.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>로그 줄</th><th>게이트</th></tr></thead>
+      <tbody>
+        <tr><td><code>5분 · 시설 N(≥7) · 전학생 N(≥8, 뽑기로 N) · 뽑기 N(≥4) · 미션 N(≥2) → 통과/미달</code></td><td>통과</td></tr>
+        <tr><td><code>30분 · 시설 N/14 · …</code></td><td>14/14 이거나 이미 졸업</td></tr>
+        <tr><td><code>첫 뽑기 m:ss(≤2:00 …)</code></td><td>2:00 이하</td></tr>
+        <tr><td><code>요약 · … 회수율 N% …</code></td><td>40% 이상</td></tr>
+        <tr><td><code>요약 · … 패드 3초 미만 N회(살 돈 있었음 N)</code></td><td>반복되면 패드 반경 6 → 8</td></tr>
+      </tbody>
+    </table></div>
+    <ul class="checks">
+      <li data-id="kid-7"><p class="t"><b>7세</b> — 30분 이상 플레이하고 <code>[Metrics]</code> 줄을 모은다</p></li>
+      <li data-id="kid-9"><p class="t"><b>9세</b> — 30분 이상 플레이하고 <code>[Metrics]</code> 줄을 모은다</p></li>
+      <li data-id="kid-11"><p class="t"><b>11세</b> — 30분 이상 플레이하고 <code>[Metrics]</code> 줄을 모은다</p></li>
+      <li data-id="kid-observe"><p class="t"><b>눈으로도 본다</b> — 로그에 안 남는 것</p>
+        <div class="detail"><ul>
+          <li>접수대를 스스로 찾는가</li>
+          <li>패드 위에 서 있어야 한다는 걸 아는가</li>
+          <li>전설이 나왔을 때 반응이 어떤가</li>
+          <li>어디서 지루해하는가</li>
+          <li>글자를 못 읽어 막히는 곳이 있는가(1학년)</li>
+        </ul></div></li>
+      <li data-id="kid-tune"><p class="t"><b>미달이면</b> — 기획서 §5.7 다이얼(과 §13.3 대응표)만 바꾼다</p>
+        <div class="detail"><code>sim-final.py</code> 와 <code>EconomyConfig</code> 를 같이 고치고 <code>check-config.py</code> 로 맞춘다. 요청하면 처리한다.</div></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 4 -->
+<section id="s4" data-scope>
+  <h2>4. 기타 <span class="count" data-count="s4"></span></h2>
+  <div class="sub">
+    <ul class="checks">
+      <li data-id="speed-false-positive"><p class="t"><b>스티커 과속 오탐</b> — 스티커를 줍고 달리다 귀가 버튼을 누르고, 도착하자마자 다시 줍는다</p>
+        <div class="detail">킥되지 않고 <code>[RemoteGuard] … 킥</code> 줄이 없어야 한다.</div></li>
+      <li data-id="deletion-procedure"><p class="t"><b>삭제 요청(개인정보) 절차</b>를 알아 둔다 — Studio 명령 바(라이브 API 켜고)에서</p>
+        <div class="detail">
+          <div class="code">
+            <div class="code-h"><span>명령 바 · userId 를 바꿔 넣는다</span><button class="copy" type="button">복사</button></div>
+<pre><code>local DSS = game:GetService("DataStoreService")
+local key = tostring(userId)
+DSS:GetDataStore("PrincipalProfile"):RemoveAsync(key)
+DSS:GetOrderedDataStore("Graduations"):RemoveAsync(key)</code></pre>
+          </div>
+        </div></li>
+      <li data-id="soft-launch-review"><p class="t"><b>소프트 런치 뒤</b> — 첫 며칠의 <code>[Metrics]</code> 요약과 이탈 지점을 보고 §5.7 다이얼을 한 번 더 본다</p></li>
+    </ul>
+  </div>
+</section>
+
+<footer>원본은 <code>docs/직접-확인-목록.md</code>. 두 문서는 같은 내용이다.</footer>
+</div>
+
+<script>
+(() => {
+  const LS_KEY = "oms-checklist-v1";
+  const FILTER_KEY = "oms-checklist-filter";
+  const LOCAL_MSG = "체크 상태는 이 브라우저에만 저장된다";
+  const TERMINAL = ["revoked", "not_granted", "capability_disabled", "capability_removed"];
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const items = $$("ul.checks > li[data-id]");
+  const measures = $$("input[data-m]");
+  const setStore = (text) => { $("#store").textContent = text; };
+
+  let mode = "local"; // local | db | readonly
+  let db = null;
+  let local = {};
+  try { local = JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; } catch (e) { local = {}; }
+
+  // 항목마다 체크박스를 붙이고 제목 문단을 라벨로 바꾼다
+  for (const li of items) {
+    const id = li.dataset.id;
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = "c-" + id;
+    const t = li.querySelector(".t");
+    const label = document.createElement("label");
+    label.htmlFor = box.id;
+    label.className = "t";
+    label.append(...t.childNodes);
+    t.replaceWith(label);
+    li.prepend(box);
+    box.addEventListener("change", () => {
+      li.classList.toggle("done", box.checked);
+      refresh();
+      save(id, { done: box.checked });
+    });
+  }
+  for (const input of measures) {
+    input.addEventListener("change", () => save(input.dataset.m, { value: input.value.trim() }));
+  }
+
+  function refresh() {
+    const done = items.filter((li) => li.classList.contains("done")).length;
+    $("#total").textContent = `${done} / ${items.length}`;
+    $("#fill").style.width = (items.length ? (done / items.length) * 100 : 0) + "%";
+    for (const scope of $$("[data-scope]")) {
+      const list = $$("ul.checks > li[data-id]", scope);
+      const d = list.filter((li) => li.classList.contains("done")).length;
+      for (const c of $$(`[data-count="${scope.id}"]`)) {
+        c.textContent = `${d}/${list.length}`;
+        c.classList.toggle("all", d === list.length);
+      }
+    }
+  }
+
+  function apply(state) {
+    for (const li of items) {
+      const s = state[li.dataset.id];
+      const on = !!(s && s.done);
+      li.querySelector("input").checked = on;
+      li.classList.toggle("done", on);
+    }
+    for (const input of measures) {
+      if (input === document.activeElement) continue;
+      const s = state[input.dataset.m];
+      input.value = s && typeof s.value === "string" ? s.value : "";
+    }
+    refresh();
+  }
+
+  function readOnly(text) {
+    mode = "readonly";
+    for (const el of [...$$("ul.checks > li > input"), ...measures]) el.disabled = true;
+    setStore(text);
+  }
+
+  // 같은 문서에는 한 번에 한 번만 쓴다
+  const chains = new Map();
+  function save(id, body) {
+    if (mode === "db") {
+      const next = (chains.get(id) || Promise.resolve()).then(() => write(id, body, false));
+      chains.set(id, next);
+    } else if (mode === "local") {
+      local[id] = body;
+      try { localStorage.setItem(LS_KEY, JSON.stringify(local)); } catch (e) {}
+    }
+  }
+  function write(id, body, retried) {
+    return db.collection("checks").doc(id).set(body).catch((e) => {
+      const code = e && e.code;
+      if (code === "invalid_argument" || code === "transform_error") return readOnly("읽기 전용: 이 계정으로는 체크를 저장할 수 없다");
+      if (code === "quota_exceeded") return setStore("저장 공간이 가득 차 저장하지 못했다");
+      if (TERMINAL.includes(code)) return readOnly("저장 연결이 끊겼다. 새로고침해 보세요");
+      if (!retried) return new Promise((r) => setTimeout(r, 400 + Math.random() * 600)).then(() => write(id, body, true));
+      setStore("저장하지 못했다. 잠시 뒤 다시 눌러 보세요");
+    });
+  }
+
+  apply(local);
+
+  const c = window.claude;
+  if (c && typeof c.use === "function") {
+    setStore("저장 위치 확인 중…");
+    c.use("db").then((ns) => {
+      if (!ns) return setStore(LOCAL_MSG);
+      db = ns;
+      mode = "db";
+      setStore("체크 상태는 이 페이지에 저장된다. 폰에서 열어도 같다");
+      db.collection("checks").onSnapshot(
+        (snap) => {
+          const state = {};
+          for (const d of snap.docs) state[d.id] = d.data();
+          apply(state);
+        },
+        () => setStore("실시간 연결이 끊겼다. 새로고침해 보세요")
+      );
+    }, () => setStore(LOCAL_MSG));
+  } else {
+    setStore(LOCAL_MSG);
+  }
+
+  // 남은 것만 보기(보는 사람마다 따로 기억)
+  const toggle = $("#only-open");
+  function setFilter(on) {
+    document.body.classList.toggle("only-open", on);
+    toggle.setAttribute("aria-pressed", String(on));
+    toggle.textContent = on ? "전체 보기" : "남은 것만";
+  }
+  let filterOn = false;
+  try { filterOn = localStorage.getItem(FILTER_KEY) === "1"; } catch (e) {}
+  setFilter(filterOn);
+  toggle.addEventListener("click", () => {
+    const on = !document.body.classList.contains("only-open");
+    setFilter(on);
+    try { localStorage.setItem(FILTER_KEY, on ? "1" : "0"); } catch (e) {}
+  });
+
+  // 코드 복사. 클립보드가 막히면 코드를 선택해 둔다
+  for (const btn of $$("button.copy")) {
+    btn.addEventListener("click", () => {
+      const pre = btn.closest(".code").querySelector("pre");
+      const show = (text) => { btn.textContent = text; setTimeout(() => { btn.textContent = "복사"; }, 1600); };
+      const fallback = () => {
+        const range = document.createRange();
+        range.selectNodeContents(pre);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        show("선택됨. 직접 복사");
+      };
+      try {
+        navigator.clipboard.writeText(pre.textContent).then(() => show("복사됨"), fallback);
+      } catch (e) {
+        fallback();
+      }
+    });
+  }
+})();
+</script>
