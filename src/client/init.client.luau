@@ -168,14 +168,6 @@ local dispatch: { [string]: { Handler } } = {
 			call(FeedbackController, "FeedbackController", "play", "graduated", payload)
 		end,
 	},
-	SkinApplied = {
-		function(payload)
-			call(PadController, "PadController", "applySkin", payload)
-		end,
-		function(payload)
-			call(FeedbackController, "FeedbackController", "play", "skin", payload)
-		end,
-	},
 	StickerCollected = {
 		function(payload)
 			call(FeedbackController, "FeedbackController", "play", "sticker", payload)

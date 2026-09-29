@@ -1,16 +1,15 @@
 --!strict
 --[[
 	강당(시설 14, 2층) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 26개(바닥을 계단 구멍 때문에 3조각으로 나눠 한도 25 를 1 넘김), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 26개(바닥을 계단 구멍 때문에 3조각으로 나눠 한도 25 를 1 넘김), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center (0,18,-17.5) / size 50×18×35, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  바닥 판은 y=18 위에 얹히므로 방 바닥 높이 = 18 + FLOOR_T. 벽·지붕은 fade. 문은 남쪽(+Z) 폭 8 → 층계참 쪽.
 	  무대는 북쪽 끝(부지 로컬 z -32.5 근처). 무대 위 Part "GraduationBell"(금색 공) 을 HUD 가 이름으로 찾는다.
 	  좌석 S01…S25: 5줄 × 5 열, 모두 무대(-Z) 를 본다. 파트 25개 한도 때문에 의자 대신 줄마다 긴 벤치 하나(5개) 를 두고
 	  Attachment 만 25개 둔다. Attachment 위치 = 벤치 아래 바닥 중심(방 바닥 높이). 벤치는 층계참(x 5~14, z -16.5~-10.5 부근) 을
 	  피해 서쪽에 몰아 놓았다.
-	  Door = 남문 중심 바닥(LookVector 가 안쪽 -Z). SkinSign = 문 옆 안쪽 눈높이.
+	  Door = 남문 중심 바닥(LookVector 가 안쪽 -Z).
 	  Attachment 들은 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
-	  스킨: SkinRole "primary" = 무대 좌우 커튼 · 상단 발(valance), "secondary" = 무대 뒤 막.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,19 +18,18 @@ local BuildKit = require(script.Parent.Parent.BuildKit)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local auditorium = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(170, 30, 40)
+local COLOR_SECONDARY = Color3.fromRGB(120, 20, 30)
+local MATERIAL = Enum.Material.Fabric
 
 local WALL_T = 1
 local ROOF_T = 1
 local FLOOR_T = PlotLayout.AUDITORIUM_FLOOR_T
 local DOOR_W = 8
 local DOOR_H = 8
-local SIGN_EYE = 4.5
 local SEAT_H = 1.55 -- 벤치 윗면 = CharacterBuilder.SIT_HIP 와 같은 값. 학생 NPC 가 앉는 높이
 
 local STAGE_Z = -32.5 -- 계획서 §3.6: 단상 (0, -32.5)
@@ -164,10 +162,9 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	return floor, lintel
 end
 
-function auditorium.build(plotCFrame: CFrame, skinIndex: number): Model
+function auditorium.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[script.Name]
 	assert(row, `FacilityConfig 에 {script.Name} 행이 없다`)
-	local skin = SkinConfig.get(row.id, skinIndex)
 	local cx, cz = row.center.X, row.center.Z
 	local h, d = row.size.Y, row.size.Z
 	local floorTop = row.center.Y + FLOOR_T
@@ -206,31 +203,29 @@ function auditorium.build(plotCFrame: CFrame, skinIndex: number): Model
 	-- 커튼: 뒤 막(secondary) · 좌우 커튼(primary) · 상단 발(primary, "졸업식" 글자)
 	local curtainH = ceiling - stageTop
 	local curtainY = stageTop + curtainH / 2
-	local backdrop = part(
+	part(
 		model,
 		"Backdrop",
 		Vector3.new(STAGE_W, curtainH, 0.1),
 		at(plotCFrame, cx, curtainY, cz - d / 2 + WALL_T + 0.05),
 		{
-			color = skin.secondary,
-			material = skin.material,
+			color = COLOR_SECONDARY,
+			material = MATERIAL,
 			collide = false,
 		}
 	)
-	backdrop:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
 	for _, side in { { name = "W", dx = -19 }, { name = "E", dx = 19 } } do
-		local curtain = part(
+		part(
 			model,
 			"Curtain" .. side.name,
 			Vector3.new(8, curtainH, 0.3),
 			at(plotCFrame, cx + side.dx, curtainY, stageFront - 0.5),
 			{
-				color = skin.primary,
-				material = skin.material,
+				color = COLOR_PRIMARY,
+				material = MATERIAL,
 				collide = false,
 			}
 		)
-		curtain:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
 	end
 	local valance = part(
 		model,
@@ -238,12 +233,11 @@ function auditorium.build(plotCFrame: CFrame, skinIndex: number): Model
 		Vector3.new(row.size.X - WALL_T * 2, 2, 0.3),
 		at(plotCFrame, cx, ceiling - 1, stageFront - 0.5),
 		{
-			color = skin.primary,
-			material = skin.material,
+			color = COLOR_PRIMARY,
+			material = MATERIAL,
 			collide = false,
 		}
 	)
-	valance:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
 	BuildKit.surfaceText(valance, Enum.NormalId.Back, "졸업식", COLOR_BANNER, 1.6)
 
 	-- 졸업 종: 기둥 둘 + 가로대 + 금색 공. 무대 뒤쪽 가운데(§3.6 (0, -32.5))
@@ -302,9 +296,8 @@ function auditorium.build(plotCFrame: CFrame, skinIndex: number): Model
 		end
 	end
 
-	-- 문(남쪽, 층계참 쪽) 과 팻말(문 동쪽 안쪽)
+	-- 문(남쪽, 층계참 쪽)
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, southZ))
-	attachment(model, Keys.SKIN_SIGN, at(plotCFrame, cx + 6, floorTop + SIGN_EYE, southZ - 1.2))
 
 	return model
 end

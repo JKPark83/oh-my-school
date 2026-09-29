@@ -32,7 +32,6 @@ Keys.SILHOUETTE = "Silhouette" -- 미건설 시설 실루엣
 Keys.CONSTRUCTION = "Construction" -- 2층 「공사 중」 실루엣
 Keys.STICKER_BOARD = "StickerBoard" -- 현관 서쪽 벽 3D 스티커판
 Keys.PROTOTYPES = "CharacterPrototypes" -- ReplicatedStorage 사람 원형 폴더
-Keys.SKIN_SIGN = "SkinSign" -- 페인트 롤러 팻말 위치 Attachment
 Keys.DOOR = "Door" -- 시설 모델의 문 Attachment(학생이 걸어 들어오는 지점)
 Keys.LEADERBOARD = "Leaderboard" -- 광장 리더보드 파트
 Keys.HOME_PROMPT = "HomePrompt" -- 「우리 학교로」 ProximityPrompt(광장 팻말·부지 팻말)
@@ -43,7 +42,6 @@ Keys.ATTR_OWNER_ID = "OwnerId" -- number, 0 = 빈 부지
 Keys.ATTR_OWNER_NAME = "OwnerName" -- string
 Keys.ATTR_GRADUATIONS = "Graduations" -- number
 Keys.ATTR_FACILITIES = "Facilities" -- CSV "desk,board"
-Keys.ATTR_SKINS = "Skins" -- CSV "desk:2,board:1"
 Keys.ATTR_STUDENTS = "Students" -- CSV "s01,s02"
 Keys.ATTR_INCOME = "Income" -- number, 초당 수입
 
@@ -55,8 +53,6 @@ Keys.ATTR_FACILITY_ID = "FacilityId" -- 패드·실루엣 ↔ 시설
 Keys.ATTR_PLOT_ID = "PlotId" -- 부지 번호(1~12)
 Keys.ATTR_PAD_STATE = "PadState" -- "active" | "next" | "hidden" | "built"
 Keys.ATTR_STICKER_ID = "StickerId" -- 스티커 스폰 번호(1~8)
-Keys.ATTR_SKIN = "Skin" -- 시설 모델: 적용된 스킨 번호
-Keys.ATTR_SKIN_ROLE = "SkinRole" -- 시설 파트: "primary" | "secondary" (스킨 색을 받는 파트)
 
 -- 플레이어 어트리뷰트
 Keys.ATTR_PLOT = "Plot" -- player:GetAttribute("Plot") = 부지 번호

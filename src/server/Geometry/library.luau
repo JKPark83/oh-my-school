@@ -1,15 +1,14 @@
 --!strict
 --[[
 	도서관(시설 7) — 30×30 방 + 책장·열람 탁자. 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 8. 북벽 책장 3 + 책 3 = 6. 동벽 책장 1 + 책 1 = 2.
 	  열람 탁자(상판+받침) = 2. 의자 3(좌판 블록+등받이) = 6. 사서 카운터 1.
 	  책은 책장 앞면에 얹은 색 판 하나로 상징한다(파트 예산).
 	  바닥판은 Shell 바닥 위에 얹는 얇은 판이라 방 바닥 높이 = center.Y + FLOOR_T 이고 자리 Attachment 는 그 높이.
 	  Seats/S01~S03 = 탁자 남쪽에 나란히, 탁자(−Z)를 본다. S03 은 규약대로 예비 자리(학생 수 2).
-	  스킨: SkinRole "primary" = 책장, "secondary" = 탁자·의자. 벽은 고정 크림색. 색과 재질 모두 스킨 것을 쓴다.
-	  Door = 남문 중심 바닥(Shell 바닥 높이), LookVector 가 방 안쪽(−Z). SkinSign = 문 옆 복도 쪽 눈높이.
-	  세 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
+	  Door = 남문 중심 바닥(Shell 바닥 높이), LookVector 가 방 안쪽(−Z).
+	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,17 +18,16 @@ local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Seats = require(ReplicatedStorage.Shared.Seats)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local library = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(140, 95, 55)
+local COLOR_SECONDARY = Color3.fromRGB(100, 65, 35)
+local MATERIAL = Enum.Material.Wood
 
 local FACILITY_ID = script.Name
 local SIT_HIP = CharacterBuilder.SIT_HIP
 local SIT_DESK = CharacterBuilder.SIT_DESK
-local SIGN_EYE = 4.5
 
 local WALL_T = 1
 local ROOF_T = 1
@@ -81,11 +79,6 @@ local function attach(parent: Instance, name: string, cf: CFrame): Attachment
 	return att
 end
 
-local function skinned(part: Part, role: string): Part
-	part:SetAttribute(Keys.ATTR_SKIN_ROLE, role)
-	return part
-end
-
 local function wallOpts(): BuildKit.Opts
 	return { color = C.wall, material = Enum.Material.Concrete, fade = true }
 end
@@ -132,16 +125,14 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	)
 end
 
-function library.build(plotCFrame: CFrame, skinIndex: number): Model
+function library.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[FACILITY_ID]
 	assert(row ~= nil, `FacilityConfig 에 {FACILITY_ID} 가 없다`)
 	assert(row.door == "S", `{FACILITY_ID}: 남문 기준으로 짓는다`)
-	local skin = SkinConfig.get(FACILITY_ID, skinIndex)
 
 	local model = Instance.new("Model")
 	model.Name = FACILITY_ID
 	model:SetAttribute(Keys.ATTR_FACILITY_ID, FACILITY_ID)
-	model:SetAttribute(Keys.ATTR_SKIN, skinIndex)
 
 	buildRoom(model, plotCFrame, row)
 
@@ -155,15 +146,12 @@ function library.build(plotCFrame: CFrame, skinIndex: number): Model
 	local shelfZ = cz - hz + WALL_T + SHELF.Z / 2
 	for i, dx in SHELF_DX do
 		local x = cx + dx
-		skinned(
-			put(
-				model,
-				string.format("Shelf%02d", i),
-				SHELF,
-				at(plotCFrame, x, shelfY, shelfZ),
-				{ color = skin.primary, material = skin.material }
-			),
-			ROLE_PRIMARY
+		put(
+			model,
+			string.format("Shelf%02d", i),
+			SHELF,
+			at(plotCFrame, x, shelfY, shelfZ),
+			{ color = COLOR_PRIMARY, material = MATERIAL }
 		)
 		put(
 			model,
@@ -181,19 +169,10 @@ function library.build(plotCFrame: CFrame, skinIndex: number): Model
 	-- 동벽 책장 1: 앞면이 −X. 책장을 Y 로 90° 돌려 같은 치수를 쓴다
 	local eastX = cx + hx - WALL_T - SHELF.Z / 2
 	local eastRot = CFrame.Angles(0, math.pi / 2, 0)
-	skinned(
-		put(
-			model,
-			"ShelfE",
-			Vector3.new(EAST_SHELF_LEN, SHELF.Y, SHELF.Z),
-			at(plotCFrame, eastX, shelfY, cz, eastRot),
-			{
-				color = skin.primary,
-				material = skin.material,
-			}
-		),
-		ROLE_PRIMARY
-	)
+	put(model, "ShelfE", Vector3.new(EAST_SHELF_LEN, SHELF.Y, SHELF.Z), at(plotCFrame, eastX, shelfY, cz, eastRot), {
+		color = COLOR_PRIMARY,
+		material = MATERIAL,
+	})
 	put(
 		model,
 		"BooksE",
@@ -212,45 +191,33 @@ function library.build(plotCFrame: CFrame, skinIndex: number): Model
 	seats.Parent = model
 
 	local tableX, tableZ = cx + TABLE_DX, cz + TABLE_DZ
-	skinned(
-		put(model, "TableTop", TABLE_TOP, at(plotCFrame, tableX, floorY + SIT_DESK - TABLE_TOP.Y / 2, tableZ), {
-			color = skin.secondary,
-			material = skin.material,
-		}),
-		ROLE_SECONDARY
-	)
-	skinned(
-		put(model, "TableBase", TABLE_BASE, at(plotCFrame, tableX, floorY + TABLE_BASE.Y / 2, tableZ), {
-			color = skin.secondary,
-			material = skin.material,
-		}),
-		ROLE_SECONDARY
-	)
+	put(model, "TableTop", TABLE_TOP, at(plotCFrame, tableX, floorY + SIT_DESK - TABLE_TOP.Y / 2, tableZ), {
+		color = COLOR_SECONDARY,
+		material = MATERIAL,
+	})
+	put(model, "TableBase", TABLE_BASE, at(plotCFrame, tableX, floorY + TABLE_BASE.Y / 2, tableZ), {
+		color = COLOR_SECONDARY,
+		material = MATERIAL,
+	})
 	local seatIndex = 0
 	for _, dx in CHAIR_DX do
 		seatIndex += 1
 		local x = tableX + dx
 		local seatZ = tableZ + CHAIR_DZ
 		local chairName = string.format("Chair%02d", seatIndex)
-		skinned(
-			put(model, chairName .. "Seat", CHAIR_SEAT, at(plotCFrame, x, floorY + CHAIR_SEAT.Y / 2, seatZ), {
-				color = skin.secondary,
-				material = skin.material,
-			}),
-			ROLE_SECONDARY
-		)
-		skinned(
-			put(
-				model,
-				chairName .. "Back",
-				CHAIR_BACK,
-				at(plotCFrame, x, floorY + SIT_HIP + CHAIR_BACK.Y / 2, seatZ + CHAIR_SEAT.Z / 2 - CHAIR_BACK.Z / 2),
-				{
-					color = skin.secondary,
-					material = skin.material,
-				}
-			),
-			ROLE_SECONDARY
+		put(model, chairName .. "Seat", CHAIR_SEAT, at(plotCFrame, x, floorY + CHAIR_SEAT.Y / 2, seatZ), {
+			color = COLOR_SECONDARY,
+			material = MATERIAL,
+		})
+		put(
+			model,
+			chairName .. "Back",
+			CHAIR_BACK,
+			at(plotCFrame, x, floorY + SIT_HIP + CHAIR_BACK.Y / 2, seatZ + CHAIR_SEAT.Z / 2 - CHAIR_BACK.Z / 2),
+			{
+				color = COLOR_SECONDARY,
+				material = MATERIAL,
+			}
 		)
 		-- 탁자(−Z)를 본다. 기본 CFrame 의 LookVector 가 −Z
 		attach(seats, Seats.attachmentName(seatIndex), at(plotCFrame, x, floorY, seatZ))
@@ -265,7 +232,6 @@ function library.build(plotCFrame: CFrame, skinIndex: number): Model
 
 	local doorZ = cz + hz
 	attach(model, Keys.DOOR, at(plotCFrame, cx, row.center.Y, doorZ))
-	attach(model, Keys.SKIN_SIGN, at(plotCFrame, cx + DOOR_W / 2 + 1.5, row.center.Y + SIGN_EYE, doorZ + 1.5))
 
 	return model
 end

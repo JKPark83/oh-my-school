@@ -39,8 +39,6 @@ export type Profile = {
 	stickerBoard: number, -- 0 … 59
 	graduations: number,
 	facilities: { [FacilityId]: boolean },
-	skinsOwned: { [string]: boolean }, -- "desk:2" → true
-	skinsApplied: { [FacilityId]: number }, -- desk → 2
 	students: { [StudentId]: number }, -- 보유 수(중복 포함). 0 이면 키 없음
 	pity: number, -- 마지막 전설 이후 뽑은 횟수
 	missions: Missions,
@@ -59,7 +57,6 @@ export type GameEventKind =
 	| "GachaResult"
 	| "MissionDone"
 	| "Graduated"
-	| "SkinApplied"
 	| "StickerCollected"
 	| "Deny"
 

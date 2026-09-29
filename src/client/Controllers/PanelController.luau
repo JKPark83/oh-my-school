@@ -1,13 +1,13 @@
 --!strict
 --[[
-	패널 컨트롤러. 기획서 §8.3 의 패널 6개를 코드로 그린다.
-	  도감(714×330) · 뽑기(568×300) · 미션(568×300) · 꾸미기(바닥 시트 812×172) · 설정(406×150) · 졸업 확인(전체 화면)
+	패널 컨트롤러. 기획서 §8.3 의 패널 5개를 코드로 그린다.
+	  도감(714×330) · 뽑기(568×300) · 미션(568×300) · 설정(406×150) · 졸업 확인(전체 화면)
 
 	  ★ 한 번에 하나만 연다. 열기 0.2s Back Out(0.9→1.0), 닫기 0.12s Quad In.
 	  ★ ScreenGui "Panels" DisplayOrder 5, IgnoreGuiInset. UIScale = clamp(세로/375, 0.9, 1.6).
 	  ★ X 버튼 56×56, 바깥 탭, 안드로이드 뒤로가기(ButtonB) 로 닫는다.
 	  ★ 프로필은 HudController.profile() / onProfile() 로만 읽는다(구현계획 §3.4).
-	  ★ 서버 호출은 SetSkin / RollGacha / Graduate / SetSetting 네 개. 원서 0장이면 RollGacha 를 안 보낸다.
+	  ★ 서버 호출은 RollGacha / Graduate / SetSetting 세 개. 원서 0장이면 RollGacha 를 안 보낸다.
 	  ★ 카메라 흔들림 같은 화면 연출은 FeedbackController.play 에 맡기고 여기서는 패널 안 UI 만 움직인다.
 	  ★ 도감 ViewportFrame 은 열 때 만들고 닫을 때 지운다(모바일 메모리).
 	  ★ 아이콘 이미지는 아직 없어 이모지·글자로 대신한다. -- TODO(통합): 아이콘 이미지
@@ -25,10 +25,7 @@ local Types = require(Shared.Types)
 local Remotes = require(Shared.Remotes)
 local Format = require(Shared.Format)
 local CharacterBuilder = require(Shared.CharacterBuilder)
-local Keys = require(Shared.Config.Keys)
 local EconomyConfig = require(Shared.Config.EconomyConfig)
-local FacilityConfig = require(Shared.Config.FacilityConfig)
-local SkinConfig = require(Shared.Config.SkinConfig)
 local StudentConfig = require(Shared.Config.StudentConfig)
 local GachaConfig = require(Shared.Config.GachaConfig)
 local MissionConfig = require(Shared.Config.MissionConfig)
@@ -52,7 +49,7 @@ type Tier = Types.Tier
 
 local PanelController = {}
 
-export type PanelName = "codex" | "gacha" | "missions" | "skin" | "settings" | "graduate"
+export type PanelName = "codex" | "gacha" | "missions" | "settings" | "graduate"
 
 -- ── 상수 ──
 
@@ -71,7 +68,6 @@ local SIZES: { [string]: Vector2 } = {
 	codex = Vector2.new(714, 330),
 	gacha = Vector2.new(568, 300),
 	missions = Vector2.new(568, 300),
-	skin = Vector2.new(812, 172),
 	settings = Vector2.new(406, 150),
 	graduate = Vector2.new(812, 375), -- 전체 화면 안 내용 영역
 }
@@ -141,10 +137,10 @@ local lastSeq = 0
 
 local function responsiveScale(): number
 	local camera = Workspace.CurrentCamera
-	local size = if camera then camera.ViewportSize else Vector2.new(SIZES.skin.X, DESIGN_HEIGHT)
+	local size = if camera then camera.ViewportSize else Vector2.new(SIZES.graduate.X, DESIGN_HEIGHT)
 	local byHeight = math.clamp(size.Y / DESIGN_HEIGHT, SCALE_MIN, SCALE_MAX)
 	-- 세로 기준(§8.1)이되, 제일 넓은 패널(812)이 가로를 넘지 않게 막는다
-	return math.min(byHeight, size.X / SIZES.skin.X)
+	return math.min(byHeight, size.X / SIZES.graduate.X)
 end
 
 local function tween(
@@ -365,23 +361,6 @@ local function profileOrNil(): Profile?
 	return HudController.profile()
 end
 
-local function myPlotId(): number?
-	local v = player:GetAttribute(Keys.ATTR_PLOT)
-	return if type(v) == "number" then v else nil
-end
-
---- 내 부지 안 시설 모델
-local function myFacilityModel(facilityId: string): Model?
-	local plotId = myPlotId()
-	if not plotId then
-		return nil
-	end
-	local plots = Workspace:FindFirstChild(Keys.PLOTS_FOLDER)
-	local plot = if plots then plots:FindFirstChild(Keys.plotName(plotId)) else nil
-	local model = if plot then plot:FindFirstChild(facilityId) else nil
-	return if model and model:IsA("Model") then model else nil
-end
-
 -- ── 껍데기: 열기·닫기 ──
 
 local function ensureGui(): (ScreenGui, TextButton)
@@ -444,7 +423,6 @@ local function openShell(name: PanelName, withClose: boolean): Frame
 	local g, b = ensureGui()
 	generation += 1
 	local size = SIZES[name]
-	local isSheet = name == "skin"
 	local isFull = name == "graduate"
 
 	local shell = Instance.new("Frame")
@@ -457,10 +435,6 @@ local function openShell(name: PanelName, withClose: boolean): Frame
 		shell.AnchorPoint = Vector2.new(0.5, 0.5)
 		shell.Position = UDim2.fromScale(0.5, 0.5)
 		shell.Size = UDim2.fromScale(1, 1)
-	elseif isSheet then
-		shell.AnchorPoint = Vector2.new(0.5, 1)
-		shell.Position = UDim2.fromScale(0.5, 1)
-		shell.Size = UDim2.fromOffset(size.X, size.Y)
 	else
 		shell.AnchorPoint = Vector2.new(0.5, 0.5)
 		shell.Position = UDim2.fromScale(0.5, 0.5)
@@ -1040,178 +1014,6 @@ local function buildGacha(content: Frame)
 	end)
 end
 
--- ── 꾸미기(바닥 시트) ──
-
---- SkinRole 파트를 잠시 칠한다. 되돌릴 때는 우리가 칠한 색 그대로인 파트만 되돌린다(서버 적용과 안 싸운다)
-local function previewSkin(model: Model, facilityId: string, index: number): () -> ()
-	local skin = SkinConfig.get(facilityId, index)
-	local saved: { { part: BasePart, color: Color3, material: Enum.Material, applied: Color3 } } = {}
-	for _, inst in model:GetDescendants() do
-		if inst:IsA("BasePart") then
-			local role = inst:GetAttribute(Keys.ATTR_SKIN_ROLE)
-			if role == "primary" or role == "secondary" then
-				local applied = if role == "primary" then skin.primary else skin.secondary
-				table.insert(saved, { part = inst, color = inst.Color, material = inst.Material, applied = applied })
-				inst.Color = applied
-				inst.Material = skin.material
-			end
-		end
-	end
-	return function()
-		for _, s in saved do
-			if s.part.Parent and s.part.Color == s.applied then
-				s.part.Color = s.color
-				s.part.Material = s.material
-			end
-		end
-	end
-end
-
--- TODO(통합): 바닥 시트가 조이스틱 구역(§8.1 좌하 22%×30%)과 겹친다. 열려 있는 동안 이동을 막을지 결정
-local function buildSkin(content: Frame, payload: any)
-	local facilityId: string? = if type(payload) == "table" and type(payload.facilityId) == "string"
-		then payload.facilityId
-		else nil
-	local facility = if facilityId then FacilityConfig.BY_ID[facilityId] else nil
-	if not facilityId or not facility then
-		warn("[Panel] skin 패널에 facilityId 가 없음")
-		label(
-			content,
-			"Title",
-			"시설을 골라요",
-			UDim2.new(1, -X_SIZE, 0, 32),
-			UDim2.fromOffset(16, 12),
-			22,
-			GREY,
-			FONT_BOLD
-		)
-		return
-	end
-	local id: string = facilityId
-
-	padding(content, 16, 10)
-	local title =
-		label(content, "Title", `{facility.name} 꾸미기`, UDim2.new(1, -X_SIZE, 0, 28), nil, 22, YELLOW, FONT_BOLD)
-	title.TextXAlignment = Enum.TextXAlignment.Left
-
-	local row = frame(content, "Swatches", UDim2.fromOffset(4 * 72 + 3 * GAP, 100), UDim2.fromOffset(0, 40))
-	listLayout(row, Enum.FillDirection.Horizontal, GAP, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
-
-	local apply = button(content, "Apply", "적용", UDim2.fromOffset(200, 56), UDim2.fromScale(1, 1), YELLOW, DARK, 26)
-	apply.AnchorPoint = Vector2.new(1, 1)
-	local status = label(content, "Status", "", UDim2.fromOffset(220, 22), UDim2.new(1, 0, 1, -62), 16, GREY)
-	status.AnchorPoint = Vector2.new(1, 1)
-	status.TextXAlignment = Enum.TextXAlignment.Right
-
-	local selected = 0
-	local revert: (() -> ())? = nil
-	local swatches: { { card: TextButton, ring: UIStroke, price: TextLabel } } = {}
-
-	local function stopPreview()
-		if revert then
-			revert()
-			revert = nil
-		end
-	end
-
-	local function refresh(p: Profile)
-		local graduations = p.graduations
-		local applied = p.skinsApplied[id] or 1
-		for i, sw in swatches do
-			local owned = i == 1 or p.skinsOwned[SkinConfig.key(id, i)] == true
-			local locked = i == SkinConfig.GRADUATION_INDEX and graduations < 1
-			if applied == i then
-				sw.price.Text = "적용 중"
-				sw.price.TextColor3 = GREEN
-			elseif owned then
-				sw.price.Text = "있어요"
-				sw.price.TextColor3 = WHITE
-			elseif locked then
-				sw.price.Text = "🔒 졸업 후"
-				sw.price.TextColor3 = GREY
-			else
-				sw.price.Text = Format.coins(SkinConfig.priceOf(id, i, graduations))
-				sw.price.TextColor3 = YELLOW
-			end
-			sw.ring.Color = if selected == i then YELLOW else if applied == i then GREEN else SURFACE
-			sw.ring.Thickness = if selected == i then 4 else 2
-		end
-		if selected == 0 then
-			setEnabled(apply, false, "골라요", YELLOW)
-			status.Text = ""
-			return
-		end
-		local owned = selected == 1 or p.skinsOwned[SkinConfig.key(id, selected)] == true
-		local locked = selected == SkinConfig.GRADUATION_INDEX and graduations < 1
-		if applied == selected then
-			setEnabled(apply, false, "적용 중", YELLOW)
-			status.Text = ""
-		elseif locked then
-			setEnabled(apply, false, "졸업 1회 필요", YELLOW)
-			status.Text = ""
-		elseif owned then
-			setEnabled(apply, true, "적용", GREEN)
-			status.Text = ""
-		else
-			local price = SkinConfig.priceOf(id, selected, graduations)
-			setEnabled(
-				apply,
-				p.coins >= price,
-				if p.coins >= price then `사기 {Format.coins(price)}` else "용돈 부족",
-				YELLOW
-			)
-			status.Text = `용돈 {Format.coins(p.coins)}`
-		end
-	end
-
-	for i = 1, SkinConfig.COUNT do
-		local skin = SkinConfig.get(id, i)
-		local card = button(row, `Skin{i}`, "", UDim2.fromOffset(72, 100), nil, SURFACE, WHITE)
-		card.LayoutOrder = i
-		local chip = frame(card, "Chip", UDim2.fromOffset(60, 44), UDim2.fromOffset(6, 6), skin.primary)
-		corner(chip, 10)
-		local sub = frame(chip, "Sub", UDim2.fromOffset(20, 20), UDim2.new(1, -24, 1, -24), skin.secondary)
-		corner(sub, 6)
-		label(card, "Name", skin.name, UDim2.new(1, -4, 0, 20), UDim2.fromOffset(2, 52), 14, WHITE, FONT_BOLD)
-		local price = label(card, "Price", "", UDim2.new(1, -4, 0, 20), UDim2.fromOffset(2, 74), 14, YELLOW)
-		local ring = stroke(card, SURFACE, 2)
-		swatches[i] = { card = card, ring = ring, price = price }
-
-		card.Activated:Connect(function()
-			selected = i
-			stopPreview()
-			local model = myFacilityModel(id)
-			if model then
-				-- 미리보기는 시트가 닫힐 때까지 유지(개선계획 §3.3 #2)
-				revert = previewSkin(model, id, i)
-			end
-			SoundController.play("tick")
-			local p = profileOrNil()
-			if p then
-				refresh(p)
-			end
-		end)
-	end
-
-	apply.Activated:Connect(function()
-		if selected == 0 then
-			return
-		end
-		stopPreview()
-		Remotes.SetSkin:FireServer(id, selected)
-	end)
-
-	local profile = profileOrNil()
-	if profile then
-		selected = profile.skinsApplied[id] or 1
-		refresh(profile)
-	else
-		setEnabled(apply, false, "골라요", YELLOW)
-	end
-	currentRefresh = refresh
-	table.insert(currentCleanup, stopPreview)
-end
-
 -- ── 졸업 확인(전체 화면) ──
 
 local function buildGraduate(content: Frame)
@@ -1247,7 +1049,7 @@ local function buildGraduate(content: Frame)
 		end
 	end
 	local nextMult = Format.multiplier(1 + EconomyConfig.GRAD_STEP * nextRound)
-	column("Keep", "남아요", 96, GREEN, { "도감 · 스킨 · 원서", "스티커판", `졸업 배율 {nextMult}` })
+	column("Keep", "남아요", 96, GREEN, { "도감 · 원서", "스티커판", `졸업 배율 {nextMult}` })
 	column("Reset", "새로 지어요", 416, YELLOW, { "시설 (전부 새로)", "용돈 0" })
 
 	local no =
@@ -1330,7 +1132,6 @@ local BUILDERS: { [string]: (Frame, any) -> () } = {
 	missions = function(c, _)
 		buildMissions(c)
 	end,
-	skin = buildSkin,
 	settings = function(c, _)
 		buildSettings(c)
 	end,

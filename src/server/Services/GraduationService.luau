@@ -3,7 +3,7 @@
 	졸업. 기획서 §6.1·§6.2.
 	  Graduate 리모트(쿨다운 10초) → 검증(14/14, 잠금 아님, 마지막 졸업 후 10초)
 	  → PlotService.lock → 프로필 원자적 변경(yield 없음): graduations += 1, facilities = {}, coins = 10 × 1.4^N,
-	    졸업 확정 학생(1회 s18, 5회 s23) grant. skinsApplied·skinsOwned·tickets·board·pity·missions 유지
+	    졸업 확정 학생(1회 s18, 5회 s23) grant. tickets·board·pity·missions 유지
 	  → 즉시 저장 요청 → (요청이 받아들여지면) 리더보드 → Graduated 전체 방송 → ProfileSync
 	  → 8.0초 뒤 잠금 해제 + 월드 철거(teardown). 부지 어트리뷰트도 이때 바뀐다. 퇴장하면 flush() 로 즉시 철거.
 	8초는 클라이언트 졸업식 연출(§9.5)을 위한 대기일 뿐 프로필과 무관하다.

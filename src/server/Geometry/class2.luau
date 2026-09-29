@@ -1,13 +1,12 @@
 --!strict
 --[[
 	교실 2(시설 5) — 30×30 방 + 책걸상. 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방) + 지붕 = 7. 바닥은 Shell 바닥을 그대로 쓴다(교실 1 과 같다).
 	  칠판은 파트 대신 북벽 안쪽 면 SurfaceGui 의 초록 Frame 이다(파트 예산 때문).
 	  2인 책상 3(상판+앞판) + 의자 6(좌판 블록+등받이) = 18. 줄 간격 4, 자리 x = center.X ± 1.5. 전부 칠판(−Z)을 본다.
-	  스킨: SkinRole "primary" = 벽, "secondary" = 책상. 의자는 고정색. 색과 재질 모두 스킨 것을 쓴다.
 	  Seats/S01~S06 = 의자 아래 바닥 중심, LookVector −Z. Door = 남문 중심 바닥, LookVector 가 방 안쪽(−Z).
-	  SkinSign = 문 옆 복도 쪽 눈높이(복도 북벽 안쪽 면에서 0.5). 세 Attachment 는 BasePart 아래가 아니므로
+	  두 Attachment 는 BasePart 아래가 아니므로
 	  CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 ]]
 
@@ -18,17 +17,16 @@ local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Seats = require(ReplicatedStorage.Shared.Seats)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local class2 = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(245, 235, 215)
+local COLOR_SECONDARY = Color3.fromRGB(200, 180, 150)
+local MATERIAL = Enum.Material.SmoothPlastic
 
 local FACILITY_ID = script.Name
 local SIT_HIP = CharacterBuilder.SIT_HIP
 local SIT_DESK = CharacterBuilder.SIT_DESK
-local SIGN_EYE = 4.5
 
 local WALL_T = 1
 local ROOF_T = 1
@@ -71,27 +69,19 @@ local function attach(parent: Instance, name: string, cf: CFrame): Attachment
 	return att
 end
 
-local function skinned(part: Part, role: string): Part
-	part:SetAttribute(Keys.ATTR_SKIN_ROLE, role)
-	return part
-end
-
 --- 벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕 = 파트 7개. 북벽을 돌려준다(칠판을 붙인다)
-local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.Facility, skin: SkinConfig.Skin): Part
+local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.Facility): Part
 	local cx, floorY, cz = row.center.X, row.center.Y, row.center.Z
 	local hx, hz = row.size.X / 2, row.size.Z / 2
 	local h = row.size.Y
 	local y = floorY + h / 2
 	local function wall(name: string, size: Vector3, x: number, wy: number, z: number): Part
-		return skinned(
-			put(
-				model,
-				name,
-				size,
-				at(plotCFrame, x, wy, z),
-				{ color = skin.primary, material = skin.material, fade = true }
-			),
-			ROLE_PRIMARY
+		return put(
+			model,
+			name,
+			size,
+			at(plotCFrame, x, wy, z),
+			{ color = COLOR_PRIMARY, material = MATERIAL, fade = true }
 		)
 	end
 	local north = wall("WallN", Vector3.new(row.size.X, h, WALL_T), cx, y, cz - hz + WALL_T / 2)
@@ -144,18 +134,16 @@ local function paintChalkboard(north: Part)
 	face.Parent = frame
 end
 
-function class2.build(plotCFrame: CFrame, skinIndex: number): Model
+function class2.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[FACILITY_ID]
 	assert(row ~= nil, `FacilityConfig 에 {FACILITY_ID} 가 없다`)
 	assert(row.door == "S", `{FACILITY_ID}: 남문 기준으로 짓는다`)
-	local skin = SkinConfig.get(FACILITY_ID, skinIndex)
 
 	local model = Instance.new("Model")
 	model.Name = FACILITY_ID
 	model:SetAttribute(Keys.ATTR_FACILITY_ID, FACILITY_ID)
-	model:SetAttribute(Keys.ATTR_SKIN, skinIndex)
 
-	local north = buildRoom(model, plotCFrame, row, skin)
+	local north = buildRoom(model, plotCFrame, row)
 	paintChalkboard(north)
 
 	local seats = Instance.new("Folder")
@@ -167,25 +155,19 @@ function class2.build(plotCFrame: CFrame, skinIndex: number): Model
 	for r, dz in ROW_DZ do
 		local z = cz + dz
 		local deskName = string.format("Desk%02d", r)
-		skinned(
-			put(model, deskName .. "Top", DESK_TOP, at(plotCFrame, cx, floorY + SIT_DESK - DESK_TOP.Y / 2, z), {
-				color = skin.secondary,
-				material = skin.material,
-			}),
-			ROLE_SECONDARY
-		)
-		skinned(
-			put(
-				model,
-				deskName .. "Panel",
-				DESK_PANEL,
-				at(plotCFrame, cx, floorY + 0.2 + DESK_PANEL.Y / 2, z - DESK_TOP.Z / 2 + DESK_PANEL.Z / 2),
-				{
-					color = skin.secondary,
-					material = skin.material,
-				}
-			),
-			ROLE_SECONDARY
+		put(model, deskName .. "Top", DESK_TOP, at(plotCFrame, cx, floorY + SIT_DESK - DESK_TOP.Y / 2, z), {
+			color = COLOR_SECONDARY,
+			material = MATERIAL,
+		})
+		put(
+			model,
+			deskName .. "Panel",
+			DESK_PANEL,
+			at(plotCFrame, cx, floorY + 0.2 + DESK_PANEL.Y / 2, z - DESK_TOP.Z / 2 + DESK_PANEL.Z / 2),
+			{
+				color = COLOR_SECONDARY,
+				material = MATERIAL,
+			}
 		)
 		for _, dx in { -SEAT_DX, SEAT_DX } do
 			seatIndex += 1
@@ -213,7 +195,6 @@ function class2.build(plotCFrame: CFrame, skinIndex: number): Model
 
 	local doorZ = cz + row.size.Z / 2
 	attach(model, Keys.DOOR, at(plotCFrame, cx, floorY, doorZ))
-	attach(model, Keys.SKIN_SIGN, at(plotCFrame, cx + DOOR_W / 2 + 1.5, floorY + SIGN_EYE, doorZ + 1.5))
 
 	return model
 end

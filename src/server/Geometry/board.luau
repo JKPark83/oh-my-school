@@ -1,10 +1,9 @@
 --!strict
 --[[
 	칠판(시설 2) — 교실 1 북벽 안쪽 면에 붙는 가구. 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 6개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 6개(≤25), 전부 BuildKit.part.
 	  FacilityConfig.board 의 center (−60,0,−61.5) 는 북벽 안쪽 면 위 바닥점이다. 칠판은 그 면에서 방 쪽(+Z)으로 붙는다.
 	  틀(secondary) + 칠판면(primary) + 분필받침 + 지우개 + 시계 + 급훈 액자. 자리·문 없음.
-	  SkinSign = 칠판 왼쪽 옆 눈높이. BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 	  글자는 BuildKit.surfaceText(한글은 SurfaceGui 로만 낼 수 있다).
 ]]
 
@@ -13,18 +12,17 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local board = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(40, 90, 60)
+local COLOR_SECONDARY = Color3.fromRGB(120, 80, 40)
+local MATERIAL = Enum.Material.Wood
 -- TODO(통합): 급훈·칠판 글씨는 기획서에 없다. 문구를 정하면 Config 로 뺀다
 local TEXT_MOTTO = "바르고 슬기롭게"
 local TEXT_CHALK = "오늘도 즐겁게!"
 
 local FACILITY_ID = script.Name
-local SIGN_EYE = 4.5
 
 local BOARD_BOTTOM = 3 -- 칠판면 아랫변 높이
 local FRAME_PAD = 0.3 -- 틀이 칠판면보다 사방으로 더 나온 폭
@@ -56,55 +54,34 @@ local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, op
 	return BuildKit.part(parent, name, size, cf.Position, opts)
 end
 
---- 월드 CFrame 을 그대로 가진 Attachment(부모가 BasePart 가 아니다)
-local function attach(parent: Instance, name: string, cf: CFrame): Attachment
-	local att = Instance.new("Attachment")
-	att.Name = name
-	att.CFrame = cf
-	att.Parent = parent
-	return att
-end
-
-local function skinned(part: Part, role: string): Part
-	part:SetAttribute(Keys.ATTR_SKIN_ROLE, role)
-	return part
-end
-
-function board.build(plotCFrame: CFrame, skinIndex: number): Model
+function board.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[FACILITY_ID]
 	assert(row ~= nil, `FacilityConfig 에 {FACILITY_ID} 가 없다`)
-	local skin = SkinConfig.get(FACILITY_ID, skinIndex)
 
 	local model = Instance.new("Model")
 	model.Name = FACILITY_ID
 	model:SetAttribute(Keys.ATTR_FACILITY_ID, FACILITY_ID)
-	model:SetAttribute(Keys.ATTR_SKIN, skinIndex)
 
 	local cx, floorY, wallZ = row.center.X, row.center.Y, row.center.Z
 	local w, h = row.size.X, row.size.Y
 	local faceY = floorY + BOARD_BOTTOM + h / 2
 
 	-- 틀: 벽면에 붙는다. 칠판면: 틀 앞에 얹는다
-	skinned(
-		put(
-			model,
-			"Frame",
-			Vector3.new(w + FRAME_PAD * 2, h + FRAME_PAD * 2, FRAME_T),
-			at(plotCFrame, cx, faceY, wallZ + FRAME_T / 2),
-			{
-				color = skin.secondary,
-				material = skin.material,
-			}
-		),
-		ROLE_SECONDARY
+	put(
+		model,
+		"Frame",
+		Vector3.new(w + FRAME_PAD * 2, h + FRAME_PAD * 2, FRAME_T),
+		at(plotCFrame, cx, faceY, wallZ + FRAME_T / 2),
+		{
+			color = COLOR_SECONDARY,
+			material = MATERIAL,
+		}
 	)
-	local face = skinned(
+	local face =
 		put(model, "Face", Vector3.new(w, h, FACE_T), at(plotCFrame, cx, faceY, wallZ + FRAME_T + FACE_T / 2), {
-			color = skin.primary,
-			material = skin.material,
-		}),
-		ROLE_PRIMARY
-	)
+			color = COLOR_PRIMARY,
+			material = MATERIAL,
+		})
 	BuildKit.surfaceText(face, Enum.NormalId.Back, TEXT_CHALK, C.chalk, 0.9)
 
 	-- 분필받침 + 지우개
@@ -146,8 +123,6 @@ function board.build(plotCFrame: CFrame, skinIndex: number): Model
 		}
 	)
 	BuildKit.surfaceText(motto, Enum.NormalId.Back, TEXT_MOTTO, C.text, 0.55)
-
-	attach(model, Keys.SKIN_SIGN, at(plotCFrame, cx - w / 2 - 2, floorY + SIGN_EYE, wallZ + 0.5))
 
 	return model
 end

@@ -1,11 +1,11 @@
 --!strict
 --[[
 	복도(시설 4) — 1층 가로 복도 150×15. 계획서 §3.6 규약, 기획서 §7.2.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  바닥판(primary) + 가운데 줄무늬(secondary) + 북벽·남벽(문 자리마다 끊고 상인방) + 양 끝벽 + 지붕.
 	  북벽 z=−26 쪽 문: 교실1·교실2·급식실·도서관(뒷줄 방 남문). 남벽 z=−14 쪽 문: 현관 북문·보건실·과학실·음악실·교장실.
 	  문 x 는 FacilityConfig 의 방 center.X 에서 읽고, 교실1·현관은 Shell 소유라 기획서 §7.2 상수를 쓴다.
-	  벽은 사실 톤 크림 고정색. 스킨은 바닥에만 간다. 자리·문 Attachment 없음, SkinSign 은 현관 북문 옆 복도 안 눈높이.
+	  벽은 사실 톤 크림 고정색. 자리·문 Attachment 없음.
 	  뒷줄 방 남벽(z −27~−26)과 이 복도 북벽(z −26~−25)은 등을 맞댄 별개 벽이다.
 ]]
 
@@ -14,15 +14,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local hall = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(200, 195, 185)
+local COLOR_SECONDARY = Color3.fromRGB(170, 165, 155)
+local MATERIAL = Enum.Material.SmoothPlastic
 
 local FACILITY_ID = script.Name
-local SIGN_EYE = 4.5
 
 local WALL_T = 1
 local ROOF_T = 1
@@ -52,15 +51,6 @@ end
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
 	return BuildKit.part(parent, name, size, cf.Position, opts)
-end
-
---- 월드 CFrame 을 그대로 가진 Attachment(부모가 BasePart 가 아니다)
-local function attach(parent: Instance, name: string, cf: CFrame): Attachment
-	local att = Instance.new("Attachment")
-	att.Name = name
-	att.CFrame = cf
-	att.Parent = parent
-	return att
 end
 
 local function wallOpts(): BuildKit.Opts
@@ -111,43 +101,39 @@ local function wallRow(
 	seg(cursor, x1)
 end
 
-function hall.build(plotCFrame: CFrame, skinIndex: number): Model
+function hall.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[FACILITY_ID]
 	assert(row ~= nil, `FacilityConfig 에 {FACILITY_ID} 가 없다`)
-	local skin = SkinConfig.get(FACILITY_ID, skinIndex)
 
 	local model = Instance.new("Model")
 	model.Name = FACILITY_ID
 	model:SetAttribute(Keys.ATTR_FACILITY_ID, FACILITY_ID)
-	model:SetAttribute(Keys.ATTR_SKIN, skinIndex)
 
 	local cx, floorY, cz = row.center.X, row.center.Y, row.center.Z
 	local hx, hz = row.size.X / 2, row.size.Z / 2
 	local h = row.size.Y
 
 	-- 바닥판 + 줄무늬. 줄무늬 윗면이 바닥판보다 0.03 높아 면이 겹치지 않는다
-	local floor = put(
+	put(
 		model,
 		"Floor",
 		Vector3.new(row.size.X - FLOOR_INSET * 2, FLOOR_T, row.size.Z - FLOOR_INSET * 2),
 		at(plotCFrame, cx, floorY + FLOOR_T / 2, cz),
 		{
-			color = skin.primary,
-			material = skin.material,
+			color = COLOR_PRIMARY,
+			material = MATERIAL,
 		}
 	)
-	floor:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
-	local stripe = put(
+	put(
 		model,
 		"Stripe",
 		Vector3.new(row.size.X - FLOOR_INSET * 4, FLOOR_T + 0.06, STRIPE_W), -- 양끝이 바닥 끝면과 겹치지 않게 더 들인다
 		at(plotCFrame, cx, floorY + FLOOR_T / 2, cz),
 		{
-			color = skin.secondary,
-			material = skin.material,
+			color = COLOR_SECONDARY,
+			material = MATERIAL,
 		}
 	)
-	stripe:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
 
 	-- 북벽(뒷줄 방 남문) · 남벽(앞줄 방 북문 + 현관 북문)
 	local northDoors = { CLASS1_DOOR_X }
@@ -186,13 +172,6 @@ function hall.build(plotCFrame: CFrame, skinIndex: number): Model
 		fade = true,
 		light = true,
 	})
-
-	-- 팻말 자리: 현관 북문 옆, 복도 안쪽(남벽 안쪽 면에서 0.5)
-	attach(
-		model,
-		Keys.SKIN_SIGN,
-		at(plotCFrame, ENTRANCE_DOOR_X + DOOR_W / 2 + 1.5, floorY + SIGN_EYE, cz + hz - WALL_T - 0.5)
-	)
 
 	return model
 end

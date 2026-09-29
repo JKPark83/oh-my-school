@@ -1,14 +1,13 @@
 --!strict
 --[[
 	음악실(시설 10) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 21개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 21개(≤25), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위 얇은 판이라
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
 	  Seats/S01 = 피아노 의자(피아노 앞, 북쪽 -Z 를 본다), S02 = 피아노 옆 의자(북쪽을 본다).
-	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z). SkinSign = 문 옆 복도 쪽 눈높이.
-	  세 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
-	  스킨: SkinRole "primary" = 피아노 몸통, "secondary" = 피아노 의자 · 큰북.
+	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z).
+	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,19 +16,18 @@ local BuildKit = require(script.Parent.Parent.BuildKit)
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local music = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(90, 55, 30)
+local COLOR_SECONDARY = Color3.fromRGB(40, 25, 15)
+local MATERIAL = Enum.Material.Wood
 
 local WALL_T = 1
 local ROOF_T = 1
 local FLOOR_T = 0.2
 local DOOR_W = 8
 local DOOR_H = 8
-local SIGN_EYE = 4.5
 local SIT_HIP = CharacterBuilder.SIT_HIP
 
 local COLOR_WALL = Color3.fromRGB(226, 220, 206)
@@ -160,10 +158,9 @@ local function buildChair(
 	})
 end
 
-function music.build(plotCFrame: CFrame, skinIndex: number): Model
+function music.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[script.Name]
 	assert(row, `FacilityConfig 에 {script.Name} 행이 없다`)
-	local skin = SkinConfig.get(row.id, skinIndex)
 	local cx, cz = row.center.X, row.center.Z
 	local floorTop = row.center.Y + FLOOR_T
 	local northZ = cz - row.size.Z / 2 + WALL_T / 2
@@ -181,11 +178,10 @@ function music.build(plotCFrame: CFrame, skinIndex: number): Model
 
 	-- 업라이트 피아노(primary): 서쪽. 건반은 몸통 남쪽 면에서 앞으로 나온다
 	local px, pz = cx - 6, cz - 3.5
-	local body = part(model, "PianoBody", Vector3.new(6, 4.6, 2), at(plotCFrame, px, floorTop + 2.3, pz), {
-		color = skin.primary,
-		material = skin.material,
+	part(model, "PianoBody", Vector3.new(6, 4.6, 2), at(plotCFrame, px, floorTop + 2.3, pz), {
+		color = COLOR_PRIMARY,
+		material = MATERIAL,
 	})
-	body:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
 	part(model, "PianoKeys", Vector3.new(5.6, 0.3, 1.2), at(plotCFrame, px, floorTop + 2.6, pz + 1.55), {
 		color = COLOR_WHITE,
 	})
@@ -197,12 +193,10 @@ function music.build(plotCFrame: CFrame, skinIndex: number): Model
 
 	-- 피아노 의자(secondary) S01: 건반 앞에서 북쪽(피아노)을 본다
 	local bz = pz + 3.4
-	local benchSeat =
-		part(model, "PianoBenchSeat", Vector3.new(3, 0.4, 1.4), at(plotCFrame, px, floorTop + SIT_HIP - 0.2, bz), {
-			color = skin.secondary,
-			material = skin.material,
-		})
-	benchSeat:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
+	part(model, "PianoBenchSeat", Vector3.new(3, 0.4, 1.4), at(plotCFrame, px, floorTop + SIT_HIP - 0.2, bz), {
+		color = COLOR_SECONDARY,
+		material = MATERIAL,
+	})
 	part(
 		model,
 		"PianoBenchBase",
@@ -235,14 +229,13 @@ function music.build(plotCFrame: CFrame, skinIndex: number): Model
 	)
 
 	-- 큰북(secondary): 동쪽 구석. 스피커: 남서쪽
-	local drum = part(
+	part(
 		model,
 		"Drum",
 		Vector3.new(2.4, 3.2, 3.2),
 		at(plotCFrame, cx + 8, floorTop + 1.2, cz - 6, CFrame.Angles(0, 0, math.pi / 2)),
-		{ color = skin.secondary, material = skin.material, shape = Enum.PartType.Cylinder }
+		{ color = COLOR_SECONDARY, material = MATERIAL, shape = Enum.PartType.Cylinder }
 	)
-	drum:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
 	part(model, "Speaker", Vector3.new(2, 4, 2), at(plotCFrame, cx - 9, floorTop + 2, cz + 6), { color = COLOR_DARK })
 
 	-- 남쪽 벽 안쪽 면 음표 장식(파트 없이 글자)
@@ -253,9 +246,8 @@ function music.build(plotCFrame: CFrame, skinIndex: number): Model
 	})
 	BuildKit.surfaceText(banner, Enum.NormalId.Front, "♪ ♫ ♪", COLOR_NOTE, 2)
 
-	-- 문과 팻말
+	-- 문
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, northZ, CFrame.Angles(0, math.pi, 0)))
-	attachment(model, Keys.SKIN_SIGN, at(plotCFrame, cx + 6, floorTop + SIGN_EYE, northZ - 1.2))
 
 	return model
 end

@@ -1,10 +1,9 @@
 --!nonstrict
 --[[
-	용돈·구매·스티커·별·스킨. 기획서 §2.2·§3.2·§5·§7.5·§9.1·§11.5, 계획서 §3.2.
+	용돈·구매·스티커·별. 기획서 §2.2·§3.2·§5·§7.5·§9.1·§11.5, 계획서 §3.2.
 	  1Hz 틱   수입 지급 → 활성 패드 위에 서 있고 돈이 되면 자동 구매 → ProfileSync
 	  스티커   PlotService.StickerTouched → 검증(주인·간격·속도·거리) → 가치·콤보·판 → 15초 뒤 리스폰(금 판단)
 	  별       PlotService.StarTouched → 방문자 판 +1 (부지·60초당 2개)
-	  SetSkin  기획서 §11.5 검증 ①~⑦
 	  GoHome   PlotService.goHome (5초 쿨다운)
 ]]
 
@@ -16,7 +15,6 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
@@ -27,7 +25,6 @@ local Metrics = require(script.Parent.Parent.Metrics)
 
 local EconomyService = {}
 
-local SKIN_COOLDOWN = 0.5
 local HOME_COOLDOWN = 5
 local TOUCH_RANGE = 12
 
@@ -259,39 +256,6 @@ local function onStar(player: Player, plotId: number, part: BasePart)
 	DataService.syncNow(player)
 end
 
---- 기획서 §11.5 ①~⑦
-local function onSetSkin(player: Player, facilityId: string, skinIndex: number)
-	local profile: Types.Profile? = DataService.get(player)
-	if not profile or not FacilityConfig.BY_ID[facilityId] or not SkinConfig.isValidIndex(skinIndex) then
-		return
-	end
-	if not profile.facilities[facilityId] or PlotService.isLocked(player) then
-		return
-	end
-	if skinIndex == SkinConfig.GRADUATION_INDEX and profile.graduations < 1 then
-		return
-	end
-	local key = SkinConfig.key(facilityId, skinIndex)
-	if skinIndex > 1 and not profile.skinsOwned[key] then
-		local price = SkinConfig.priceOf(facilityId, skinIndex, profile.graduations)
-		if profile.coins < price then
-			Remotes.deny(player, "coins")
-			return
-		end
-		profile.coins -= price
-		profile.skinsOwned[key] = true
-	end
-	profile.skinsApplied[facilityId] = skinIndex
-	PlotService.applySkin(player, facilityId, skinIndex)
-	Remotes.event(
-		nil,
-		"SkinApplied",
-		{ plot = PlotService.plotOf(player), facilityId = facilityId, skinIndex = skinIndex }
-	)
-	DataService.syncNow(player)
-	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
-end
-
 function EconomyService.Start()
 	PlotService.StickerTouched:Connect(onSticker)
 	PlotService.StarTouched:Connect(onStar)
@@ -300,7 +264,6 @@ function EconomyService.Start()
 		lastStickerPos[player] = nil
 	end)
 
-	RemoteGuard.wrap(Remotes.SetSkin, { cooldown = SKIN_COOLDOWN, args = { "string", "number" } }, onSetSkin)
 	RemoteGuard.wrap(Remotes.GoHome, { cooldown = HOME_COOLDOWN, args = {} }, function(player)
 		PlotService.goHome(player)
 	end)

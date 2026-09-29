@@ -5,7 +5,7 @@
 	글로 가르치지 않는다. 지금 할 일 하나를 말풍선(≤12자)·발자국·손가락·빛기둥으로 가리킬 뿐이다.
 	단계는 §2.1 표를 프로필로 계산한다(첫 번째로 참인 행). 서버는 튜토리얼을 모른다 — 전부 클라 로컬 연출.
 
-	★ 대상 위치는 PadController 가 안다(패드·접수대·스티커·스킨 표지판). 아직 스트리밍 전이면 nil 이 오므로
+	★ 대상 위치는 PadController 가 안다(패드·접수대·스티커). 아직 스트리밍 전이면 nil 이 오므로
 	  매 틱 다시 물어본다. 나를 PadController 가 require 하지 않는다(순환 금지).
 	★ §2.3 에스컬레이션: 대상에서 12 스터드 넘게 떨어진 채 30초 → 큰 화살표 3번 + 손가락 4초, 60초 → 카메라 팬.
 	  가까이 가면 타이머가 0 으로 돌아간다. 단계 ⑦(끝)도 다음 패드를 대상으로 에스컬레이션만 한다.
@@ -30,11 +30,10 @@ type HudApi = {
 type PadApi = {
 	padPosition: (facilityId: string) -> Vector3?,
 	admissionDeskPosition: () -> Vector3?,
-	-- 아래 넷은 §3.4 계약 밖. PadController 가 덤으로 낸다
+	-- 아래 셋은 §3.4 계약 밖. PadController 가 덤으로 낸다
 	myPlot: () -> number?,
 	plotModel: (plotId: number) -> Model?,
 	stickerPosition: (stickerId: any) -> Vector3?,
-	skinSignPosition: (facilityId: string) -> Vector3?,
 }
 type CameraApi = {
 	panTo: (worldPos: Vector3, seconds: number) -> (),
@@ -51,7 +50,7 @@ local STAGE_STICKERS = 2 -- 스티커를 줍자
 local STAGE_GROW3 = 3 -- 시설 3개까지(말풍선 없음)
 local STAGE_GACHA = 4 -- 원서로 뽑아 보자
 local STAGE_GROW4 = 5 -- 이제 학교를 키우자
-local STAGE_SKIN = 6 -- 색을 바꿔 보자(세션 1회)
+-- ⑥ 스킨 단계는 2026-09-29 폐기
 local STAGE_DONE = 7 -- 끝. 에스컬레이션만
 
 -- 말풍선(≤12자)
@@ -59,7 +58,6 @@ local BUBBLE_DESK = "책상을 사자!"
 local BUBBLE_STICKERS = "스티커를 줍자!"
 local BUBBLE_GACHA = "원서로 뽑아 보자!"
 local BUBBLE_GROW = "이제 학교를 키우자!"
-local BUBBLE_SKIN = "색을 바꿔 보자!"
 local FINGER_TEXT = "👇"
 local ARROW_TEXT = "⬇"
 
@@ -67,7 +65,6 @@ local ARROW_TEXT = "⬇"
 local STICKER_HINT_COUNT = EconomyConfig.STICKER_HOME_UNTIL -- 앞마당 스티커 1~3번(서버 홈 리스폰 기준과 같은 값)
 local GROW3_FACILITIES = 3
 local GROW4_FACILITIES = 4
-local SKIN_HINT_FACILITIES = 5
 local REENTRY_TICKETS = 3 -- ⑦에서 원서 3장인데 한 번도 안 뽑았으면 ④로
 
 -- 연출 수치(§2.2·§2.3). 클라 전용이라 공용 Config 에 없다
@@ -91,7 +88,6 @@ local PILLAR_SIZE = Vector3.new(1, 14, 1)
 local PILLAR_ALPHA = 0.5
 local PILLAR_PULSE_ALPHA = 0.8
 local PILLAR_PULSE_SECONDS = 0.8
-local SKIN_PILLAR_SECONDS = 8
 local FINGER_SIZE = 64
 local FINGER_HEIGHT = 4
 local FINGER_BOUNCE = 1.2
@@ -120,7 +116,6 @@ local SPECS: { [number]: StageSpec } = {
 	[STAGE_GROW3] = { footprints = true, finger = false, pillar = false },
 	[STAGE_GACHA] = { bubble = BUBBLE_GACHA, footprints = true, finger = false, pillar = true },
 	[STAGE_GROW4] = { bubble = BUBBLE_GROW, footprints = true, finger = false, pillar = false },
-	[STAGE_SKIN] = { bubble = BUBBLE_SKIN, footprints = false, finger = false, pillar = true },
 	[STAGE_DONE] = { footprints = false, finger = false, pillar = false },
 }
 
@@ -130,7 +125,6 @@ local currentStage = STAGE_DONE
 local currentTarget: Vector3? = nil
 local visualsReady = false
 local bubbleStage = 0 -- 말풍선을 이미 띄운 단계(단계 진입마다 한 번)
-local skinHintShown = false -- ⑥ 세션 1회
 local guiFolder: Folder? = nil
 local fxFolder: Folder? = nil
 local anchor: BasePart? = nil -- 대상 위치의 보이지 않는 파트. 손가락·화살표가 붙는다
@@ -353,16 +347,6 @@ end
 
 -- ── 단계 계산(§2.1) ─────────────────────────────────────────────
 
-local function skinsOwnedCount(profile: Types.Profile): number
-	local count = 0
-	for _, owned in profile.skinsOwned do
-		if owned then
-			count += 1
-		end
-	end
-	return count
-end
-
 --- 첫 번째로 참인 행이 단계다
 local function computeStage(profile: Types.Profile): number
 	local built = FacilityConfig.count(profile.facilities)
@@ -382,9 +366,6 @@ local function computeStage(profile: Types.Profile): number
 	end
 	if built < GROW4_FACILITIES then
 		return STAGE_GROW4
-	end
-	if built >= SKIN_HINT_FACILITIES and skinsOwnedCount(profile) == 0 and not skinHintShown then
-		return STAGE_SKIN
 	end
 	if noPulls and profile.tickets >= REENTRY_TICKETS then
 		return STAGE_GACHA -- ⑦ 재진입
@@ -418,8 +399,6 @@ local function resolveTarget(stage: number, profile: Types.Profile): Vector3?
 		return nearestSticker()
 	elseif stage == STAGE_GACHA then
 		return PadController.admissionDeskPosition()
-	elseif stage == STAGE_SKIN then
-		return PadController.skinSignPosition(FacilityConfig.ORDER[1])
 	end
 	local nextRow = FacilityConfig.nextOf(profile.facilities)
 	return if nextRow then PadController.padPosition(nextRow.id) else nil
@@ -477,15 +456,6 @@ local function apply(profile: Types.Profile)
 		stuck = 0
 		escalated = false
 		hideBubble()
-		if stage == STAGE_SKIN then
-			-- 빛기둥 8초 뒤 세션 플래그를 세우고 ⑦로 넘어간다
-			task.delay(SKIN_PILLAR_SECONDS, function()
-				if currentStage == STAGE_SKIN then
-					skinHintShown = true
-					TutorialController.refresh()
-				end
-			end)
-		end
 	end
 	if stageChanged or targetChanged or not visualsReady then
 		visualsReady = buildVisuals(stage)

@@ -78,7 +78,6 @@ local SOUND_LEGEND = "legend"
 local SOUND_GRADUATION = "graduation"
 local SOUND_COMBO = "combo"
 local SOUND_TICKET = "ticket"
-local SOUND_SKIN = "skin"
 local SOUND_DOOR = "door_open"
 local SOUND_SIT = "sit"
 
@@ -825,16 +824,6 @@ end
 handlers.mission = function()
 	HudController.banner("미션 완료! 원서 +1")
 	sound(SOUND_TICKET)
-	haptic("small")
-end
-
--- 스킨: 재도색·반짝은 PadController.applySkin, 여기선 소리
-handlers.skin = function(payload: any)
-	-- SkinApplied 는 전원에게 오므로 내 부지만 울린다
-	if type(payload.plot) == "number" and payload.plot ~= PadController.myPlot() then
-		return
-	end
-	sound(SOUND_SKIN)
 	haptic("small")
 end
 

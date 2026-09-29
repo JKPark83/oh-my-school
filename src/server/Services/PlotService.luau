@@ -1,9 +1,9 @@
 --!nonstrict
 --[[
 	부지 12개 + 광장. 기획서 §7.1·§7.5·§11.4, 계획서 §3.2·§3.5.
-	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 7개)를 만든다.
+	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 6개)를 만든다.
 	  - 접속 순서로 번호가 가장 작은 빈 부지를 준다. 나가면 즉시 비운다.
-	  - 시설 모델은 buildFacility 가 Geometry/<id>.build 로 넣는다(어트리뷰트 Built/FacilityId/Skin/BuiltAt).
+	  - 시설 모델은 buildFacility 가 Geometry/<id>.build 로 넣는다(어트리뷰트 Built/FacilityId/BuiltAt).
 	  - 패드 상태·실루엣·스티커 스폰 수는 프로필의 facilities 에서 파생해 refresh 한다.
 	  - 스티커·별 Touched 는 여기서 받아 BindableEvent 로 넘긴다(EconomyService 가 구독). 이 모듈은 Economy 를 모른다.
 	  - 서버 순간이동은 teleport 한 곳을 지나고 Teleported 를 쏜다(goHome 도 이것을 쓴다).
@@ -19,7 +19,6 @@ local Workspace = game:GetService("Workspace")
 
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
@@ -161,7 +160,6 @@ local function resetState(plotId: number)
 	folder:SetAttribute(Keys.ATTR_OWNER_NAME, "")
 	folder:SetAttribute(Keys.ATTR_GRADUATIONS, 0)
 	folder:SetAttribute(Keys.ATTR_FACILITIES, "")
-	folder:SetAttribute(Keys.ATTR_SKINS, "")
 	folder:SetAttribute(Keys.ATTR_STUDENTS, "")
 	folder:SetAttribute(Keys.ATTR_INCOME, 0)
 	setGateSign(plotId, "")
@@ -204,7 +202,7 @@ local function refreshSilhouette(plotId: number, built: { [string]: boolean })
 	if not builder then
 		return
 	end
-	local silhouette = builder.build(cframes[plotId], 1)
+	local silhouette = builder.build(cframes[plotId])
 	BuildKit.localizeAttachments(silhouette)
 	silhouette.Name = Keys.SILHOUETTE
 	silhouette:SetAttribute(Keys.ATTR_FACILITY_ID, afterRow.id)
@@ -340,7 +338,7 @@ local function refreshWorld(plotId: number, built: { [string]: boolean })
 	refreshStickers(plotId, built)
 end
 
-local function insertFacility(plotId: number, facilityId: string, skinIndex: number, fresh: boolean): Model?
+local function insertFacility(plotId: number, facilityId: string, fresh: boolean): Model?
 	local builder = facilityBuilder(facilityId)
 	if not builder then
 		return nil
@@ -350,12 +348,11 @@ local function insertFacility(plotId: number, facilityId: string, skinIndex: num
 	if old then
 		old:Destroy()
 	end
-	local facility = builder.build(cframes[plotId], skinIndex)
+	local facility = builder.build(cframes[plotId])
 	BuildKit.localizeAttachments(facility)
 	facility.Name = facilityId
 	facility:SetAttribute(Keys.ATTR_BUILT, true)
 	facility:SetAttribute(Keys.ATTR_FACILITY_ID, facilityId)
-	facility:SetAttribute(Keys.ATTR_SKIN, skinIndex)
 	if fresh then
 		facility:SetAttribute("BuiltAt", Workspace:GetServerTimeNow())
 	end
@@ -524,7 +521,7 @@ function PlotService.assign(player: Player): number?
 	if profile then
 		for _, id in FacilityConfig.ORDER do
 			if profile.facilities[id] then
-				insertFacility(plotId, id, profile.skinsApplied[id] or 1, false)
+				insertFacility(plotId, id, false)
 			end
 		end
 		refreshWorld(plotId, profile.facilities)
@@ -580,7 +577,7 @@ function PlotService.state(plotId: number): Folder
 	return stateFolders[plotId]
 end
 
---- 프로필 → PlotState 어트리뷰트 7개 + 교문 현판
+--- 프로필 → PlotState 어트리뷰트 6개 + 교문 현판
 function PlotService.syncAttributes(player: Player)
 	local plotId = plotOf[player]
 	local profile: Types.Profile? = DataService.get(player)
@@ -597,7 +594,6 @@ function PlotService.syncAttributes(player: Player)
 	folder:SetAttribute(Keys.ATTR_OWNER_NAME, player.DisplayName)
 	folder:SetAttribute(Keys.ATTR_GRADUATIONS, profile.graduations)
 	folder:SetAttribute(Keys.ATTR_FACILITIES, FacilityConfig.toCsv(profile.facilities))
-	folder:SetAttribute(Keys.ATTR_SKINS, SkinConfig.toCsv(profile.skinsApplied))
 	folder:SetAttribute(Keys.ATTR_STUDENTS, StudentConfig.toCsv(profile.students))
 	folder:SetAttribute(Keys.ATTR_INCOME, math.floor(EconomyConfig.incomePerSecond(profile)))
 	setGateSign(plotId, player.DisplayName)
@@ -610,7 +606,7 @@ function PlotService.buildFacility(player: Player, facilityId: string): Model?
 	if not plotId or not profile then
 		return nil
 	end
-	local facility = insertFacility(plotId, facilityId, profile.skinsApplied[facilityId] or 1, true)
+	local facility = insertFacility(plotId, facilityId, true)
 	refreshWorld(plotId, profile.facilities)
 	PlotService.syncAttributes(player)
 	return facility
@@ -625,19 +621,6 @@ function PlotService.teardown(player: Player)
 	end
 	removeFacilities(plotId)
 	refreshWorld(plotId, if profile then profile.facilities else {})
-	PlotService.syncAttributes(player)
-end
-
---- 스킨 적용: 모델 어트리뷰트 + PlotState. 색은 클라가 칠한다
-function PlotService.applySkin(player: Player, facilityId: string, skinIndex: number)
-	local plotId = plotOf[player]
-	if not plotId then
-		return
-	end
-	local facility = plotModels[plotId]:FindFirstChild(facilityId)
-	if facility then
-		facility:SetAttribute(Keys.ATTR_SKIN, skinIndex)
-	end
 	PlotService.syncAttributes(player)
 end
 

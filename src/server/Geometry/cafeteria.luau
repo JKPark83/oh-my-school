@@ -1,13 +1,12 @@
 --!strict
 --[[
 	급식실(시설 6) — 30×30 방 + 배식대·식탁. 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 8. 배식대(몸통+상판+식판 3) = 5. 식탁 2(상판+다리) = 4. 의자 4(좌판 블록+등받이) = 8.
 	  바닥판은 Shell 바닥 위에 얹는 얇은 판이라 방 바닥 높이 = center.Y + FLOOR_T 이고 자리 Attachment 는 그 높이.
 	  식탁마다 마주 앉는 자리 둘: S01·S03 은 −Z 를, S02·S04 는 +Z 를 본다(Attachment LookVector).
-	  스킨: SkinRole "primary" = 식탁 상판, "secondary" = 식탁 다리·의자. 벽은 고정 크림색. 색과 재질 모두 스킨 것을 쓴다.
-	  Door = 남문 중심 바닥(Shell 바닥 높이), LookVector 가 방 안쪽(−Z). SkinSign = 문 옆 복도 쪽 눈높이.
-	  세 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
+	  Door = 남문 중심 바닥(Shell 바닥 높이), LookVector 가 방 안쪽(−Z).
+	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,17 +16,16 @@ local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Seats = require(ReplicatedStorage.Shared.Seats)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local cafeteria = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(240, 240, 240)
+local COLOR_SECONDARY = Color3.fromRGB(180, 180, 180)
+local MATERIAL = Enum.Material.SmoothPlastic
 
 local FACILITY_ID = script.Name
 local SIT_HIP = CharacterBuilder.SIT_HIP
 local SIT_DESK = CharacterBuilder.SIT_DESK
-local SIGN_EYE = 4.5
 
 local WALL_T = 1
 local ROOF_T = 1
@@ -72,11 +70,6 @@ local function attach(parent: Instance, name: string, cf: CFrame): Attachment
 	att.CFrame = cf
 	att.Parent = parent
 	return att
-end
-
-local function skinned(part: Part, role: string): Part
-	part:SetAttribute(Keys.ATTR_SKIN_ROLE, role)
-	return part
 end
 
 local function wallOpts(): BuildKit.Opts
@@ -125,16 +118,14 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	)
 end
 
-function cafeteria.build(plotCFrame: CFrame, skinIndex: number): Model
+function cafeteria.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[FACILITY_ID]
 	assert(row ~= nil, `FacilityConfig 에 {FACILITY_ID} 가 없다`)
 	assert(row.door == "S", `{FACILITY_ID}: 남문 기준으로 짓는다`)
-	local skin = SkinConfig.get(FACILITY_ID, skinIndex)
 
 	local model = Instance.new("Model")
 	model.Name = FACILITY_ID
 	model:SetAttribute(Keys.ATTR_FACILITY_ID, FACILITY_ID)
-	model:SetAttribute(Keys.ATTR_SKIN, skinIndex)
 
 	buildRoom(model, plotCFrame, row)
 
@@ -180,46 +171,34 @@ function cafeteria.build(plotCFrame: CFrame, skinIndex: number): Model
 	for t, dx in { -TABLE_DX, TABLE_DX } do
 		local x = cx + dx
 		local tableName = string.format("Table%02d", t)
-		skinned(
-			put(model, tableName .. "Top", TABLE_TOP, at(plotCFrame, x, floorY + SIT_DESK - TABLE_TOP.Y / 2, tableZ), {
-				color = skin.primary,
-				material = skin.material,
-			}),
-			ROLE_PRIMARY
-		)
-		skinned(
-			put(model, tableName .. "Leg", legSize, at(plotCFrame, x, floorY + legSize.Y / 2, tableZ), {
-				color = skin.secondary,
-				material = skin.material,
-			}),
-			ROLE_SECONDARY
-		)
+		put(model, tableName .. "Top", TABLE_TOP, at(plotCFrame, x, floorY + SIT_DESK - TABLE_TOP.Y / 2, tableZ), {
+			color = COLOR_PRIMARY,
+			material = MATERIAL,
+		})
+		put(model, tableName .. "Leg", legSize, at(plotCFrame, x, floorY + legSize.Y / 2, tableZ), {
+			color = COLOR_SECONDARY,
+			material = MATERIAL,
+		})
 		-- facing = 학생이 보는 방향의 z 부호. −1 이면 기본 CFrame(LookVector −Z), +1 이면 180° 돌린다
 		for _, facing in { -1, 1 } do
 			seatIndex += 1
 			local rot = if facing < 0 then CFrame.identity else CFrame.Angles(0, math.pi, 0)
 			local base = at(plotCFrame, x, floorY, tableZ - facing * CHAIR_DZ, rot)
 			local chairName = string.format("Chair%02d", seatIndex)
-			skinned(
-				put(model, chairName .. "Seat", CHAIR_SEAT, base * CFrame.new(0, CHAIR_SEAT.Y / 2, 0), {
-					color = skin.secondary,
-					material = skin.material,
-				}),
-				ROLE_SECONDARY
-			)
+			put(model, chairName .. "Seat", CHAIR_SEAT, base * CFrame.new(0, CHAIR_SEAT.Y / 2, 0), {
+				color = COLOR_SECONDARY,
+				material = MATERIAL,
+			})
 			-- 등받이는 보는 방향의 반대(로컬 +Z)
-			skinned(
-				put(
-					model,
-					chairName .. "Back",
-					CHAIR_BACK,
-					base * CFrame.new(0, SIT_HIP + CHAIR_BACK.Y / 2, CHAIR_SEAT.Z / 2 - CHAIR_BACK.Z / 2),
-					{
-						color = skin.secondary,
-						material = skin.material,
-					}
-				),
-				ROLE_SECONDARY
+			put(
+				model,
+				chairName .. "Back",
+				CHAIR_BACK,
+				base * CFrame.new(0, SIT_HIP + CHAIR_BACK.Y / 2, CHAIR_SEAT.Z / 2 - CHAIR_BACK.Z / 2),
+				{
+					color = COLOR_SECONDARY,
+					material = MATERIAL,
+				}
 			)
 			attach(seats, Seats.attachmentName(seatIndex), base)
 		end
@@ -228,7 +207,6 @@ function cafeteria.build(plotCFrame: CFrame, skinIndex: number): Model
 
 	local doorZ = cz + hz
 	attach(model, Keys.DOOR, at(plotCFrame, cx, row.center.Y, doorZ))
-	attach(model, Keys.SKIN_SIGN, at(plotCFrame, cx + DOOR_W / 2 + 1.5, row.center.Y + SIGN_EYE, doorZ + 1.5))
 
 	return model
 end

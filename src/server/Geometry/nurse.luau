@@ -1,14 +1,13 @@
 --!strict
 --[[
 	보건실(시설 8) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 23개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 23개(≤25), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위에 얹는 얇은 판이라
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
 	  Seats/S01 = 침대 옆 의자. Attachment 위치 = 의자 아래 바닥 중심, LookVector = 학생이 보는 방향(침대 쪽 -X).
-	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z). SkinSign = 문 옆 복도 쪽 눈높이.
-	  세 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
-	  스킨: SkinRole "primary" = 커튼, "secondary" = 이불. 색과 재질 모두 스킨 것을 쓴다.
+	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z).
+	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,19 +16,18 @@ local BuildKit = require(script.Parent.Parent.BuildKit)
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local nurse = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(245, 245, 245)
+local COLOR_SECONDARY = Color3.fromRGB(200, 220, 240)
+local MATERIAL = Enum.Material.Fabric
 
 local WALL_T = 1 -- 벽 두께
 local ROOF_T = 1
 local FLOOR_T = 0.2 -- Shell 바닥 위에 얹는 방 바닥 판 두께
 local DOOR_W = 8
 local DOOR_H = 8
-local SIGN_EYE = 4.5 -- 페인트 롤러 팻말 눈높이
 local SIT_HIP = CharacterBuilder.SIT_HIP
 local SIT_DESK = CharacterBuilder.SIT_DESK
 
@@ -164,10 +162,9 @@ local function buildChair(
 	})
 end
 
-function nurse.build(plotCFrame: CFrame, skinIndex: number): Model
+function nurse.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[script.Name]
 	assert(row, `FacilityConfig 에 {script.Name} 행이 없다`)
-	local skin = SkinConfig.get(row.id, skinIndex)
 	local cx, cz = row.center.X, row.center.Z
 	local floorTop = row.center.Y + FLOOR_T
 	local northZ = cz - row.size.Z / 2 + WALL_T / 2
@@ -197,11 +194,10 @@ function nurse.build(plotCFrame: CFrame, skinIndex: number): Model
 		at(plotCFrame, bx, floorTop + 1.5, bz - 2.3),
 		{ color = COLOR_WHITE }
 	)
-	local blanket = part(model, "Blanket", Vector3.new(3.1, 0.25, 3.8), at(plotCFrame, bx, floorTop + 1.42, bz + 1.1), {
-		color = skin.secondary,
-		material = skin.material,
+	part(model, "Blanket", Vector3.new(3.1, 0.25, 3.8), at(plotCFrame, bx, floorTop + 1.42, bz + 1.1), {
+		color = COLOR_SECONDARY,
+		material = MATERIAL,
 	})
-	blanket:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
 
 	-- 커튼(primary): 침대와 방 사이에 레일에서 늘어뜨린다
 	local curtainX = cx - 2.4
@@ -209,13 +205,12 @@ function nurse.build(plotCFrame: CFrame, skinIndex: number): Model
 		color = COLOR_STEEL,
 		material = Enum.Material.Metal,
 	})
-	local curtain = part(model, "Curtain", Vector3.new(0.3, 7, 7.6), at(plotCFrame, curtainX, floorTop + 5, bz), {
-		color = skin.primary,
-		material = skin.material,
+	part(model, "Curtain", Vector3.new(0.3, 7, 7.6), at(plotCFrame, curtainX, floorTop + 5, bz), {
+		color = COLOR_PRIMARY,
+		material = MATERIAL,
 		collide = false,
 		cast = false,
 	})
-	curtain:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
 
 	-- 의자 S01: 침대 옆에서 침대(-X)를 본다
 	local chairX, chairZ = cx - 4.6, cz + 3
@@ -262,9 +257,8 @@ function nurse.build(plotCFrame: CFrame, skinIndex: number): Model
 		material = Enum.Material.Metal,
 	})
 
-	-- 문(복도 쪽 북벽) 과 팻말
+	-- 문(복도 쪽 북벽)
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, northZ, CFrame.Angles(0, math.pi, 0)))
-	attachment(model, Keys.SKIN_SIGN, at(plotCFrame, cx + 6, floorTop + SIGN_EYE, northZ - 1.2))
 
 	return model
 end

@@ -1,13 +1,12 @@
 --!strict
 --[[
 	체육관(시설 12) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 21개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 21개(≤25), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  별동 30×45, 높이 20. 문은 서쪽(-X, 본관 쪽) 폭 8·높이 9: 서벽을 두 조각 + 상인방으로 비운다. 벽·지붕은 fade.
 	  코트는 남북(Z) 방향이라 골대 둘이 북·남 끝에 선다. 좌석 없음(Seats 폴더는 비어 있다).
-	  Door = 서문 중심 바닥(LookVector 가 안쪽 +X). SkinSign = 문 옆 바깥 눈높이.
-	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
-	  스킨: SkinRole "primary" = 코트 바닥, "secondary" = 매트 둘.
+	  Door = 서문 중심 바닥(LookVector 가 안쪽 +X).
+	  Door Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,19 +14,18 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local gym = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(200, 160, 100)
+local COLOR_SECONDARY = Color3.fromRGB(150, 110, 60)
+local MATERIAL = Enum.Material.WoodPlanks
 
 local WALL_T = 1
 local ROOF_T = 1
 local FLOOR_T = 0.2
 local DOOR_W = 8
 local DOOR_H = 9
-local SIGN_EYE = 4.5
 local LINE_T = 0.06 -- 코트 선 두께(바닥 위에 얹는다)
 local HOOP_H = 8 -- 림 높이
 
@@ -151,10 +149,9 @@ local function buildHoop(
 	)
 end
 
-function gym.build(plotCFrame: CFrame, skinIndex: number): Model
+function gym.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[script.Name]
 	assert(row, `FacilityConfig 에 {script.Name} 행이 없다`)
-	local skin = SkinConfig.get(row.id, skinIndex)
 	local cx, cz = row.center.X, row.center.Z
 	local w, d = row.size.X, row.size.Z
 	local floorTop = row.center.Y + FLOOR_T
@@ -169,10 +166,9 @@ function gym.build(plotCFrame: CFrame, skinIndex: number): Model
 
 	-- 코트 바닥(primary)
 	local floor = part(model, "Floor", Vector3.new(w, FLOOR_T, d), at(plotCFrame, cx, row.center.Y + FLOOR_T / 2, cz), {
-		color = skin.primary,
-		material = skin.material,
+		color = COLOR_PRIMARY,
+		material = MATERIAL,
 	})
-	floor:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
 	model.PrimaryPart = floor
 
 	local lintel = buildShell(model, plotCFrame, row)
@@ -192,17 +188,10 @@ function gym.build(plotCFrame: CFrame, skinIndex: number): Model
 
 	-- 매트 둘(secondary) · 뜀틀 · 공: 동쪽 벽 쪽
 	for _, side in { { name = "N", dz = -15 }, { name = "S", dz = 15 } } do
-		local mat = part(
-			model,
-			"Mat" .. side.name,
-			Vector3.new(6, 0.3, 4),
-			at(plotCFrame, cx + 7, floorTop + 0.15, cz + side.dz),
-			{
-				color = skin.secondary,
-				material = skin.material,
-			}
-		)
-		mat:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
+		part(model, "Mat" .. side.name, Vector3.new(6, 0.3, 4), at(plotCFrame, cx + 7, floorTop + 0.15, cz + side.dz), {
+			color = COLOR_SECONDARY,
+			material = MATERIAL,
+		})
 	end
 	part(model, "VaultBox", Vector3.new(3, 3.5, 2), at(plotCFrame, cx + 7, floorTop + 1.75, cz), {
 		color = COLOR_LEATHER,
@@ -213,9 +202,8 @@ function gym.build(plotCFrame: CFrame, skinIndex: number): Model
 		shape = Enum.PartType.Ball,
 	})
 
-	-- 문(서쪽) 과 팻말(문 남쪽 바깥)
+	-- 문(서쪽)
 	attachment(model, Keys.DOOR, at(plotCFrame, westX, floorTop, cz, CFrame.Angles(0, -math.pi / 2, 0)))
-	attachment(model, Keys.SKIN_SIGN, at(plotCFrame, westX - 1.2, floorTop + SIGN_EYE, cz + 6))
 
 	return model
 end

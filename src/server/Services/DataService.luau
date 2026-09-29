@@ -25,6 +25,7 @@ local STORE_NAME = "PrincipalProfile"
 local SCHEMA_VERSION = 1
 local SYNC_INTERVAL = 1
 
+-- 색 바꾸기 필드 두 개를 지우며 버전을 올리지 않았다. 실 데이터가 없고 Reconcile 은 남는 키를 건드리지 않는다
 local TEMPLATE: Types.Profile = {
 	version = SCHEMA_VERSION,
 	coins = 10,
@@ -32,8 +33,6 @@ local TEMPLATE: Types.Profile = {
 	stickerBoard = 0,
 	graduations = 0,
 	facilities = {},
-	skinsOwned = {},
-	skinsApplied = {},
 	students = {},
 	pity = 0,
 	missions = { day = 0, stickers = 0, built = 0, chair = false, done = { false, false, false } },

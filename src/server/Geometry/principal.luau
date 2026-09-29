@@ -1,7 +1,7 @@
 --!strict
 --[[
 	교장실(시설 11) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 22개(≤25).
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 22개(≤25).
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위 얇은 판이라
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
@@ -9,9 +9,8 @@
 	    Anchored · CanCollide · Disabled=false. 미션 "교장 의자에 앉기" 가 이름으로 찾는다(Keys.PRINCIPAL_CHAIR).
 	    BuildKit.part 는 Part 만 만들므로 이 하나만 Instance.new("Seat") 로 같은 속성을 준다.
 	  Seats/S01 = 손님 의자(부지 로컬 (50, -2.5), 교장 의자를 바라본다).
-	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z). SkinSign = 문 옆 복도 쪽 눈높이.
-	  세 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
-	  스킨: SkinRole "primary" = 책상 상판 · 서랍장 둘, "secondary" = 교장 의자 · 등받이.
+	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z).
+	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,19 +19,18 @@ local BuildKit = require(script.Parent.Parent.BuildKit)
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local principal = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(110, 70, 40)
+local COLOR_SECONDARY = Color3.fromRGB(60, 40, 25)
+local MATERIAL = Enum.Material.Wood
 
 local WALL_T = 1
 local ROOF_T = 1
 local FLOOR_T = 0.2
 local DOOR_W = 8
 local DOOR_H = 8
-local SIGN_EYE = 4.5
 local SIT_HIP = CharacterBuilder.SIT_HIP
 local SIT_DESK = CharacterBuilder.SIT_DESK
 
@@ -160,27 +158,24 @@ local function buildChair(parent: Instance, name: string, base: CFrame, color: C
 end
 
 --- 교장 의자: 진짜 Seat + 등받이 + 기둥. base = 바닥 중심, LookVector = 앉은 사람이 보는 방향(남쪽).
-local function buildPrincipalChair(parent: Instance, base: CFrame, skin: SkinConfig.Skin)
+local function buildPrincipalChair(parent: Instance, base: CFrame)
 	local seat = Instance.new("Seat")
 	seat.Name = Keys.PRINCIPAL_CHAIR
 	seat.Size = Vector3.new(2.6, 0.5, 2.6)
 	seat.CFrame = base * CFrame.new(0, SIT_HIP - 0.25, 0)
-	seat.Color = skin.secondary
-	seat.Material = skin.material
+	seat.Color = COLOR_SECONDARY
+	seat.Material = MATERIAL
 	seat.Anchored = true
 	seat.CanCollide = true
 	seat.Disabled = false
 	seat.TopSurface = Enum.SurfaceType.Smooth
 	seat.BottomSurface = Enum.SurfaceType.Smooth
-	seat:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
 	seat.Parent = parent
 
-	local back =
-		part(parent, "PrincipalChairBack", Vector3.new(2.6, 3.2, 0.5), base * CFrame.new(0, SIT_HIP + 1.6, 1.55), {
-			color = skin.secondary,
-			material = skin.material,
-		})
-	back:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
+	part(parent, "PrincipalChairBack", Vector3.new(2.6, 3.2, 0.5), base * CFrame.new(0, SIT_HIP + 1.6, 1.55), {
+		color = COLOR_SECONDARY,
+		material = MATERIAL,
+	})
 	part(
 		parent,
 		"PrincipalChairPost",
@@ -193,10 +188,9 @@ local function buildPrincipalChair(parent: Instance, base: CFrame, skin: SkinCon
 	)
 end
 
-function principal.build(plotCFrame: CFrame, skinIndex: number): Model
+function principal.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[script.Name]
 	assert(row, `FacilityConfig 에 {script.Name} 행이 없다`)
-	local skin = SkinConfig.get(row.id, skinIndex)
 	local cx, cz = row.center.X, row.center.Z
 	local floorTop = row.center.Y + FLOOR_T
 	local northZ = cz - row.size.Z / 2 + WALL_T / 2
@@ -214,23 +208,20 @@ function principal.build(plotCFrame: CFrame, skinIndex: number): Model
 	BuildKit.surfaceText(lintel, Enum.NormalId.Front, row.name, COLOR_LABEL, 1.3)
 
 	-- 교장 의자(남쪽을 본다) 와 그 앞의 큰 책상(primary)
-	buildPrincipalChair(model, at(plotCFrame, CHAIR_X, floorTop, CHAIR_Z, CFrame.Angles(0, math.pi, 0)), skin)
+	buildPrincipalChair(model, at(plotCFrame, CHAIR_X, floorTop, CHAIR_Z, CFrame.Angles(0, math.pi, 0)))
 	local deskZ = CHAIR_Z + 3.8
-	local deskTop =
-		part(model, "DeskTop", Vector3.new(9, 0.5, 3.6), at(plotCFrame, CHAIR_X, floorTop + SIT_DESK - 0.25, deskZ), {
-			color = skin.primary,
-			material = skin.material,
-		})
-	deskTop:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
+	part(model, "DeskTop", Vector3.new(9, 0.5, 3.6), at(plotCFrame, CHAIR_X, floorTop + SIT_DESK - 0.25, deskZ), {
+		color = COLOR_PRIMARY,
+		material = MATERIAL,
+	})
 	for _, side in { { name = "W", dx = -3.4 }, { name = "E", dx = 3.4 } } do
-		local cabinet = part(
+		part(
 			model,
 			"DeskCabinet" .. side.name,
 			Vector3.new(2, SIT_DESK - 0.5, 3.2),
 			at(plotCFrame, CHAIR_X + side.dx, floorTop + (SIT_DESK - 0.5) / 2, deskZ),
-			{ color = skin.primary, material = skin.material }
+			{ color = COLOR_PRIMARY, material = MATERIAL }
 		)
-		cabinet:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
 	end
 
 	-- 손님 의자 S01: 교장 의자 쪽을 바라본다
@@ -277,9 +268,8 @@ function principal.build(plotCFrame: CFrame, skinIndex: number): Model
 	})
 	BuildKit.surfaceText(plaque, Enum.NormalId.Front, "교훈: 바르게 슬기롭게", COLOR_LABEL, 1.1)
 
-	-- 문과 팻말
+	-- 문
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, northZ, CFrame.Angles(0, math.pi, 0)))
-	attachment(model, Keys.SKIN_SIGN, at(plotCFrame, cx + 6, floorTop + SIGN_EYE, northZ - 1.2))
 
 	return model
 end

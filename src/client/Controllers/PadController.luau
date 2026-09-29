@@ -9,7 +9,7 @@
 	  클라 예측(0.5초 안에 확정이 없으면 되돌림)
 	- 칭찬스티커판: 내 부지 현관 벽 판의 SurfaceGui 에 60칸을 그리고 프로필 stickerBoard 만큼 채운다
 	- 시설 등장: Built=true 모델이 들어오면 파트를 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장)
-	- 스킨 팻말(페인트 롤러 팻말)·졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
+	- 졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
 	- 다른 부지의 접수대 프롬프트는 로컬에서 끄고, 「우리 학교로」 팻말 프롬프트는 반대로 내 부지에서만 끈다
 	- 방문객 별(하늘색)도 히트박스 + 로컬 표시판이다. 남의 부지에서만 판을 그린다(내 별은 안 보임, §7.5)
 
@@ -31,7 +31,6 @@ local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
@@ -52,15 +51,12 @@ local StudentRenderController = require(script.Parent.StudentRenderController) :
 
 local PadController = {}
 
-local SKIN_ROLE_PRIMARY = "primary"
-
 -- PadState 값(Keys.ATTR_PAD_STATE 주석과 서버 PlotService.refreshPads)
 local PAD_ACTIVE = "active"
 local PAD_NEXT = "next"
 local PAD_BUILT = "built"
 
 -- 패널 이름(계획 §3.4 PanelController.open)
-local PANEL_SKIN = "skin"
 local PANEL_GRADUATE = "graduate"
 local PANEL_GACHA = "gacha"
 
@@ -117,8 +113,6 @@ local APPEAR_DROP = 6 -- 스터드
 local APPEAR_SECONDS = 0.5
 local APPEAR_STAGGER = 0.05
 local APPEAR_DELAY = 0.05
-local SKIN_SECONDS = 0.3
-local SPARKLE_COUNT = 8
 local HINT_COOLDOWN = 1
 local HINT_SECONDS = 0.4
 local SILHOUETTE_ALPHA = 0.7 -- 서버 PlotService.SILHOUETTE_TRANSPARENCY 와 같다
@@ -180,7 +174,6 @@ type FacilityEntry = {
 	model: Model,
 	plotId: number,
 	facilityId: string,
-	sign: BillboardGui?,
 	bell: BillboardGui?,
 	conns: { RBXScriptConnection },
 }
@@ -277,7 +270,7 @@ local function newLabel(parent: Instance, text: string, size: number, color: Col
 	return label
 end
 
---- 56px 원형 탭 버튼 빌보드. 스킨 팻말·졸업 종에 쓴다
+--- 56px 원형 탭 버튼 빌보드. 졸업 종에 쓴다
 local function newTapButton(
 	name: string,
 	adornee: Instance,
@@ -319,25 +312,6 @@ local function newLocalPart(name: string, size: Vector3, cframe: CFrame, color: 
 	part.CastShadow = false
 	part.Parent = fxFolder
 	return part
-end
-
---- 임시 파트에 파티클 하나 달아 n 개만 뿜고 치운다(Rate 0 + Emit)
-local function sparkle(position: Vector3, count: number, color: Color3)
-	local holder = newLocalPart("Sparkle", Vector3.new(0.2, 0.2, 0.2), CFrame.new(position), color)
-	holder.Transparency = 1
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Rate = 0
-	emitter.Lifetime = NumberRange.new(0.5, 0.9)
-	emitter.Speed = NumberRange.new(6, 10)
-	emitter.SpreadAngle = Vector2.new(180, 180)
-	emitter.Size = NumberSequence.new(0.5, 0)
-	emitter.Color = ColorSequence.new(color)
-	emitter.LightEmission = 1
-	emitter.Parent = holder
-	emitter:Emit(count)
-	task.delay(1.2, function()
-		holder:Destroy()
-	end)
 end
 
 -- ── 구매 패드 ────────────────────────────────────────────────────
@@ -1033,62 +1007,9 @@ local function appear(model: Model)
 	end
 end
 
---- 페인트 롤러 팻말. 왼쪽에 롤러 그림(이미지 에셋 없이 Frame), 오른쪽에 「색 바꾸기」. 그림이 먼저, 글자는 보조
-local function newSkinSign(name: string, adornee: Instance): (BillboardGui, TextButton)
-	local gui, button = newTapButton(name, adornee, "", 128, COLOR_PANEL)
-	local function box(parent: Instance, size: Vector2, pos: Vector2, color: Color3, radius: number): Frame
-		local frame = Instance.new("Frame")
-		frame.Size = UDim2.fromOffset(size.X, size.Y)
-		frame.Position = UDim2.fromOffset(pos.X, pos.Y)
-		frame.BackgroundColor3 = color
-		frame.BorderSizePixel = 0
-		frame.Parent = parent
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, radius)
-		corner.Parent = frame
-		return frame
-	end
-	-- 롤러 그림 34px 높이를 버튼(56) 세로 가운데에 둔다
-	local roller = Instance.new("Frame")
-	roller.Name = "Roller"
-	roller.BackgroundTransparency = 1
-	roller.Size = UDim2.fromOffset(24, 34)
-	roller.Position = UDim2.fromOffset(16, 11)
-	roller.Parent = button
-	box(roller, Vector2.new(24, 12), Vector2.new(0, 0), Color3.fromRGB(191, 219, 254), 4) -- 롤러 원통(연한 파랑)
-	box(roller, Vector2.new(4, 14), Vector2.new(10, 12), COLOR_WHITE, 1) -- 손잡이 대
-	local grip = box(roller, Vector2.new(6, 8), Vector2.new(9, 26), Color3.fromRGB(17, 24, 39), 2) -- 손잡이
-	local gripStroke = Instance.new("UIStroke")
-	gripStroke.Color = COLOR_WHITE
-	gripStroke.Thickness = 1
-	gripStroke.Parent = grip
-	local label = newLabel(button, "색 바꾸기", 18, COLOR_WHITE)
-	label.Size = UDim2.new(1, -52, 1, 0)
-	label.Position = UDim2.fromOffset(46, 0)
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	return gui, button
-end
-
 local function refreshFacility(entry: FacilityEntry)
 	local mine = entry.plotId == myPlotId
 	local model = entry.model
-
-	-- 스킨 팻말(페인트 롤러 팻말): 내 부지의 지은 시설마다 SkinSign Attachment 위
-	local signAt = model:FindFirstChild(Keys.SKIN_SIGN, true)
-	if mine and signAt and signAt:IsA("Attachment") then
-		if not entry.sign then
-			local gui, button = newSkinSign("SkinSign_" .. entry.facilityId, signAt)
-			entry.sign = gui
-			button.Activated:Connect(function()
-				PanelController.open(PANEL_SKIN, { facilityId = entry.facilityId })
-			end)
-		elseif entry.sign.Adornee ~= signAt then
-			entry.sign.Adornee = signAt
-		end
-	elseif entry.sign then
-		entry.sign:Destroy()
-		entry.sign = nil
-	end
 
 	-- 졸업 종: GraduationBell 파트가 있는 모델(강당)에, 14/14 일 때만
 	local bellPart = model:FindFirstChild(Keys.GRADUATION_BELL, true)
@@ -1116,9 +1037,6 @@ local function unwatchFacility(model: Instance)
 		return
 	end
 	disconnectAll(entry.conns)
-	if entry.sign then
-		entry.sign:Destroy()
-	end
 	if entry.bell then
 		entry.bell:Destroy()
 	end
@@ -1133,7 +1051,6 @@ local function watchFacility(model: Instance, plotId: number, animate: boolean)
 		model = model,
 		plotId = plotId,
 		facilityId = model.Name,
-		sign = nil,
 		bell = nil,
 		conns = {},
 	}
@@ -1184,12 +1101,11 @@ local function onPlotDescendantAdded(inst: Instance, plotId: number)
 		end
 		return
 	end
-	local late = (inst:IsA("Attachment") and inst.Name == Keys.SKIN_SIGN)
-		or (inst:IsA("BasePart") and inst.Name == Keys.GRADUATION_BELL)
+	local late = inst:IsA("BasePart") and inst.Name == Keys.GRADUATION_BELL
 	if not late then
 		return
 	end
-	-- 스트리밍으로 늦게 온 팻말 위치·종 → 소속 시설 모델을 찾아 다시 붙인다
+	-- 스트리밍으로 늦게 온 종 → 소속 시설 모델을 찾아 다시 붙인다
 	local node = inst.Parent
 	while node do
 		local entry = facilities[node :: any]
@@ -1462,32 +1378,6 @@ function PadController.refresh()
 	refreshAll()
 end
 
---- SkinApplied: SkinRole 파트를 0.3초 색 전환 + 재질 교체 + 반짝 8개
-function PadController.applySkin(payload: { plot: number, facilityId: string, skinIndex: number })
-	local model = plotModels[payload.plot]
-	local facility = if model then model:FindFirstChild(payload.facilityId) else nil
-	if not facility or not SkinConfig.isValidIndex(payload.skinIndex) then
-		return
-	end
-	local skin = SkinConfig.get(payload.facilityId, payload.skinIndex)
-	local info = TweenInfo.new(SKIN_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	for _, part in facility:GetDescendants() do
-		if not part:IsA("BasePart") then
-			continue
-		end
-		local role = part:GetAttribute(Keys.ATTR_SKIN_ROLE)
-		if role == nil then
-			continue
-		end
-		local color = if role == SKIN_ROLE_PRIMARY then skin.primary else skin.secondary
-		part.Material = skin.material
-		TweenService:Create(part, info, { Color = color }):Play()
-	end
-	if facility:IsA("Model") then
-		sparkle(facility:GetPivot().Position + Vector3.new(0, 3, 0), SPARKLE_COUNT, skin.primary)
-	end
-end
-
 --- StickerCollected: 예측한 스티커를 확정한다(Collected 가 올 때까지 숨긴 채 둔다)
 -- 서버 combo 로 다음 예측 음정을 맞춘다(끊기면 1 로 돌아와 낮은 음부터)
 function PadController.confirmSticker(payload: { stickerId: any, combo: number? })
@@ -1531,14 +1421,6 @@ function PadController.stickerPosition(stickerId: any): Vector3?
 		end
 	end
 	return nil
-end
-
---- 내 부지 시설의 스킨 팻말 위치(월드)
-function PadController.skinSignPosition(facilityId: string): Vector3?
-	local model = if myPlotId then plotModels[myPlotId] else nil
-	local facility = if model then model:FindFirstChild(facilityId) else nil
-	local sign = if facility then facility:FindFirstChild(Keys.SKIN_SIGN, true) else nil
-	return if sign and sign:IsA("Attachment") then sign.WorldPosition else nil
 end
 
 --- 아무 부지 시설 모델의 피벗 위치(월드). 없으면 nil

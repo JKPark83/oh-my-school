@@ -1,6 +1,6 @@
 --!strict
 --[[
-	사운드 19종. 기획서 §9.6 표.
+	사운드 18종. 기획서 §9.6 표.
 
 	★ id 는 두 종류다. rbxassetid:// 는 Creator Store 의 무료 음원이고,
 	  rbxasset://sounds/* 는 로블록스 엔진 내장 음원을 pitch(PlaybackSpeed)와 volume 으로
@@ -61,8 +61,6 @@ local DEFS: { [string]: SoundDef } = {
 	combo = { id = "rbxassetid://9126073064", volume = 0.5, speed = 1, looped = false },
 	-- 원서 받음(스티커판 60칸·미션 완료). APM "Correct Answer 2"(윤기 있는 신스) 4.6초
 	ticket = { id = "rbxassetid://1839997929", volume = 0.6, speed = 1, looped = false },
-	-- 스킨 적용. 문 소리(door_open)와 같은 swoosh 였던 것을 전용음으로. PSE "Spray Paint 6" 1.3초
-	skin = { id = "rbxassetid://9119522404", volume = 0.6, speed = 1, looped = false },
 	-- 스티커 획득. 콤보마다 호출 쪽 pitch 로 5음계를 올린다. PSE "Mouth Drips Cheek Pluck Water Liquid 10"(입 팝) 0.5초
 	sticker = { id = "rbxassetid://9117014265", volume = 0.55, speed = 1, looped = false },
 	-- 스티커 찾기 표식. 3초마다 판에 붙어 거리로 줄어드는 잔잔한 반짝(개선계획 §3.2 #9, 볼륨 ≤0.2).

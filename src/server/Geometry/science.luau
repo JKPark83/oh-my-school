@@ -1,14 +1,13 @@
 --!strict
 --[[
 	과학실(시설 9) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame, skinIndex) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 23개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 23개(≤25), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위 얇은 판이라
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
 	  Seats/S01·S02 = 실험대 앞 스툴 둘(북쪽 -Z 를 본다). Attachment 위치 = 스툴 아래 바닥 중심.
-	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z). SkinSign = 문 옆 복도 쪽 눈높이.
-	  세 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
-	  스킨: SkinRole "primary" = 실험대 상판 둘, "secondary" = 실험대 몸통 둘.
+	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z).
+	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,19 +16,18 @@ local BuildKit = require(script.Parent.Parent.BuildKit)
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
-local SkinConfig = require(ReplicatedStorage.Shared.Config.SkinConfig)
 
 local science = {}
 
-local ROLE_PRIMARY = "primary"
-local ROLE_SECONDARY = "secondary"
+local COLOR_PRIMARY = Color3.fromRGB(120, 125, 130)
+local COLOR_SECONDARY = Color3.fromRGB(80, 85, 90)
+local MATERIAL = Enum.Material.Metal
 
 local WALL_T = 1
 local ROOF_T = 1
 local FLOOR_T = 0.2
 local DOOR_W = 8
 local DOOR_H = 8
-local SIGN_EYE = 4.5
 local SIT_HIP = CharacterBuilder.SIT_HIP
 local SIT_DESK = CharacterBuilder.SIT_DESK
 
@@ -142,23 +140,19 @@ local function buildBench(
 	suffix: string,
 	x: number,
 	floorTop: number,
-	z: number,
-	skin: SkinConfig.Skin
+	z: number
 ): CFrame
-	local top =
-		part(model, "BenchTop" .. suffix, Vector3.new(8, 0.5, 3), at(plotCFrame, x, floorTop + SIT_DESK - 0.25, z), {
-			color = skin.primary,
-			material = skin.material,
-		})
-	top:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_PRIMARY)
-	local base = part(
+	part(model, "BenchTop" .. suffix, Vector3.new(8, 0.5, 3), at(plotCFrame, x, floorTop + SIT_DESK - 0.25, z), {
+		color = COLOR_PRIMARY,
+		material = MATERIAL,
+	})
+	part(
 		model,
 		"BenchBase" .. suffix,
 		Vector3.new(7.4, SIT_DESK - 0.5, 2.6),
 		at(plotCFrame, x, floorTop + (SIT_DESK - 0.5) / 2, z),
-		{ color = skin.secondary, material = skin.material }
+		{ color = COLOR_SECONDARY, material = MATERIAL }
 	)
-	base:SetAttribute(Keys.ATTR_SKIN_ROLE, ROLE_SECONDARY)
 
 	-- 스툴: 실험대 남쪽, 북쪽(-Z)을 보고 앉는다
 	local sz = z + 2.9
@@ -182,10 +176,9 @@ local function buildBench(
 	return at(plotCFrame, x, floorTop, sz)
 end
 
-function science.build(plotCFrame: CFrame, skinIndex: number): Model
+function science.build(plotCFrame: CFrame): Model
 	local row = FacilityConfig.BY_ID[script.Name]
 	assert(row, `FacilityConfig 에 {script.Name} 행이 없다`)
-	local skin = SkinConfig.get(row.id, skinIndex)
 	local cx, cz = row.center.X, row.center.Z
 	local floorTop = row.center.Y + FLOOR_T
 	local northZ = cz - row.size.Z / 2 + WALL_T / 2
@@ -204,8 +197,8 @@ function science.build(plotCFrame: CFrame, skinIndex: number): Model
 
 	-- 실험대 둘 + 스툴 둘(S01 서쪽, S02 동쪽)
 	local benchZ = cz - 2
-	attachment(seats, seatName(1), buildBench(model, plotCFrame, "W", cx - 6, floorTop, benchZ, skin))
-	attachment(seats, seatName(2), buildBench(model, plotCFrame, "E", cx + 6, floorTop, benchZ, skin))
+	attachment(seats, seatName(1), buildBench(model, plotCFrame, "W", cx - 6, floorTop, benchZ))
+	attachment(seats, seatName(2), buildBench(model, plotCFrame, "E", cx + 6, floorTop, benchZ))
 
 	-- 서쪽 실험대 위 플라스크(원뿔 대신 구 + 목) 와 동쪽 실험대 위 비커
 	local topY = floorTop + SIT_DESK
@@ -256,9 +249,8 @@ function science.build(plotCFrame: CFrame, skinIndex: number): Model
 		})
 	BuildKit.surfaceText(poster, Enum.NormalId.Front, "원소 주기율표", COLOR_LABEL, 1.2)
 
-	-- 문과 팻말
+	-- 문
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, northZ, CFrame.Angles(0, math.pi, 0)))
-	attachment(model, Keys.SKIN_SIGN, at(plotCFrame, cx + 6, floorTop + SIGN_EYE, northZ - 1.2))
 
 	return model
 end
