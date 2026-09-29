@@ -30,7 +30,7 @@ export type PersonConfig = {
 	sitting: boolean, -- 앉은 자세면 엉덩이를 SIT_HIP 에 맞춘다. 아니면 발을 바닥에 둔다
 	collide: boolean, -- 클라이언트 전용 모델은 반드시 false
 	shadow: boolean,
-	tint: Color3?, -- 몸 전체 색조. nil 이면 원본 텍스처
+	tint: Color3?, -- 몸 전체 색조. fallback 원형으로 그릴 때만 입힌다. nil 이면 원본 텍스처
 }
 
 -- 앉은 자세의 엉덩이 높이(= 의자 앉는 면). 시설 가구가 이 값에 맞춰 만들어진다.
@@ -216,12 +216,14 @@ function CharacterBuilder.build(name: string, base: CFrame, config: PersonConfig
 	local bottom = if config.sitting then CharacterBuilder.SIT_HIP * config.scale - variant.hip * k else 0
 	model:PivotTo(base * CFrame.new(0, bottom, 0))
 
+	-- 전용 메시는 제 텍스처를 쓴다. 색조는 대체 원형으로 그릴 때만 입혀 누군지 구별한다
+	local tint = if key == config.fallback then config.tint else nil
 	for _, part in model:GetChildren() do
 		if part:IsA("BasePart") then
 			part.CanCollide = config.collide
 			part.CastShadow = config.shadow
-			if config.tint then
-				part.Color = config.tint
+			if tint then
+				part.Color = tint
 			end
 		end
 	end

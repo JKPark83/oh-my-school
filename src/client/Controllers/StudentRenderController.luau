@@ -558,7 +558,8 @@ local function decorate(model: Model, row: StudentConfig.Student): ParticleEmitt
 	local head = findPart(model, CharacterBuilder.HEAD_MESH)
 	local torso = findPart(model, PART_TORSO)
 
-	local propName = row.prop
+	-- 전용 메시에는 소품이 이미 들어 있다. 대체 원형으로 그릴 때만 붙인다
+	local propName = if model:GetAttribute("Variant") == row.fallbackVariant then row.prop else nil
 	local def = if propName then PROPS[propName] else nil
 	if def then
 		local host = if def.on == "head" then head else torso

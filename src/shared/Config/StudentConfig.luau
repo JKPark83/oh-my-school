@@ -2,8 +2,8 @@
 --[[
 	전학생 24명. 기획서 §4.1·§4.2·§4.4 를 그대로 옮겼다.
 	  mesh            CharacterAssets.VARIANTS 키. 없으면(아직 안 만든 희귀 메시) fallbackVariant + tint 로 그린다
-	  tint            몸 전체에 곱하는 색. nil 이면 원본 텍스처
-	  prop            소품 하나(≤1). 등급 표식(완장·메달·파티클)은 tier 가 정하므로 여기 없다
+	  tint            fallbackVariant 로 그릴 때 몸 전체에 곱하는 색. nil 이면 원본 텍스처
+	  prop            fallbackVariant 로 그릴 때 붙이는 소품 하나(≤1. 전용 메시엔 이미 있다). 등급 표식(완장·메달·파티클)은 tier 가 정하므로 여기 없다
 	  seat            정해진 자리. 그 시설이 없으면 자리 없음(Seats.seatOf)
 	  unlock          kind = "facility" (시설을 지으면) | "graduation" (n회 졸업 확정) | "gacha" (졸업 n회부터 뽑기 풀)
 ]]
