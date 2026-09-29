@@ -17,6 +17,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
+local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local DataService = require(script.Parent.Services.DataService)
 local PlotService = require(script.Parent.Services.PlotService)
 
@@ -79,15 +80,18 @@ local function setSpawns(session: Session, count: number)
 	session.spawnSince = now
 end
 
---- 다음 부품 값이 지금 용돈으로 되나
+--- 다음 부품(14개 완공 뒤면 다음 층) 값이 지금 용돈으로 되나
 local function canAfford(player: Player): boolean
 	local profile = DataService.get(player)
 	if not profile then
 		return false
 	end
 	local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
-	return nextPart ~= nil
-		and profile.coins >= FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index, profile.graduations)
+	if nextPart == nil then
+		local n = if profile.facilities.auditorium then TowerConfig.nextFloor(profile.towerFloors) else nil
+		return n ~= nil and profile.coins >= TowerConfig.priceOf(n, profile.graduations)
+	end
+	return profile.coins >= FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index, profile.graduations)
 end
 
 local function snapshotFive(player: Player, session: Session)

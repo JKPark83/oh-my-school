@@ -29,12 +29,12 @@ export PATH="$HOME/.rokit/bin:$PATH" && stylua src && rojo sourcemap default.pro
 
 - Studio 에서 스크립트를 고치지 않는다. 파일이 기준이다.
 - Studio 는 `PrincipalProfile_Dev` + Mock 이다. 실제 DataStore 는 ServerScriptService 어트리뷰트 `UseLiveDataStore = true`.
-- `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveCoins:Invoke(player, n)`, `GiveDecor:Invoke(player, itemId, n)`.
+- `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveCoins:Invoke(player, n)`, `GiveDecor:Invoke(player, itemId, n)`, `GiveFloors:Invoke(player, n)`(탑 층 수, 강당이 있어야 보인다), `RideElevator:Invoke(player, prompt)`(엘리베이터 서버 판정만).
 
 ## 구조
 
 - `src/server/Services/` 서비스 8개(Data·Plot·Economy·Student·Decor·Mission·Graduation·Leaderboard). 부팅 순서는 `init.server.luau`.
-- `src/server/Geometry/` 시설·부지·광장을 파트로 짓는 모듈. 공용 헬퍼는 `BuildKit.luau`.
+- `src/server/Geometry/` 시설·부지·광장·탑(`Tower.luau`, 층 올리기)을 파트로 짓는 모듈. 공용 헬퍼는 `BuildKit.luau`.
 - `src/client/Controllers/` 컨트롤러 10개. 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
 - `src/shared/Config/` 수치의 단일 소스. 가격·확률·시간·문구는 여기서만 바꾼다.
 - `src/shared/Remotes.luau`(프로토콜은 기획서 §11.5), `Types.luau`, `Seats.luau`, `CharacterBuilder.luau`, 꾸미기 공용 `DecorGrid`·`DecorCodec`·`DecorBuilder`(수치는 `Config/DecorConfig.luau`). `src/first/` 로딩 화면.

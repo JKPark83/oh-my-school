@@ -1,13 +1,14 @@
 --!strict
 --[[
-	패널 컨트롤러. 기획서 §8.3 의 패널 4개를 코드로 그린다.
-	  도감(714×330) · 미션(568×300) · 설정(406×150) · 졸업 확인(전체 화면)
+	패널 컨트롤러. 기획서 §8.3 의 패널 4개와 꾸미기 시트를 코드로 그린다.
+	  도감(714×330) · 미션(568×300) · 설정(406×150) · 졸업 확인(전체 화면) · 꾸미기(780×340)
 
 	  ★ 한 번에 하나만 연다. 열기 0.2s Back Out(0.9→1.0), 닫기 0.12s Quad In.
 	  ★ ScreenGui "Panels" DisplayOrder 5, IgnoreGuiInset. UIScale = clamp(세로/375, 0.9, 1.6).
 	  ★ X 버튼 56×56, 바깥 탭, 안드로이드 뒤로가기(ButtonB) 로 닫는다.
 	  ★ 프로필은 HudController.profile() / onProfile() 로만 읽는다(구현계획 §3.4).
-	  ★ 서버 호출은 Graduate / SetSetting 두 개.
+	  ★ 서버 호출은 Graduate / SetSetting / BuyDecor / ReturnDecor. 사고 돌려주는 판정은 서버가 한다.
+	  ★ 꾸미기 시트: 위 줄 보관함(탭 = 놓기), 아래 줄 가게(탭 = 큰 확인 카드). 돈이 모자라면 ✓ 가 흐린 회색이다(글자 없음).
 	  ★ 도감 ViewportFrame 은 열 때 만들고 닫을 때 지운다(모바일 메모리).
 	  ★ 아이콘 이미지는 아직 없어 이모지·글자로 대신한다. -- TODO(통합): 아이콘 이미지
 ]]
@@ -27,17 +28,22 @@ local CharacterBuilder = require(Shared.CharacterBuilder)
 local EconomyConfig = require(Shared.Config.EconomyConfig)
 local StudentConfig = require(Shared.Config.StudentConfig)
 local MissionConfig = require(Shared.Config.MissionConfig)
+local DecorConfig = require(Shared.Config.DecorConfig)
+local DecorBuilder = require(Shared.DecorBuilder)
+local DecorCodec = require(Shared.DecorCodec)
+local Keys = require(Shared.Config.Keys)
 
 -- 형제 컨트롤러. 계약(구현계획 §3.4)의 함수만 쓴다. 아직 옛 버전이 남아 있을 수 있어 타입은 묻지 않는다
 local Controllers = script.Parent
 local HudController = require(Controllers.HudController) :: any
 local SoundController = require(Controllers.SoundController) :: any
+local DecorController = require(Controllers.DecorController) :: any
 
 type Profile = Types.Profile
 
 local PanelController = {}
 
-export type PanelName = "codex" | "missions" | "settings" | "graduate"
+export type PanelName = "codex" | "missions" | "settings" | "graduate" | "decor"
 
 -- ── 상수 ──
 
@@ -57,6 +63,7 @@ local SIZES: { [string]: Vector2 } = {
 	missions = Vector2.new(568, 300),
 	settings = Vector2.new(406, 150),
 	graduate = Vector2.new(812, 375), -- 전체 화면 안 내용 영역
+	decor = Vector2.new(780, 340), -- 812×375 안에 들어간다
 }
 
 -- §8.1 색
@@ -78,6 +85,23 @@ local CODEX_COLUMNS = 6
 
 -- 졸업
 local HOLD_TIME = 1.5
+
+-- 꾸미기 시트(글보다 그림)
+local DECOR_GLYPH_TITLE = "🪴"
+local DECOR_GLYPH_INVENTORY = "🎒"
+local DECOR_GLYPH_SHOP = "🛒"
+local DECOR_GLYPH_RETURN = "↩"
+local DECOR_INV_CARD = Vector2.new(96, 120)
+local DECOR_SHOP_CARD = Vector2.new(104, 126)
+local DECOR_INV_PICTURE = 72
+local DECOR_SHOP_PICTURE = 76
+local DECOR_SHOP_RING = 36
+local DECOR_CONFIRM_PICTURE = 200
+local DECOR_CONFIRM_RING = 72
+local DECOR_CONFIRM_OK = 88
+local DECOR_VIEW_DIST = 0.9 -- 모델 대각선 × 이 값 = 카메라 거리
+local DECOR_FRIEND_SMALL = 0.45 -- 친구 카드의 작은 물건 크기(그림 한 변 비율)
+local DECOR_PUNCH = 1.15
 
 -- 설정
 local SETTING_ROWS: { { key: Types.SettingKey, icon: string, text: string } } = {
@@ -317,6 +341,15 @@ end
 
 local function profileOrNil(): Profile?
 	return HudController.profile()
+end
+
+--- 내 부지에 놓인 꾸미기. ProfileSync 는 decorPlaced 를 빼고 보내므로 PlotState Decor 어트리뷰트를 읽는다
+local function placedNow(): { Types.DecorPlacement }
+	local plotId = HudController.myPlotId()
+	local states = ReplicatedStorage:FindFirstChild(Keys.PLOT_STATE_FOLDER)
+	local state = if plotId and states then states:FindFirstChild(Keys.plotName(plotId)) else nil
+	local raw = if state then state:GetAttribute(Keys.ATTR_DECOR) else nil
+	return if type(raw) == "string" and raw ~= "" then DecorCodec.decode(raw) else {}
 end
 
 -- ── 껍데기: 열기·닫기 ──
@@ -591,18 +624,26 @@ local function buildCodex(content: Frame)
 		for _, t in tabs do
 			local on = t.key == key
 			t.button.BackgroundColor3 = if on then YELLOW else SURFACE
-			t.button.TextColor3 = if on then DARK else WHITE
+			local tabText = t.button:FindFirstChild("Text")
+			if tabText and tabText:IsA("TextLabel") then
+				tabText.TextColor3 = if on then DARK else WHITE
+			end
 		end
 		fill(key)
 	end
-	for i, def in { { key = "school", text = "학교 친구" }, { key = "friend", text = "함께 오는 친구" } } do
-		local b = button(
-			content,
-			`Tab_{def.key}`,
-			def.text,
-			UDim2.fromOffset(170, 36),
-			UDim2.fromOffset(190 + (i - 1) * 180, 0)
-		)
+	-- 탭은 그림(🙂 / 🪴) + 작은 글자
+	for i, def in
+		{
+			{ key = "school", glyph = "🙂", text = "학교 친구" },
+			{ key = "friend", glyph = "🪴", text = "함께 오는 친구" },
+		}
+	do
+		local b =
+			button(content, `Tab_{def.key}`, "", UDim2.fromOffset(170, 36), UDim2.fromOffset(190 + (i - 1) * 180, 0))
+		label(b, "Glyph", def.glyph, UDim2.fromOffset(28, 28), UDim2.fromOffset(8, 4), 24)
+		local tabText =
+			label(b, "Text", def.text, UDim2.new(1, -44, 0, 20), UDim2.fromOffset(40, 8), 14, DARK, FONT_BOLD)
+		tabText.TextXAlignment = Enum.TextXAlignment.Left
 		b.Activated:Connect(function()
 			selectTab(def.key)
 			SoundController.play("tick")
@@ -853,6 +894,424 @@ local function buildGraduate(content: Frame)
 	table.insert(currentCleanup, stopHold)
 end
 
+-- ── 꾸미기 시트 ──
+
+--- 꾸미기 아이템 뷰포트. 모델을 비스듬히 위에서 본다
+local function decorView(parent: Instance, item: DecorConfig.Item, size: UDim2, position: UDim2?): ViewportFrame
+	local vp = Instance.new("ViewportFrame")
+	vp.Name = "View"
+	vp.Size = size
+	vp.Position = position or UDim2.fromScale(0, 0)
+	vp.BackgroundTransparency = 1
+	vp.Ambient = Color3.fromRGB(200, 200, 210)
+	vp.LightColor = WHITE
+	vp.LightDirection = Vector3.new(-1, -1, -1)
+	local model = DecorBuilder.build(item, CFrame.identity)
+	local camera = Instance.new("Camera")
+	local center, extent = model:GetBoundingBox()
+	local dist = extent.Magnitude * DECOR_VIEW_DIST + 1
+	camera.CFrame = CFrame.lookAt(center.Position + Vector3.new(dist * 0.6, dist * 0.55, -dist * 0.6), center.Position)
+	camera.Parent = vp
+	vp.CurrentCamera = camera
+	model.Parent = vp
+	vp.Parent = parent
+	return vp
+end
+
+--- 카드 그림. 함께 오는 친구 아이템은 학생 얼굴 + 오른쪽 아래 작은 물건
+local function decorPicture(parent: Instance, item: DecorConfig.Item, px: number, position: UDim2?)
+	local student = item.student
+	if item.kind == "friend" and student then
+		local holder = frame(parent, "Picture", UDim2.fromOffset(px, px), position)
+		studentView(holder, student, UDim2.fromScale(1, 1))
+		local small = math.floor(px * DECOR_FRIEND_SMALL)
+		decorView(holder, item, UDim2.fromOffset(small, small), UDim2.new(1, -small, 1, -small))
+		return
+	end
+	decorView(parent, item, UDim2.fromOffset(px, px), position)
+end
+
+--- 펀치 스케일(카드 하나). 없으면 만든다
+local function punchCard(card: GuiObject)
+	local s = card:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
+	s.Parent = card
+	s.Scale = DECOR_PUNCH
+	tween(s, 0.25, { Scale = 1 }, Enum.EasingStyle.Back)
+end
+
+--- 가로 스크롤 줄 하나
+local function decorRow(parent: Instance, name: string, y: number, height: number): ScrollingFrame
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = name
+	scroll.Size = UDim2.new(1, 0, 0, height)
+	scroll.Position = UDim2.fromOffset(0, y)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollingDirection = Enum.ScrollingDirection.X
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.X
+	scroll.CanvasSize = UDim2.new()
+	scroll.ScrollBarThickness = 4
+	scroll.ScrollBarImageColor3 = GREY
+	scroll.VerticalScrollBarInset = Enum.ScrollBarInset.None
+	scroll.Parent = parent
+	listLayout(scroll, Enum.FillDirection.Horizontal, GAP, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
+	return scroll
+end
+
+local function clearRow(scroll: ScrollingFrame)
+	for _, child in scroll:GetChildren() do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+end
+
+local decorPendingPunch: string? = nil
+
+local function buildDecor(content: Frame)
+	local myGen = generation
+	padding(content, 16, 10)
+
+	-- 제목 줄: 글자 대신 그림(🪴 = 보관함, 🛒 = 가게)
+	label(content, "Title", DECOR_GLYPH_TITLE, UDim2.fromOffset(40, 36), nil, 30, WHITE, FONT_BOLD)
+
+	label(content, "InvIcon", DECOR_GLYPH_INVENTORY, UDim2.fromOffset(28, 28), UDim2.fromOffset(0, 40), 22)
+	local inventory = decorRow(content, "Inventory", 40, DECOR_INV_CARD.Y + 6)
+	inventory.Size = UDim2.new(1, -36, 0, DECOR_INV_CARD.Y + 6)
+	inventory.Position = UDim2.fromOffset(36, 40)
+
+	local shopY = 40 + DECOR_INV_CARD.Y + 12
+	label(content, "ShopIcon", DECOR_GLYPH_SHOP, UDim2.fromOffset(28, 28), UDim2.fromOffset(0, shopY), 22)
+	local shop = decorRow(content, "Shop", shopY, DECOR_SHOP_CARD.Y + 6)
+	shop.Size = UDim2.new(1, -36, 0, DECOR_SHOP_CARD.Y + 6)
+	shop.Position = UDim2.fromOffset(36, shopY)
+
+	-- 그림은 프레임 뒤에 나눠 그린다(도감과 같은 방식). 줄을 새로 만들면 rowGen 이 바뀌어 옛 작업이 멈춘다
+	local rowGen = 0
+	local function drawLater(jobs: { () -> () })
+		local mine = rowGen
+		task.spawn(function()
+			for _, job in jobs do
+				if myGen ~= generation or mine ~= rowGen then
+					return
+				end
+				job()
+				RunService.Heartbeat:Wait()
+			end
+		end)
+	end
+
+	-- 줄마다 카드 참조. 코인만 바뀌면 링·어둡게만 다시 칠한다
+	local invKey = ""
+	local shopKey = ""
+	local invCards: { [string]: { card: TextButton, count: TextLabel } } = {}
+	local shopCards: { [string]: { card: TextButton, set: (number) -> (), dim: Frame } } = {}
+
+	-- 큰 확인 카드(가게 카드 탭 = 사기, 보관함 ↩ = 돌려주기). 바깥 탭 = 닫기
+	local confirm: TextButton? = nil
+	local confirmItem: string? = nil
+	local confirmSet: ((number) -> ())? = nil
+	local confirmOk: TextButton? = nil
+
+	local function closeConfirm()
+		if confirm then
+			confirm:Destroy()
+		end
+		confirm = nil
+		confirmItem = nil
+		confirmSet = nil
+		confirmOk = nil
+	end
+
+	local function paintConfirm(p: Profile)
+		local id = confirmItem
+		local set = confirmSet
+		local ok = confirmOk
+		if not (id and set and ok) then
+			return
+		end
+		local price = DecorConfig.priceOf(id, p.graduations)
+		local full = DecorConfig.heldCount(p.decorOwned, placedNow(), id) >= DecorConfig.MAX_OWNED
+		local can = p.coins >= price and not full
+		set(if price > 0 then p.coins / price else 1)
+		-- 아직이면 흐린 회색 ✓(글자 없이 「아직」). 빨강·흔들기 없음
+		ok.BackgroundColor3 = if can then GREEN else GREY
+		ok.BackgroundTransparency = if can then 0 else 0.6
+		ok.TextTransparency = if can then 0 else 0.5
+		ok.AutoButtonColor = can
+	end
+
+	-- returning = 돌려주기 확인(그림 + ↩ + ✓). 돌려받는 값은 서버만 알아 숫자는 없다
+	local function openConfirm(id: string, returning: boolean)
+		local p = profileOrNil()
+		local item = DecorConfig.byId(id)
+		if not (p and item) then
+			return
+		end
+		closeConfirm()
+		local cover = Instance.new("TextButton")
+		cover.Name = "Confirm"
+		cover.Size = UDim2.fromScale(1, 1)
+		cover.BackgroundColor3 = PANEL_BG
+		cover.BackgroundTransparency = 0.05
+		cover.BorderSizePixel = 0
+		cover.AutoButtonColor = false
+		cover.Text = ""
+		cover.ZIndex = 10
+		cover.Parent = content
+		corner(cover, 12)
+		cover.Activated:Connect(closeConfirm)
+
+		local box = frame(cover, "Box", UDim2.fromOffset(460, 260), UDim2.fromScale(0.5, 0.5), SURFACE)
+		box.AnchorPoint = Vector2.new(0.5, 0.5)
+		box.Active = true -- 상자 안 탭은 닫기로 새지 않는다
+		box.ZIndex = 11
+		corner(box, 16)
+
+		decorPicture(box, item, DECOR_CONFIRM_PICTURE, UDim2.fromOffset(20, 20))
+		local set: ((number) -> ())? = nil
+		if returning then
+			label(
+				box,
+				"Return",
+				DECOR_GLYPH_RETURN,
+				UDim2.fromOffset(DECOR_CONFIRM_RING, DECOR_CONFIRM_RING),
+				UDim2.fromOffset(250, 24),
+				56,
+				WHITE,
+				FONT_BOLD
+			)
+		else
+			local ring, setRing = makeRing(box, DECOR_CONFIRM_RING, 6, GREEN)
+			ring.Position = UDim2.fromOffset(250, 24)
+			set = setRing
+			local price = label(
+				box,
+				"Price",
+				`💰{Format.coins(DecorConfig.priceOf(id, p.graduations))}`,
+				UDim2.fromOffset(190, 28),
+				UDim2.fromOffset(250, 24 + DECOR_CONFIRM_RING + 6),
+				22,
+				YELLOW,
+				FONT_BOLD
+			)
+			price.TextXAlignment = Enum.TextXAlignment.Left
+		end
+		local ok = button(
+			box,
+			"Ok",
+			"✓",
+			UDim2.fromOffset(DECOR_CONFIRM_OK, DECOR_CONFIRM_OK),
+			-- 오른쪽 아래 점프 버튼 자리(812×375 기준)를 피해 조금 왼쪽에 둔다
+			UDim2.new(1, -40, 1, -20),
+			GREEN,
+			WHITE,
+			56
+		)
+		ok.AnchorPoint = Vector2.new(1, 1)
+		corner(ok, DECOR_CONFIRM_OK / 2)
+		for _, d in box:GetDescendants() do
+			if d:IsA("GuiObject") then
+				d.ZIndex = 12
+			end
+		end
+		ok.Activated:Connect(function()
+			local now = profileOrNil()
+			if not now then
+				return
+			end
+			if returning then
+				if (now.decorOwned[id] or 0) > 0 then
+					Remotes.ReturnDecor:FireServer(id)
+					SoundController.play("tick")
+				end
+				closeConfirm()
+				return
+			end
+			local cost = DecorConfig.priceOf(id, now.graduations)
+			local full = DecorConfig.heldCount(now.decorOwned, placedNow(), id) >= DecorConfig.MAX_OWNED
+			if now.coins < cost or full then
+				return -- 흐린 ✓ 는 눌러도 아무 일 없다
+			end
+			Remotes.BuyDecor:FireServer(id)
+			SoundController.play("tick")
+			closeConfirm()
+		end)
+
+		confirm = cover
+		confirmItem = id
+		confirmSet = set
+		confirmOk = ok
+		paintConfirm(p)
+	end
+
+	--- 보관함 줄(개수 > 0). 카드 탭 = 시트 닫고 놓기, ↩ = 돌려주기
+	local function buildInventory(p: Profile)
+		clearRow(inventory)
+		invCards = {}
+		local jobs: { () -> () } = {}
+		for order, item in DecorConfig.LIST do
+			local count = p.decorOwned[item.id] or 0
+			if count > 0 then
+				local card = button(
+					inventory,
+					item.id,
+					"",
+					UDim2.fromOffset(DECOR_INV_CARD.X, DECOR_INV_CARD.Y),
+					nil,
+					SURFACE,
+					WHITE
+				)
+				card.LayoutOrder = order
+				local badge = label(
+					card,
+					"Count",
+					`×{count}`,
+					UDim2.fromOffset(40, 20),
+					UDim2.new(1, -44, 0, 4),
+					16,
+					YELLOW,
+					FONT_BOLD
+				)
+				badge.TextXAlignment = Enum.TextXAlignment.Right
+				badge.ZIndex = 2
+				local back = button(card, "Return", "", UDim2.new(1, -12, 0, 30), UDim2.new(0, 6, 1, -34), DARK, WHITE)
+				back.ZIndex = 2
+				label(
+					back,
+					"Glyph",
+					DECOR_GLYPH_RETURN,
+					UDim2.fromOffset(24, 24),
+					UDim2.fromOffset(4, 3),
+					20,
+					WHITE,
+					FONT_BOLD
+				).ZIndex =
+					3
+				local backText =
+					label(back, "Text", "돌려주기", UDim2.new(1, -32, 1, -6), UDim2.fromOffset(28, 3), 14, GREY)
+				backText.ZIndex = 3
+				local id = item.id
+				card.Activated:Connect(function()
+					PanelController.close()
+					DecorController.beginPlace(id)
+				end)
+				back.Activated:Connect(function()
+					openConfirm(id, true)
+				end)
+				invCards[id] = { card = card, count = badge }
+				table.insert(jobs, function()
+					if card.Parent then
+						decorPicture(card, item, DECOR_INV_PICTURE, UDim2.fromOffset(12, 4))
+					end
+				end)
+			end
+		end
+		drawLater(jobs)
+	end
+
+	--- 가게 줄(진열 대상, 선물 제외, 가격순). 탭 = 큰 확인 카드
+	local function buildShop(p: Profile)
+		clearRow(shop)
+		shopCards = {}
+		local rows: { DecorConfig.Item } = {}
+		for _, item in DecorConfig.LIST do
+			if DecorConfig.isShown(item, p.graduations) then
+				table.insert(rows, item)
+			end
+		end
+		table.sort(rows, function(a, b)
+			return a.price < b.price
+		end)
+		local jobs: { () -> () } = {}
+		for order, item in rows do
+			local card =
+				button(shop, item.id, "", UDim2.fromOffset(DECOR_SHOP_CARD.X, DECOR_SHOP_CARD.Y), nil, SURFACE, WHITE)
+			card.LayoutOrder = order
+			local ring, set = makeRing(card, DECOR_SHOP_RING, 4, GREEN)
+			ring.Position = UDim2.new(0, 6, 1, -DECOR_SHOP_RING - 6)
+			local price = label(
+				card,
+				"Price",
+				Format.coins(DecorConfig.priceOf(item.id, p.graduations)),
+				UDim2.new(1, -DECOR_SHOP_RING - 14, 0, 20),
+				UDim2.new(0, DECOR_SHOP_RING + 10, 1, -DECOR_SHOP_RING / 2 - 16),
+				16,
+				YELLOW,
+				FONT_BOLD
+			)
+			price.TextXAlignment = Enum.TextXAlignment.Left
+			-- 보관함 + 배치가 상한이면 카드 전체를 흐리게 덮는다
+			local dim = frame(card, "Dim", UDim2.fromScale(1, 1), nil, DARK, 0.45)
+			corner(dim, RADIUS)
+			dim.ZIndex = 3
+			dim.Visible = false
+			local id = item.id
+			card.Activated:Connect(function()
+				local now = profileOrNil()
+				if now and DecorConfig.heldCount(now.decorOwned, placedNow(), id) >= DecorConfig.MAX_OWNED then
+					return
+				end
+				openConfirm(id, false)
+				SoundController.play("tick")
+			end)
+			shopCards[id] = { card = card, set = set, dim = dim }
+			table.insert(jobs, function()
+				if card.Parent then
+					decorPicture(card, item, DECOR_SHOP_PICTURE, UDim2.fromOffset(14, 4))
+				end
+			end)
+		end
+		drawLater(jobs)
+	end
+
+	local function refresh(p: Profile)
+		-- 보관함 아이디 목록 또는 진열 목록이 바뀔 때만 줄을 다시 만든다
+		local inv: { string } = {}
+		for _, item in DecorConfig.LIST do
+			if (p.decorOwned[item.id] or 0) > 0 then
+				table.insert(inv, item.id)
+			end
+		end
+		local nextInv = table.concat(inv, ",")
+		local nextShop = tostring(p.graduations)
+		if nextInv ~= invKey or nextShop ~= shopKey then
+			-- 두 줄의 그림 작업이 같은 rowGen 을 쓰므로 하나라도 바뀌면 둘 다 새로 만든다
+			invKey = nextInv
+			shopKey = nextShop
+			rowGen += 1
+			buildInventory(p)
+			buildShop(p)
+		end
+		for id, ui in invCards do
+			ui.count.Text = `×{p.decorOwned[id] or 0}`
+		end
+		local placed = placedNow() -- 카드마다 Decor 어트리뷰트를 다시 풀지 않게 한 번만
+		for id, ui in shopCards do
+			local cost = DecorConfig.priceOf(id, p.graduations)
+			ui.set(if cost > 0 then p.coins / cost else 1)
+			ui.dim.Visible = DecorConfig.heldCount(p.decorOwned, placed, id) >= DecorConfig.MAX_OWNED
+		end
+		paintConfirm(p)
+
+		local pending = decorPendingPunch
+		if pending then
+			local target = invCards[pending] or shopCards[pending]
+			if target then
+				decorPendingPunch = nil
+				punchCard(target.card)
+			end
+		end
+	end
+
+	local profile = profileOrNil()
+	if profile then
+		refresh(profile)
+	end
+	currentRefresh = refresh
+	table.insert(currentCleanup, closeConfirm)
+end
+
 -- ── 공개 API ──
 
 local BUILDERS: { [string]: (Frame, any) -> () } = {
@@ -867,6 +1326,9 @@ local BUILDERS: { [string]: (Frame, any) -> () } = {
 	end,
 	graduate = function(c, _)
 		buildGraduate(c)
+	end,
+	decor = function(c, _)
+		buildDecor(c)
 	end,
 }
 
@@ -926,6 +1388,22 @@ end
 
 function PanelController.current(): string?
 	return currentName
+end
+
+--- 서버 DecorBought / DecorReturned(본인에게만). 꾸미기 시트가 열려 있으면 카드를 다시 칠하고 그 카드를 짧게 펀치
+function PanelController.onDecorEvent(payload: any)
+	if currentName ~= "decor" or typeof(payload) ~= "table" or typeof(payload.item) ~= "string" then
+		return
+	end
+	decorPendingPunch = payload.item
+	local fn = currentRefresh
+	local p = profileOrNil()
+	if fn and p then
+		local ok, err = pcall(fn :: any, p)
+		if not ok then
+			warn(`[Panel] 꾸미기 갱신 실패: {err}`)
+		end
+	end
 end
 
 function PanelController.Start()

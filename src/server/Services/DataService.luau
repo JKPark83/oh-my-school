@@ -20,6 +20,7 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Types = require(ReplicatedStorage.Shared.Types)
 local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
+local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local Migrations = require(script.Parent.Parent.Migrations)
 
 local DataService = {}
@@ -121,7 +122,13 @@ function DataService.load(player: Player): Types.Profile?
 	profile:AddUserId(player.UserId)
 	profile:Reconcile()
 	migrate(profile.Data)
-	-- 튜토리얼 ④ 화분(새 프로필·옛 프로필 한 번씩). 산 값이 없으니 돌려줘도 0
+	-- 탑 층 수는 0..MAX-2 로 자른다. MAX 는 잠정값이라 낮아질 수 있고, 손상된 값(음수·소수)이 탑 파트·엘리베이터·꾸미기 층 범위를 넓히지 않게
+	profile.Data.towerFloors = math.clamp(
+		math.floor(tonumber(profile.Data.towerFloors) or 0),
+		0,
+		TowerConfig.MAX - TowerConfig.FIRST_FLOOR + 1
+	)
+	-- 튜토리얼 ⑤ 화분(새 프로필·옛 프로필 한 번씩). 산 값이 없으니 돌려줘도 0
 	local data = profile.Data
 	if not data.decorStarter then
 		local item = DecorConfig.TUTORIAL_ITEM

@@ -19,11 +19,14 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Keys = require(Shared.Config.Keys)
+local DecorConfig = require(Shared.Config.DecorConfig)
 local EconomyConfig = require(Shared.Config.EconomyConfig)
 local FacilityConfig = require(Shared.Config.FacilityConfig)
 local MissionConfig = require(Shared.Config.MissionConfig)
 local StudentConfig = require(Shared.Config.StudentConfig)
+local TowerConfig = require(Shared.Config.TowerConfig)
 local Format = require(Shared.Format)
+local PlotLayout = require(Shared.PlotLayout)
 local Remotes = require(Shared.Remotes)
 local Types = require(Shared.Types)
 
@@ -57,6 +60,12 @@ local PUNCH_SECONDS = 0.25
 local PULSE_SECONDS = 0.8
 local SLIDE_SECONDS = 0.25
 local FLY_SECONDS = 0.5
+local GIFT_POP_SECONDS = 0.25 -- 선물 상자가 커지는 시간(Back)
+local GIFT_HOP_SECONDS = 0.15 -- 위로 톡 뛰었다 내려오는 한쪽 시간
+local GIFT_OPEN_SECONDS = 0.2 -- 열리며 사라지는 시간. 합 0.25 + 0.15 + 0.2 ≒ 0.6초
+local GIFT_HOP_PX = 10
+local GIFT_POP_SCALE = 1.3
+local GIFT_OPEN_SCALE = 1.8
 local TOAST_HOLD = 2.6
 local BANNER_HOLD = 4
 local FADE_SECONDS = 0.35
@@ -74,17 +83,18 @@ local PLOT_HALF = 75
 local PANEL_SETTINGS = "settings"
 local PANEL_CODEX = "codex"
 local PANEL_MISSIONS = "missions"
+local PANEL_DECOR = "decor"
 local SOUND_AFFORD = "afford_ding"
 
 -- 사용자에게 보이는 문구(≤12자)
 local TEXT_NEXT_CAPTION = "다음 시설"
+local TEXT_NEXT_FLOOR = "다음 층"
 local TEXT_AFFORD = "살 수 있어요!"
 local TEXT_NO_INCOME = "스티커를 줍자!"
 local TEXT_GRADUATE = "졸업식을 열자!"
 local TEXT_GRADUATE_SUB = "강당 종을 치자!"
 local TEXT_GO_HOME = "우리 학교로"
 local TEXT_GO_HOME_SUB = "탭하면 돌아가요"
-local TEXT_BOARD = "스티커판"
 
 -- TODO(통합): 아이콘 이미지(용돈·스티커·도감·미션·설정·집). 지금은 글리프로 대신한다
 local GLYPH_COINS = "💰"
@@ -92,6 +102,17 @@ local GLYPH_HOME = "🏠"
 local GLYPH_SETTINGS = "⚙️"
 local GLYPH_CODEX = "📖"
 local GLYPH_MISSIONS = "📋"
+local GLYPH_DECOR = "🪴"
+local GLYPH_GIFT = "🎁"
+-- 선물 아이템이 꾸미기 버튼으로 날아갈 때의 글리프(DecorConfig.Kind 별). 없으면 GLYPH_DECOR
+local GLYPH_BY_KIND: { [string]: string } = {
+	general = "🪴",
+	friend = "🙂",
+	gift = "🎈",
+}
+
+-- 강당(마지막 시설). 강당을 지어야 탑 층을 살 수 있다(§3.6 #8)
+local AUDITORIUM_ID = "auditorium"
 
 local player = Players.LocalPlayer
 
@@ -110,6 +131,8 @@ local onOwnPlot = true
 local goHomeAt = -math.huge
 local nextTap: (() -> ())? = nil
 local shownCardKey: string? = nil
+local decorNew = false -- 선물로 받은 꾸미기가 있다. 꾸미기 시트를 열 때까지 점을 켠다
+local giftToken = 0
 local plotCenters: { [number]: Vector3 } = {}
 local pulses: { [UIStroke]: Tween } = {}
 local held = false -- 졸업식 동안 숨기고 새 프로필을 그리지 않는다(§9.5)
@@ -155,6 +178,12 @@ local codexButton: TextButton
 local codexDot: Frame
 local missionButton: TextButton
 local missionBadge: TextLabel
+local decorButton: TextButton
+local decorDot: Frame
+local decorStroke: UIStroke
+local decorScale: UIScale
+local giftBox: TextLabel
+local giftBoxScale: UIScale
 local toastLabel: TextLabel
 local bannerLabel: TextLabel
 local flyer: TextLabel
@@ -306,6 +335,7 @@ end
 local function flyGift()
 	local from = rootLocal(boardChip)
 	local to = rootLocal(coinsChip)
+	flyer.Text = GLYPH_COINS
 	flyer.Position = UDim2.fromOffset(from.X, from.Y)
 	flyer.TextTransparency = 0
 	flyer.Visible = true
@@ -313,6 +343,53 @@ local function flyGift()
 	t.Completed:Once(function()
 		flyer.Visible = false
 		punch(coinsScale)
+	end)
+end
+
+--- 선물 아이템 글리프가 판 칩에서 「꾸미기」 버튼으로 날아가고, 도착하면 버튼 펀치 + 새 아이템 점
+local function flyItem(itemId: string)
+	local item = DecorConfig.byId(itemId)
+	local from = rootLocal(boardChip)
+	local to = rootLocal(decorButton)
+	flyer.Text = if item then GLYPH_BY_KIND[item.kind] or GLYPH_DECOR else GLYPH_DECOR
+	flyer.Position = UDim2.fromOffset(from.X, from.Y)
+	flyer.TextTransparency = 0
+	flyer.Visible = true
+	local t = tween(flyer, FLY_SECONDS, { Position = UDim2.fromOffset(to.X, to.Y) }, Enum.EasingStyle.Quad)
+	t.Completed:Once(function()
+		flyer.Visible = false
+		decorNew = true
+		decorDot.Visible = true
+		punch(decorScale)
+	end)
+end
+
+--- 판 칩 위에서 🎁 가 커지고 톡 뛰었다가 열리며 사라진다(≒0.6초, 흔들기 없음). 끝나면 done
+local function openGiftBox(done: () -> ())
+	giftToken += 1
+	local mine = giftToken
+	local at = rootLocal(boardChip)
+	local base = UDim2.fromOffset(at.X, at.Y)
+	local up = UDim2.fromOffset(at.X, at.Y - GIFT_HOP_PX)
+	giftBox.Position = base
+	giftBox.TextTransparency = 0
+	giftBoxScale.Scale = 0
+	giftBox.Visible = true
+	tween(giftBoxScale, GIFT_POP_SECONDS, { Scale = GIFT_POP_SCALE }, Enum.EasingStyle.Back)
+	tween(giftBox, GIFT_HOP_SECONDS, { Position = up }).Completed:Once(function()
+		tween(giftBox, GIFT_HOP_SECONDS, { Position = base }, Enum.EasingStyle.Bounce)
+	end)
+	task.delay(GIFT_POP_SECONDS + GIFT_HOP_SECONDS, function()
+		if mine ~= giftToken then
+			return
+		end
+		tween(giftBoxScale, GIFT_OPEN_SECONDS, { Scale = GIFT_OPEN_SCALE })
+		tween(giftBox, GIFT_OPEN_SECONDS, { TextTransparency = 1 }).Completed:Once(function()
+			if mine == giftToken then
+				giftBox.Visible = false
+			end
+		end)
+		done()
 	end)
 end
 
@@ -352,6 +429,20 @@ local function partPosition(plotId: number, partName: string): Vector3?
 	return if part and part:IsA("BasePart") then part.Position else nil
 end
 
+--- 탑 TowerPad 위치. 파트가 스트리밍 밖이면 부지 피벗 + PlotLayout.TOWER_PAD 로 계산한다
+local function towerPadPosition(plotId: number): Vector3?
+	local plot = plotModel(plotId)
+	if not plot then
+		return nil
+	end
+	local tower = plot:FindFirstChild(Keys.TOWER_FOLDER)
+	local pad = if tower then tower:FindFirstChild(Keys.TOWER_PAD) else nil
+	if pad and pad:IsA("BasePart") then
+		return pad.Position
+	end
+	return plot:GetPivot():PointToWorldSpace(PlotLayout.TOWER_PAD)
+end
+
 local function panTo(position: Vector3?)
 	if position and Camera and Camera.panTo then
 		pcall(Camera.panTo, position, PAN_SECONDS)
@@ -385,6 +476,14 @@ local function missionsDone(profile: Profile): number
 		end
 	end
 	return n
+end
+
+--- 강당까지 지었을 때 다음에 살 탑 층 번호. 강당 전이거나 꼭대기면 nil
+local function nextTowerFloor(profile: Profile): number?
+	if not profile.facilities[AUDITORIUM_ID] then
+		return nil
+	end
+	return TowerConfig.nextFloor(profile.towerFloors)
 end
 
 --- prev 에 없고 now 에 있는 시설 하나. 없으면 nil
@@ -482,6 +581,8 @@ local function renderButtons(profile: Profile)
 	settingsButton.Visible = visible
 	codexButton.Visible = visible
 	missionButton.Visible = visible
+	decorButton.Visible = visible
+	decorDot.Visible = decorNew
 
 	local owned = StudentConfig.ownedCount(profile.students)
 	if lastSeenStudents == nil then
@@ -489,6 +590,29 @@ local function renderButtons(profile: Profile)
 	end
 	codexDot.Visible = owned > (lastSeenStudents :: number)
 	missionBadge.Text = `{missionsDone(profile)}/{#MissionConfig.LIST}`
+end
+
+--- 값이 있는 카드(다음 부품·다음 층) 공통: 가격·예상 초·링·살 수 있음 펄스와 딩
+local function showPrice(profile: Profile, caption: string, name: string, price: number)
+	local eta = EconomyConfig.etaSeconds(profile, price)
+	local affordable = eta <= 0
+	cardCaption.Text = caption
+	cardName.Text = name
+	cardPrice.Text = `{GLYPH_COINS}{Format.coins(price)}`
+	cardSub.Text = if affordable
+		then TEXT_AFFORD
+		elseif eta == math.huge then TEXT_NO_INCOME
+		else `약 {Format.eta(eta)}`
+	cardBar.Visible = true
+	cardFill.Size = UDim2.fromScale(math.clamp(profile.coins / price, 0, 1), 1)
+	cardFill.BackgroundColor3 = GREEN
+	pulse(cardStroke, affordable)
+
+	-- 살 수 있게 되는 순간 한 번만 딩. 첫 프로필(접속 직후)은 울리지 않는다
+	if affordable and wasAffordable == false and Sound and Sound.play then
+		pcall(Sound.play, SOUND_AFFORD)
+	end
+	wasAffordable = affordable
 end
 
 --- 「다음 부품」 카드. 매 초 다시 계산한다(링·예상 초·자기 부지 여부)
@@ -504,8 +628,11 @@ local function renderCard(profile: Profile)
 		cardSub.Text = TEXT_GO_HOME_SUB
 		cardBar.Visible = false
 		pulse(cardStroke, false)
+	elseif nextPart == nil and nextTowerFloor(profile) then
+		local floor = nextTowerFloor(profile) :: number
+		key = `floor{floor}`
+		showPrice(profile, TEXT_NEXT_FLOOR, `{floor}층`, TowerConfig.priceOf(floor, profile.graduations))
 	elseif nextPart == nil then
-		-- W6: 다음 층 분기 자리
 		key = "graduate"
 		cardCaption.Text = `{facilityCount(profile)}/{FacilityConfig.COUNT}`
 		cardName.Text = TEXT_GRADUATE
@@ -519,26 +646,12 @@ local function renderCard(profile: Profile)
 		-- 키는 시설 단위라 카드는 시설이 바뀔 때만 미끄러진다(부품마다 흔들지 않는다)
 		local facility = nextPart.facility
 		key = facility.id
-		local price = FacilityConfig.partPriceOf(facility.id, nextPart.index, profile.graduations)
-		local eta = EconomyConfig.etaSeconds(profile, price)
-		local affordable = eta <= 0
-		cardCaption.Text = TEXT_NEXT_CAPTION
-		cardName.Text = `{facility.name} {nextPart.index}/{nextPart.count}`
-		cardPrice.Text = `{GLYPH_COINS}{Format.coins(price)}`
-		cardSub.Text = if affordable
-			then TEXT_AFFORD
-			elseif eta == math.huge then TEXT_NO_INCOME
-			else `약 {Format.eta(eta)}`
-		cardBar.Visible = true
-		cardFill.Size = UDim2.fromScale(math.clamp(profile.coins / price, 0, 1), 1)
-		cardFill.BackgroundColor3 = GREEN
-		pulse(cardStroke, affordable)
-
-		-- 살 수 있게 되는 순간 한 번만 딩. 첫 프로필(접속 직후)은 울리지 않는다
-		if affordable and wasAffordable == false and Sound and Sound.play then
-			pcall(Sound.play, SOUND_AFFORD)
-		end
-		wasAffordable = affordable
+		showPrice(
+			profile,
+			TEXT_NEXT_CAPTION,
+			`{facility.name} {nextPart.index}/{nextPart.count}`,
+			FacilityConfig.partPriceOf(facility.id, nextPart.index, profile.graduations)
+		)
 	end
 
 	if shownCardKey ~= key then
@@ -583,6 +696,8 @@ local function onCardTap()
 	local nextRow = FacilityConfig.nextOf(profile.facilities)
 	if nextRow then
 		panTo(padPosition(plotId, nextRow.id))
+	elseif nextTowerFloor(profile) then
+		panTo(towerPadPosition(plotId))
 	else
 		panTo(partPosition(plotId, Keys.GRADUATION_BELL))
 	end
@@ -700,7 +815,30 @@ local function buildGui()
 	incomeLabel.TextXAlignment = Enum.TextXAlignment.Left
 	incomeChip.Visible = false
 
-	-- (12, 84) 자리는 비워 둔다(W6 「꾸미기」 버튼)
+	-- 「꾸미기」 버튼 (12, 84) 56×56. 용돈 칩(12..212, 12..44)·수입 칩(12..172, 52..76) 아래라 겹치지 않는다
+	decorButton = makeButton(root, "Decor", UDim2.fromOffset(12, 84), UDim2.fromOffset(56, 56))
+	decorStroke = makeStroke(decorButton, YELLOW)
+	decorScale = makeScale(decorButton)
+	local decorGlyph = makeLabel(decorButton, "Glyph", Enum.Font.GothamBold, WHITE)
+	decorGlyph.Position = UDim2.fromOffset(12, 12)
+	decorGlyph.Size = UDim2.fromOffset(32, 32)
+	decorGlyph.Text = GLYPH_DECOR
+	decorDot = Instance.new("Frame")
+	decorDot.Name = "NewDot"
+	decorDot.AnchorPoint = Vector2.new(1, 0)
+	decorDot.Position = UDim2.new(1, -4, 0, 4)
+	decorDot.Size = UDim2.fromOffset(12, 12)
+	decorDot.BackgroundColor3 = YELLOW
+	decorDot.BorderSizePixel = 0
+	decorDot.Visible = false
+	decorDot.Parent = decorButton
+	corner(decorDot, 6)
+	decorButton.Visible = false
+	decorButton.Activated:Connect(function()
+		decorNew = false
+		decorDot.Visible = false
+		openPanel(PANEL_DECOR)
+	end)
 
 	-- 「다음 시설」 카드 (306, 12) 200×64, 가운데 정렬
 	card = makeButton(root, "NextFacility", UDim2.new(0.5, 0, 0, 12), UDim2.fromOffset(200, 64))
@@ -727,14 +865,15 @@ local function buildGui()
 
 	-- 스티커판 미니 게이지 (556, 12) 96×64 = 가운데 +150
 	boardChip = makePanel(root, "Board", UDim2.new(0.5, 150, 0, 12), UDim2.fromOffset(96, 64))
-	local boardCaption = makeLabel(boardChip, "Caption", Enum.Font.GothamMedium, MUTED)
-	boardCaption.Position = UDim2.fromOffset(6, 4)
-	boardCaption.Size = UDim2.fromOffset(84, 14)
-	boardCaption.Text = TEXT_BOARD
-	boardLabel = makeLabel(boardChip, "Value", Enum.Font.GothamBold, WHITE)
-	boardLabel.Position = UDim2.fromOffset(6, 20)
-	boardLabel.Size = UDim2.fromOffset(84, 26)
-	local _boardBar, fill = makeBar(boardChip, "Ring", UDim2.fromOffset(8, 54), UDim2.fromOffset(80, 4), YELLOW)
+	-- 글자 대신 🎁 + 칸 게이지(글보다 그림). 숫자는 작게 아래에
+	local boardGlyph = makeLabel(boardChip, "Caption", Enum.Font.GothamBold, WHITE)
+	boardGlyph.Position = UDim2.fromOffset(6, 4)
+	boardGlyph.Size = UDim2.fromOffset(84, 24)
+	boardGlyph.Text = GLYPH_GIFT
+	local _boardBar, fill = makeBar(boardChip, "Ring", UDim2.fromOffset(8, 32), UDim2.fromOffset(80, 10), YELLOW)
+	boardLabel = makeLabel(boardChip, "Value", Enum.Font.GothamBold, MUTED)
+	boardLabel.Position = UDim2.fromOffset(6, 44)
+	boardLabel.Size = UDim2.fromOffset(84, 16)
 	boardFill = fill
 	boardChip.Visible = false
 
@@ -829,6 +968,15 @@ local function buildGui()
 	flyer.Visible = false
 	flyer.ZIndex = 5
 
+	-- 판 칩 위에서 열리는 선물 상자
+	giftBox = makeLabel(root, "GiftBox", Enum.Font.GothamBold, WHITE)
+	giftBox.AnchorPoint = Vector2.new(0.5, 0.5)
+	giftBox.Size = UDim2.fromOffset(48, 48)
+	giftBox.Text = GLYPH_GIFT
+	giftBox.Visible = false
+	giftBox.ZIndex = 6
+	giftBoxScale = makeScale(giftBox)
+
 	gui.Parent = player:WaitForChild("PlayerGui")
 end
 
@@ -915,16 +1063,36 @@ function HudController.hold(on: boolean)
 	end
 end
 
---- 서버 GiftOpened(본인에게만). 판 칩이 보일 때만 코인이 날아간다. 졸업식 중에는 HUD 가 숨어 있어 건너뛴다
+--- 서버 GiftOpened(본인에게만). 판 칩 위에서 🎁 가 열리고, 아이템이면 「꾸미기」 버튼으로, 용돈이면 용돈 칩으로 날아간다.
+--- 글자는 하나도 띄우지 않는다. 판 칩이 안 보이거나 졸업식 중(HUD 숨김)이면 건너뛴다
 function HudController.onGift(payload: any)
-	-- 꾸미기 아이템 선물이면 코인이 날지 않는다(아이템 연출은 W6 꾸미기 시트)
-	if typeof(payload) == "table" and typeof(payload.item) == "string" then
-		return
-	end
 	if not built or held or not boardChip.Visible then
 		return
 	end
-	flyGift()
+	local itemId = if typeof(payload) == "table" and typeof(payload.item) == "string" then payload.item else nil
+	openGiftBox(function()
+		if itemId then
+			flyItem(itemId)
+		else
+			flyGift()
+		end
+	end)
+end
+
+--- 「꾸미기」 버튼의 화면 절대 좌표(IgnoreGuiInset 기준)와 크기. 안 보이면 nil. 튜토리얼 2D 손가락이 쓴다
+function HudController.decorButtonRect(): (Vector2?, Vector2?)
+	if not built or not decorButton.Visible or not root.Visible then
+		return nil, nil
+	end
+	return decorButton.AbsolutePosition, decorButton.AbsoluteSize
+end
+
+--- 「꾸미기」 버튼 테두리 펄스(튜토리얼 꾸미기 단계)
+function HudController.pulseDecorButton(on: boolean)
+	if not built then
+		return
+	end
+	pulse(decorStroke, on)
 end
 
 --- 2.6초 토스트

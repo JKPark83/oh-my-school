@@ -35,6 +35,10 @@ Keys.PROTOTYPES = "CharacterPrototypes" -- ReplicatedStorage 사람 원형 폴�
 Keys.DOOR = "Door" -- 시설 모델의 문 Attachment(학생이 걸어 들어오는 지점)
 Keys.LEADERBOARD = "Leaderboard" -- 광장 리더보드 파트
 Keys.HOME_PROMPT = "HomePrompt" -- 「우리 학교로」 ProximityPrompt(광장 팻말·부지 팻말)
+Keys.TOWER_FOLDER = "Tower" -- 부지 모델 안 탑 폴더(바닥판·엘리베이터 앵커·TOWER_PAD·지붕)
+Keys.TOWER_PAD = "TowerPad" -- 2층 층 구매 패드 파트
+Keys.ELEVATOR_UP = "Up" -- 엘리베이터 앵커의 ▲ ProximityPrompt
+Keys.ELEVATOR_DOWN = "Down" -- 엘리베이터 앵커의 ▼ ProximityPrompt
 
 -- PlotState 폴더 어트리뷰트(기획서 §11.4)
 Keys.ATTR_OWNER_ID = "OwnerId" -- number, 0 = 빈 부지
@@ -44,6 +48,7 @@ Keys.ATTR_FACILITIES = "Facilities" -- CSV "desk,board"
 Keys.ATTR_STUDENTS = "Students" -- CSV "s01,s02"
 Keys.ATTR_INCOME = "Income" -- number, 초당 수입
 Keys.ATTR_DECOR = "Decor" -- DecorCodec 문자열. 빈 부지는 ""
+Keys.ATTR_TOWER_FLOORS = "TowerFloors" -- number, 산 층 수(층 번호 3..2+TowerFloors). 빈 부지는 0
 
 -- 파트·모델 어트리뷰트
 Keys.ATTR_BUILT = "Built" -- 시설 모델: 마지막 부품을 넣어 완공될 때 true
@@ -55,6 +60,7 @@ Keys.ATTR_FACILITY_ID = "FacilityId" -- 패드·실루엣 ↔ 시설
 Keys.ATTR_PLOT_ID = "PlotId" -- 부지 번호(1~12)
 Keys.ATTR_PAD_STATE = "PadState" -- "active" | "next" | "hidden" | "built"
 Keys.ATTR_STICKER_ID = "StickerId" -- 스티커 스폰 번호(1~8)
+Keys.ATTR_FLOOR = "Floor" -- 탑 바닥판·엘리베이터 앵커·다음 층 유령: 층 번호(number)
 
 -- 플레이어 어트리뷰트
 Keys.ATTR_PLOT = "Plot" -- player:GetAttribute("Plot") = 부지 번호

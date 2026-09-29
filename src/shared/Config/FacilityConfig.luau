@@ -260,6 +260,23 @@ end
 assert(partTotal == 50, `부품 합계가 50 이 아니다: {partTotal}`)
 FacilityConfig.PART_COUNT = partTotal -- 14 시설 부품 합(50)
 
+-- 층별 바닥 높이(부지 로컬 y). [2] 는 PlotLayout.WALL_H 와 같아야 한다(PlotLayout 이 확인한다. 순환 require 때문에 여기서 못 읽는다)
+FacilityConfig.STORY_Y = { 0, 18 }
+
+-- #14: 각 행의 floor 가 pad.Y·center.Y 의 높이 띠와 맞는지(개선계획 §3.6 #14). 층 사이 절반을 넘으면 다른 층이다
+do
+	local band = FacilityConfig.STORY_Y[2] / 2
+	for _, row in LIST do
+		local base = FacilityConfig.STORY_Y[row.floor]
+		assert(base, `{row.id}: floor 는 1 또는 2 여야 한다({row.floor})`)
+		assert(math.abs(row.pad.Y - base) < band, `{row.id}: pad.Y {row.pad.Y} 가 {row.floor}층 높이 띠 밖이다`)
+		assert(
+			math.abs(row.center.Y - base) < band,
+			`{row.id}: center.Y {row.center.Y} 가 {row.floor}층 높이 띠 밖이다`
+		)
+	end
+end
+
 --- 구매 순서 번호(1~14)
 function FacilityConfig.indexOf(id: Types.FacilityId): number
 	return INDEX[id] or 0

@@ -26,6 +26,8 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local MissionConfig = require(ReplicatedStorage.Shared.Config.MissionConfig)
 local Seats = require(ReplicatedStorage.Shared.Seats)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
+local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
+local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local Types = require(ReplicatedStorage.Shared.Types)
 
 -- 계획 §3.4 계약(형제 컨트롤러). 형태만 선언하고 any 로 받는다
@@ -42,6 +44,7 @@ type CameraApi = {
 	orbit: (center: Vector3, radius: number, pitchDeg: number, seconds: number) -> (),
 	cutTo: (cframe: CFrame) -> (),
 	restore: () -> (),
+	panTo: (worldPos: Vector3, seconds: number) -> (),
 }
 type TransitionApi = {
 	fadeTo: (alpha: number, seconds: number) -> (),
@@ -81,6 +84,7 @@ local SOUND_COMBO = "combo"
 local SOUND_REWARD = "reward"
 local SOUND_DOOR = "door_open"
 local SOUND_SIT = "sit"
+local SOUND_ELEVATOR = "elevator"
 
 -- 등급(Types.Tier)
 local TIER_NORMAL: Types.Tier = "평범"
@@ -131,6 +135,12 @@ local CLASSROOM_CAMERA = Vector3.new(0, 17.5, 27.5) -- 교실1 을 내려다보�
 -- 부품 하나(PartBuilt): 부품 번호 1..4 → build 음정. 한 시설 안에서 올라가다 마지막에 완공 연출로 끝난다
 local PART_PITCH = { 1.0, 1.12, 1.26, 1.41 }
 local PART_DUST = 6
+-- 탑(W6)
+local FLOOR_PAN_SECONDS = 0.3 -- 새 층으로 카메라 팬(CameraController 가 PAN_HOLD 뒤 복귀)
+local FLOOR_CARD_HOLD = 1.2 -- 「N층!」 큰 숫자 카드
+local FLOOR_CARD_STROKE = 4
+local FLOOR_DUST = 12
+local ELEVATOR_FADE_SECONDS = 0.3 -- 흰 화면 0 → 1 → 0 합
 
 type Preset = {
 	color: ColorSequence,
@@ -189,6 +199,8 @@ local hapticEnabled = true
 local ceremonyActive = false
 local screenGui: ScreenGui? = nil
 local flashFrame: Frame? = nil
+local elevatorFade: Frame? = nil
+local elevatorToken = 0
 local popupFolder: Folder? = nil -- PlayerGui 아래, 「+N」 빌보드
 local fxFolder: Folder? = nil -- Workspace 아래, 파티클 임시 파트
 local lastFlash = -math.huge
@@ -675,18 +687,60 @@ handlers.sticker = function(payload: any)
 	afterSticker(payload)
 end
 
--- 콤보 5마다: 토스트 + combo 소리
+-- 콤보 5마다: 토스트(⭐ + 숫자, 글보다 그림) + combo 소리
 handlers.combo = function(payload: any)
 	local combo = if type(payload.combo) == "number" then payload.combo else 0
-	HudController.toast(`콤보 {combo}!`)
+	HudController.toast(`⭐ {combo}`)
 	sound(SOUND_COMBO)
 end
 
--- 스티커판 40칸 = 선물(GiftOpened, 본인에게만 온다). 코인이 날아가는 건 HUD
+-- 스티커판 40칸 = 선물(GiftOpened, 본인에게만 온다). 🎁 가 열리고 날아가는 건 HUD(글자 없음)
 handlers.gift = function(_payload: any)
-	HudController.toast("선물 도착!")
 	sound(SOUND_REWARD)
 	haptic("small")
+end
+
+-- 탑 층 완공(FloorBuilt, 주인에게만 온다): build 소리 → 새 층으로 0.3초 팬 → 「N층!」 큰 숫자 카드 1.2초
+handlers.floor = function(payload: any)
+	local plotId = if type(payload.plot) == "number" then payload.plot else nil
+	local floor = if type(payload.floor) == "number" then payload.floor else nil
+	if plotId == nil or plotId ~= PadController.myPlot() or floor == nil then
+		return -- 방문객 화면은 아무것도 없음(§7.5)
+	end
+	sound(SOUND_BUILD)
+	haptic("medium")
+	local plot = PadController.plotModel(plotId)
+	if plot then
+		local foot = PlotLayout.TOWER_FOOTPRINT
+		local center = Vector3.new((foot.x0 + foot.x1) / 2, TowerConfig.floorY(floor), (foot.z0 + foot.z1) / 2)
+		local position = plot:GetPivot():PointToWorldSpace(center)
+		if not ceremonyActive then
+			CameraController.panTo(position, FLOOR_PAN_SECONDS)
+		end
+		task.delay(0.05, function()
+			burst(position, PRESET_DUST, FLOOR_DUST)
+		end)
+	end
+	card(`{floor}층!`, "", TowerConfig.colorOf(floor), FLOOR_CARD_STROKE, FLOOR_CARD_HOLD)
+end
+
+-- 엘리베이터(ElevatorRide, 탄 사람에게만 온다): 0.3초 흰 화면(0 → 1 → 0) + elevator 소리
+handlers.elevator = function(_payload: any)
+	sound(SOUND_ELEVATOR)
+	local frame = elevatorFade
+	if not frame then
+		return
+	end
+	elevatorToken += 1
+	local mine = elevatorToken
+	local half = TweenInfo.new(ELEVATOR_FADE_SECONDS / 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	local fadeIn = TweenService:Create(frame, half, { BackgroundTransparency = 0 })
+	fadeIn.Completed:Once(function()
+		if mine == elevatorToken then
+			TweenService:Create(frame, half, { BackgroundTransparency = 1 }):Play()
+		end
+	end)
+	fadeIn:Play()
 end
 
 -- 구매: 패드 가라앉음(PadController), build, FOV 65→59→65, 트라우마 0.30, 햅틱 중, 50ms 먼지 12, 1200ms 다음 패드 소리
@@ -944,6 +998,17 @@ function FeedbackController.Start()
 	frame.ZIndex = 10
 	frame.Parent = gui
 	flashFrame = frame
+
+	-- 엘리베이터 흰 화면. 플래시(α ≤ 0.7, 0.08초)와 트윈이 겹치지 않게 따로 둔다
+	local fade = Instance.new("Frame")
+	fade.Name = "ElevatorFade"
+	fade.Size = UDim2.fromScale(1, 1)
+	fade.BackgroundColor3 = COLOR_WHITE
+	fade.BackgroundTransparency = 1
+	fade.BorderSizePixel = 0
+	fade.ZIndex = 11
+	fade.Parent = gui
+	elevatorFade = fade
 
 	local popups = Instance.new("Folder")
 	popups.Name = "FeedbackPopups"

@@ -45,7 +45,7 @@ DecorConfig.CELL = PlotLayout.CELL
 DecorConfig.GRID = PlotLayout.GRID
 DecorConfig.MAX_PLACED = 40 -- 모든 층 합(§3.6 #10)
 DecorConfig.MAX_OWNED = 10 -- 아이템 하나당 보관함 + 배치 합 상한
-DecorConfig.TUTORIAL_ITEM = "planter" -- 새 프로필 보관함에 넣어 두는 아이템(튜토리얼 ④)
+DecorConfig.TUTORIAL_ITEM = "planter" -- 새 프로필 보관함에 넣어 두는 아이템(튜토리얼 ⑤)
 DecorConfig.TUTORIAL_FREE = 2
 
 local MAX_PARTS = 6

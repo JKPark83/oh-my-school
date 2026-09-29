@@ -3,7 +3,8 @@
 	PadController — 월드 상호작용(클라이언트)
 
 	서버가 만든 부지 인스턴스(Workspace.Plots.PlotNN)를 읽고 로컬 연출만 얹는다. 상태의 출처는 언제나 어트리뷰트다.
-	- 구매 패드: PadState 로 보이기·색을 정하고, 내 부지의 활성 패드 위에 빌보드(이름·가격·진행 링)를 띄운다
+	- 구매 패드: PadState 로 보이기·색을 정하고, 내 부지의 활성 패드 위에 빌보드(이름·가격·진행 링)를 띄운다.
+	  탑 폴더(Tower)의 TowerPad(FacilityId "tower")도 같은 패드로 본다. 가격은 다음 층 TowerConfig.priceOf
 	- 칭찬스티커: 서버 파트는 보이지 않는 히트박스(3.4×3×3.4)다. 내 부지면 그 바닥에 3×0.1×3 표시판(별·하트·꽃·스마일)과
 	  세로 빛·반짝 소리를 로컬로 붙인다(개선계획 §3.2 #2·#3·#9). 금 스티커엔 빛기둥. 수평 2.2·높이 4 안이면 먼저 숨기는
 	  클라 예측(0.5초 안에 확정이 없으면 되돌림)
@@ -32,6 +33,7 @@ local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
+local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
@@ -55,6 +57,8 @@ local PadController = {}
 local PAD_ACTIVE = "active"
 local PAD_NEXT = "next"
 local PAD_BUILT = "built"
+-- 탑 층 구매 패드의 FacilityId(서버 Tower.refresh)
+local TOWER_FACILITY_ID = "tower"
 
 -- 패널 이름(계획 §3.4 PanelController.open)
 local PANEL_GRADUATE = "graduate"
@@ -128,6 +132,7 @@ local BOARD_FLASH_SECONDS = 0.3 -- §9.2 판이 차면 금색 플래시 0.3초
 type Ring = {
 	gui: BillboardGui,
 	dots: { Frame },
+	name: TextLabel,
 	price: TextLabel,
 	stroke: UIStroke,
 	scale: UIScale,
@@ -374,7 +379,7 @@ local function buildRing(entry: PadEntry): Ring
 	price.Size = UDim2.new(1, -106, 0, 40)
 	price.TextXAlignment = Enum.TextXAlignment.Left
 
-	return { gui = gui, dots = dots, price = price, stroke = stroke, scale = scale, pulse = nil }
+	return { gui = gui, dots = dots, name = name, price = price, stroke = stroke, scale = scale, pulse = nil }
 end
 
 --- 진행 링 = 용돈 ÷ 가격. 살 수 있으면 초록으로 숨쉬기
@@ -386,8 +391,16 @@ local function updateRing(entry: PadEntry)
 	local profile = HudController.profile()
 	local graduations = if profile then profile.graduations else 0
 	local coins = if profile then profile.coins else 0
-	local nextIndex = if profile then profile.buildParts + 1 else 1
-	local price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex, graduations)
+	local price: number
+	if entry.facilityId == TOWER_FACILITY_ID then
+		-- 다음 층 가격. 층을 사면 towerFloors 가 바뀌어 다음 층 가격으로 넘어가고 링은 0 근처부터 다시 찬다
+		local floor = TowerConfig.nextFloor(if profile then profile.towerFloors else 0)
+		price = if floor then TowerConfig.priceOf(floor, graduations) else 0
+		ring.name.Text = if floor then `{floor}층` else ""
+	else
+		local nextIndex = if profile then profile.buildParts + 1 else 1
+		price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex, graduations)
+	end
 	local ratio = if price > 0 then math.clamp(coins / price, 0, 1) else 1
 	ring.price.Text = Format.coins(price)
 	local lit = math.floor(ratio * RING_DOTS + 1e-6)
@@ -1174,9 +1187,27 @@ local function watchFolder(folder: Instance, plotId: number, add: (Instance, num
 	end
 end
 
+--- 탑 폴더에서는 TowerPad 만 패드로 본다(바닥판·앵커는 서버가 그린 그대로 둔다)
+local function watchTowerChild(child: Instance, plotId: number)
+	if child.Name == Keys.TOWER_PAD then
+		watchPad(child, plotId)
+	end
+end
+
+--- 탑 폴더가 통째로 빠지면(다시 짓기) 월드 밖으로 나간 패드를 정리한다
+local function sweepDetachedPads()
+	for part in pads do
+		if not part:IsDescendantOf(Workspace) then
+			unwatchPad(part)
+		end
+	end
+end
+
 local function onPlotChildAdded(child: Instance, plotId: number, animate: boolean)
 	if child.Name == Keys.PADS_FOLDER then
 		watchFolder(child, plotId, watchPad, unwatchPad)
+	elseif child.Name == Keys.TOWER_FOLDER then
+		watchFolder(child, plotId, watchTowerChild, unwatchPad)
 	elseif child.Name == Keys.STICKERS_FOLDER then
 		watchFolder(child, plotId, watchSticker, unwatchSticker)
 	elseif child.Name == Keys.STARS_FOLDER then
@@ -1239,7 +1270,9 @@ local function watchPlot(model: Instance, animate: boolean)
 	table.insert(
 		conns,
 		model.ChildRemoved:Connect(function(child)
-			if child:IsA("Model") then
+			if child.Name == Keys.TOWER_FOLDER then
+				sweepDetachedPads()
+			elseif child:IsA("Model") then
 				unwatchFacility(child)
 			end
 		end)

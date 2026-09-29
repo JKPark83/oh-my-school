@@ -199,6 +199,9 @@ local dispatch: { [string]: { Handler } } = {
 		function(payload)
 			call(DecorController, "DecorController", "onEvent", payload)
 		end,
+		function()
+			call(TutorialController, "TutorialController", "refresh")
+		end,
 	},
 	DecorStored = {
 		function(payload)
@@ -209,10 +212,34 @@ local dispatch: { [string]: { Handler } } = {
 		function(payload)
 			call(DecorController, "DecorController", "onEvent", payload)
 		end,
+		function(payload)
+			call(PanelController, "PanelController", "onDecorEvent", payload)
+		end,
 	},
 	DecorReturned = {
 		function(payload)
 			call(DecorController, "DecorController", "onEvent", payload)
+		end,
+		function(payload)
+			call(PanelController, "PanelController", "onDecorEvent", payload)
+		end,
+	},
+	-- 탑 한 층(본인에게만 온다). 소리·카메라·「N층!」 카드, 탑 링 가격과 다음 층 카드 갱신
+	FloorBuilt = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "floor", payload)
+		end,
+		function()
+			call(PadController, "PadController", "refresh")
+		end,
+		function()
+			call(HudController, "HudController", "refresh")
+		end,
+	},
+	-- 엘리베이터 순간이동(본인에게만 온다). 흰 페이드 + 소리
+	ElevatorRide = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "elevator", payload)
 		end,
 	},
 	Deny = {

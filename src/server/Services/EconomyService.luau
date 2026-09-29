@@ -2,6 +2,7 @@
 --[[
 	용돈·구매·스티커·별. 기획서 §2.2·§3.2·§5·§7.5·§9.1·§11.5, 계획서 §3.2.
 	  1Hz 틱   수입 지급 → 활성 패드 위에 서 있고 돈이 되면 다음 부품 1개 자동 구매(개선계획 §3.4) → ProfileSync
+	           14개 완공 뒤에는 TOWER_PAD 위에서 다음 층 1개 자동 구매(§3.6 #8, 틱당 1층)
 	  스티커   PlotService.StickerTouched → 검증(주인·간격·속도·거리) → 가치·콤보·판 → 15초 뒤 리스폰(금 판단)
 	  별       PlotService.StarTouched → 방문자 판 +1 (부지·60초당 2개)
 	  GoHome   PlotService.goHome (5초 쿨다운)
@@ -16,6 +17,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
+local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local StudentService = require(script.Parent.StudentService)
@@ -104,6 +106,18 @@ local function buy(player: Player, profile: Types.Profile, nextPart: FacilityCon
 	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
 end
 
+--- 다음 층 1개 구매(§3.6 #8). 돈·강당·패드·층 번호는 호출자가 확인했다
+local function buyFloor(player: Player, profile: Types.Profile, n: number, price: number)
+	profile.coins -= price
+	profile.towerFloors += 1
+	PlotService.refreshWorld(player)
+	DataService.markDirty(player)
+	-- 프로필을 먼저 보내야 FloorBuilt 가 부르는 클라 PadController·HudController 새로고침이 새 층 수·용돈을 본다
+	DataService.syncNow(player)
+	Remotes.event(player, "FloorBuilt", { plot = PlotService.plotOf(player), floor = n, coins = price })
+	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
+end
+
 local function tick()
 	for _, player in Players:GetPlayers() do
 		local profile: Types.Profile? = DataService.get(player)
@@ -118,13 +132,20 @@ local function tick()
 		if income > 0 then
 			addCoins(profile, income)
 		end
-		-- 틱당 부품 1개. nil 이면 14개 완공(W6: 다음 층 분기 자리, 개선계획 §3.6 #8)
+		-- 틱당 부품 1개. nil 이면 14개 완공이라 다음 층 1개(개선계획 §3.6 #8)
 		local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
 		if nextPart and PlotService.plotOf(player) then
 			local id = nextPart.facility.id
 			local price = FacilityConfig.partPriceOf(id, nextPart.index, profile.graduations)
 			if profile.coins >= price and PlotService.occupants(player)[id] then
 				buy(player, profile, nextPart)
+				continue
+			end
+		elseif not nextPart and profile.facilities.auditorium and PlotService.plotOf(player) then
+			local n = TowerConfig.nextFloor(profile.towerFloors)
+			local price = n and TowerConfig.priceOf(n, profile.graduations)
+			if n and profile.coins >= price and PlotService.onTowerPad(player) then
+				buyFloor(player, profile, n, price)
 				continue
 			end
 		end

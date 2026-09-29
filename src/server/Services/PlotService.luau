@@ -1,7 +1,7 @@
 --!nonstrict
 --[[
 	부지 12개 + 광장. 기획서 §7.1·§7.5·§11.4, 계획서 §3.2·§3.5.
-	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 7개)를 만든다.
+	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 8개)를 만든다.
 	  - 접속 순서로 번호가 가장 작은 빈 부지를 준다. 나가면 즉시 비운다.
 	  - 시설 모델은 buildPart 가 부품 단위로 넣는다(개선계획 §3.4). Geometry/<id>.build 로 전체를 임시로 짓고
 	    PartIndex == k 인 파트만 실제 모델로 옮긴다. 어트리뷰트 FacilityId/Parts/BuiltAt, 마지막 부품이면 Built.
@@ -10,6 +10,8 @@
 	  - 서버 순간이동은 teleport 한 곳을 지나고 Teleported 를 쏜다(goHome 도 이것을 쓴다).
 	  - 패드 판정은 Touched 대신 occupants() 가 주인 캐릭터의 HRP 위치로 직접 계산한다(1Hz, 활성 패드 1개뿐).
 	    패드 Touched 는 W7 측정(Metrics 의 패드 체류)에만 쓴다. 주인이 자기 활성 패드에 닿으면 PadTouched 로 넘긴다.
+	  - 탑(개선계획 §3.6): refreshWorld 가 Geometry/Tower 로 Tower 폴더를 강당이 있을 때만 짓는다. 층 구매 패드도
+	    같은 HRP 계산(onTowerPad)이다. 엘리베이터는 PromptTriggered 에서 서버가 판정하고 teleport 한다(방문객도 탄다).
 ]]
 
 local Players = game:GetService("Players")
@@ -23,6 +25,8 @@ local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
+local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local DecorCodec = require(ReplicatedStorage.Shared.DecorCodec)
 local DataService = require(script.Parent.DataService)
@@ -31,6 +35,7 @@ local GeometryFolder = script.Parent.Parent.Geometry
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local PlotShell = require(GeometryFolder.PlotShell)
 local Plaza = require(GeometryFolder.Plaza)
+local Tower = require(GeometryFolder.Tower)
 
 local PlotService = {}
 
@@ -55,6 +60,10 @@ local PAD_HEIGHT = 6
 local SILHOUETTE_TRANSPARENCY = 0.7
 local FALL_Y = -50
 local GATE_NAME_MAX = 8
+-- 엘리베이터 판정(개선계획 §3.6 #7). 앵커 중심에서 루트까지
+local ELEVATOR_REACH = 10 -- 수평
+local ELEVATOR_DY = 6 -- 높이 차
+local ELEVATOR_COOLDOWN = 1 -- 초, 플레이어별
 
 local cframes: { CFrame } = {}
 local plotModels: { Model } = {}
@@ -64,6 +73,7 @@ local plotOf: { [Player]: number } = {}
 local locked: { [Player]: boolean } = {}
 local characterConns: { [Player]: RBXScriptConnection } = {}
 local stickerRngs: { [number]: Random } = {} -- 부지마다 스티커 자리 추첨용 하나
+local lastRide: { [Player]: number } = {} -- 엘리베이터 쿨다운(방문객 포함)
 
 local stickerTouched = Instance.new("BindableEvent")
 local starTouched = Instance.new("BindableEvent")
@@ -165,6 +175,7 @@ local function resetState(plotId: number)
 	folder:SetAttribute(Keys.ATTR_STUDENTS, "")
 	folder:SetAttribute(Keys.ATTR_INCOME, 0)
 	folder:SetAttribute(Keys.ATTR_DECOR, "")
+	folder:SetAttribute(Keys.ATTR_TOWER_FLOORS, 0)
 	setGateSign(plotId, "")
 end
 
@@ -187,11 +198,29 @@ local function refreshPads(plotId: number, built: { [string]: boolean })
 	end
 end
 
---- 다음 시설의 아직 안 산 부품(PartIndex > buildParts) 실루엣 하나. 같은 시설·같은 부품 수면 다시 짓지 않는다
-local function refreshSilhouette(plotId: number, built: { [string]: boolean }, buildParts: number)
+--[[
+	실루엣 슬롯(부지당 ≤1). 다음 시설의 아직 안 산 부품(PartIndex > buildParts)을 세운다. 같은 시설·같은 부품 수면 다시 짓지 않는다.
+	14개가 다 서 있으면 같은 슬롯에 다음 층 유령(Tower.ghost)을 세운다. 층이 상한이면 비운다(§3.6 #6)
+]]
+local function refreshSilhouette(plotId: number, built: { [string]: boolean }, buildParts: number, towerFloors: number)
 	local model = plotModels[plotId]
 	local old = model:FindFirstChild(Keys.SILHOUETTE)
 	local nextRow = FacilityConfig.nextOf(built)
+	if not nextRow then
+		local nextFloor = if built.auditorium then TowerConfig.nextFloor(towerFloors) else nil
+		if old and nextFloor and old:GetAttribute(Keys.ATTR_FLOOR) == nextFloor then
+			return
+		end
+		if old then
+			old:Destroy()
+		end
+		if nextFloor then
+			local ghost = Tower.ghost(cframes[plotId], nextFloor)
+			ghost.Name = Keys.SILHOUETTE
+			ghost.Parent = model
+		end
+		return
+	end
 	if old then
 		local oldParts = old:GetAttribute(Keys.ATTR_PARTS)
 		if nextRow and old:GetAttribute(Keys.ATTR_FACILITY_ID) == nextRow.id and type(oldParts) == "number" then
@@ -210,9 +239,6 @@ local function refreshSilhouette(plotId: number, built: { [string]: boolean }, b
 			end
 		end
 		old:Destroy()
-	end
-	if not nextRow then
-		return -- W6: 다음 층 실루엣 자리(개선계획 §3.6 #8)
 	end
 	local builder = facilityBuilder(nextRow.id)
 	if not builder then
@@ -356,11 +382,12 @@ local function refreshStickers(plotId: number, built: { [string]: boolean }, bui
 	end
 end
 
-local function refreshWorld(plotId: number, built: { [string]: boolean }, buildParts: number)
+local function refreshWorld(plotId: number, built: { [string]: boolean }, buildParts: number, towerFloors: number)
 	refreshPads(plotId, built)
-	refreshSilhouette(plotId, built, buildParts)
+	refreshSilhouette(plotId, built, buildParts, towerFloors)
 	refreshConstruction(plotId, built, buildParts)
 	refreshStickers(plotId, built, buildParts)
+	Tower.refresh(plotModels[plotId], cframes[plotId], towerFloors, built.auditorium == true)
 end
 
 --[[
@@ -494,6 +521,63 @@ local function buildPlot(plotId: number)
 	stateFolders[plotId] = state
 end
 
+--[[
+	엘리베이터(§3.6 #7). 프롬프트는 클라가 누르지만 판정은 서버가 한다. 실패는 조용히 무시한다(위반 아님).
+	앵커(부지 Tower 폴더의 ElevatorNN) 근처(수평 ≤ ELEVATOR_REACH, |dy| ≤ ELEVATOR_DY)에 있어야 하고,
+	목표 층은 앵커 층 ±1 이며 2 ≤ 목표 ≤ 2 + 그 부지 주인의 towerFloors. 방문객도 탄다. 플레이어별 1초 쿨다운.
+	연출·소리는 탄 사람에게만 가는 ElevatorRide 로만(§7.5)
+]]
+local function rideElevator(prompt: ProximityPrompt, player: Player): boolean
+	-- 졸업식 잠금 중(주인)이면 타지 않는다. 졸업식 카메라와 겹치고 finish 의 대피가 어차피 내린다
+	if locked[player] then
+		return false
+	end
+	-- 프롬프트는 앵커 안 Attachment 에 달려 있다(Tower makePrompt)
+	local holder = prompt.Parent
+	local anchor = if holder and holder:IsA("Attachment") then holder.Parent else holder
+	if not anchor or not anchor:IsA("BasePart") then
+		return false
+	end
+	local from = anchor:GetAttribute(Keys.ATTR_FLOOR)
+	local folder = anchor.Parent
+	if typeof(from) ~= "number" or not folder or folder.Name ~= Keys.TOWER_FOLDER then
+		return false
+	end
+	local plotId = plotIdOfPart(anchor)
+	local owner = plotId and owners[plotId]
+	local profile = owner and DataService.get(owner)
+	if not plotId or not profile then
+		return false
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return false
+	end
+	local d = root.Position - anchor.Position
+	if Vector3.new(d.X, 0, d.Z).Magnitude > ELEVATOR_REACH or math.abs(d.Y) > ELEVATOR_DY then
+		return false
+	end
+	local target = if prompt.Name == Keys.ELEVATOR_UP then from + 1 else from - 1
+	if target < 2 or target > 2 + profile.towerFloors then
+		return false
+	end
+	if not folder:FindFirstChild(string.format("Elevator%02d", target)) then
+		return false
+	end
+	local now = os.clock()
+	if lastRide[player] and now - lastRide[player] < ELEVATOR_COOLDOWN then
+		return false
+	end
+	lastRide[player] = now
+	PlotService.teleport(player, Tower.arrival(cframes[plotId], target), false)
+	Remotes.event(player, "ElevatorRide", { plot = plotId, floor = target })
+	return true
+end
+
+--- 엘리베이터 판정. DevCheat.RideElevator 가 프롬프트 없이 부른다(Studio 게이트). 통과해 옮겼으면 true
+PlotService.rideElevator = rideElevator
+
 function PlotService.Start()
 	pcall(function()
 		PhysicsService:RegisterCollisionGroup(Keys.COLLISION_GROUP_PLAYERS)
@@ -517,7 +601,7 @@ function PlotService.Start()
 		plotModels[plotId].Parent = plotsFolder
 		stateFolders[plotId].Parent = stateRoot
 		resetState(plotId)
-		refreshWorld(plotId, {}, 0)
+		refreshWorld(plotId, {}, 0, 0)
 		wireTouches(plotId)
 	end
 	stateRoot.Parent = ReplicatedStorage
@@ -525,7 +609,12 @@ function PlotService.Start()
 	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
 		if prompt.Name == Keys.HOME_PROMPT then
 			PlotService.goHome(player)
+		elseif prompt.Name == Keys.ELEVATOR_UP or prompt.Name == Keys.ELEVATOR_DOWN then
+			rideElevator(prompt, player)
 		end
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		lastRide[player] = nil
 	end)
 
 	-- 낙하 귀가
@@ -593,7 +682,7 @@ function PlotService.assign(player: Player): number?
 		if nextPart and profile.buildParts > 0 then
 			insertParts(plotId, nextPart.facility.id, 1, profile.buildParts, false)
 		end
-		refreshWorld(plotId, profile.facilities, profile.buildParts)
+		refreshWorld(plotId, profile.facilities, profile.buildParts, profile.towerFloors)
 	end
 	PlotService.syncAttributes(player)
 	if player.Character then
@@ -613,6 +702,8 @@ function PlotService.release(player: Player)
 	if not plotId then
 		return
 	end
+	-- 탑이 사라지기 전에 3층 이상에 있는 사람(방문객)을 스폰으로 내린다. 졸업(finish)과 같은 대피(§3.6 #11)
+	PlotService.evacuate(plotId)
 	owners[plotId] = nil
 	removeFacilities(plotId)
 	-- 이전 주인이 주운 스티커는 respawnSticker 가 주인이 바뀌어 다시 켜지 않는다. 전부 새로 켜게 Enabled 를 지운다
@@ -622,7 +713,7 @@ function PlotService.release(player: Player)
 			part:SetAttribute("Enabled", nil)
 		end
 	end
-	refreshWorld(plotId, {}, 0)
+	refreshWorld(plotId, {}, 0, 0)
 	resetState(plotId)
 end
 
@@ -646,7 +737,7 @@ function PlotService.state(plotId: number): Folder
 	return stateFolders[plotId]
 end
 
---- 프로필 → PlotState 어트리뷰트 7개 + 교문 현판. 꾸미기(Decor)는 졸업과 상관없어 DecorService 가 잠금 중에도 따로 쓴다
+--- 프로필 → PlotState 어트리뷰트 8개 + 교문 현판. 꾸미기(Decor)는 졸업과 상관없어 DecorService 가 잠금 중에도 따로 쓴다
 function PlotService.syncAttributes(player: Player)
 	local plotId = plotOf[player]
 	local profile: Types.Profile? = DataService.get(player)
@@ -666,6 +757,7 @@ function PlotService.syncAttributes(player: Player)
 	folder:SetAttribute(Keys.ATTR_STUDENTS, StudentConfig.toCsv(profile.students))
 	folder:SetAttribute(Keys.ATTR_INCOME, math.floor(EconomyConfig.incomePerSecond(profile)))
 	folder:SetAttribute(Keys.ATTR_DECOR, DecorCodec.encode(profile.decorPlaced))
+	folder:SetAttribute(Keys.ATTR_TOWER_FLOORS, profile.towerFloors)
 	setGateSign(plotId, player.DisplayName)
 end
 
@@ -677,9 +769,20 @@ function PlotService.buildPart(player: Player, facilityId: string, k: number): M
 		return nil
 	end
 	local facility = insertParts(plotId, facilityId, k, k, true)
-	refreshWorld(plotId, profile.facilities, profile.buildParts)
+	refreshWorld(plotId, profile.facilities, profile.buildParts, profile.towerFloors)
 	PlotService.syncAttributes(player)
 	return facility
+end
+
+--- 프로필(facilities·buildParts·towerFloors) 그대로 패드·실루엣·스티커·탑을 다시 맞춘다. 층 구매·DevCheat 용
+function PlotService.refreshWorld(player: Player)
+	local plotId = plotOf[player]
+	local profile = DataService.get(player)
+	if not plotId or not profile then
+		return
+	end
+	refreshWorld(plotId, profile.facilities, profile.buildParts, profile.towerFloors)
+	PlotService.syncAttributes(player)
 end
 
 --- 졸업: 시설 모델 전부 제거, 스폰 0(책상 첫 부품을 다시 사면 3), 실루엣. 프로필(facilities·buildParts)은 이미 비워져 있다
@@ -690,10 +793,11 @@ function PlotService.teardown(player: Player)
 		return
 	end
 	removeFacilities(plotId)
+	-- 강당이 없어져 Tower 폴더도 비운다. towerFloors 는 남아 강당을 다시 지으면 층이 돌아온다(질문 13)
 	if profile then
-		refreshWorld(plotId, profile.facilities, profile.buildParts)
+		refreshWorld(plotId, profile.facilities, profile.buildParts, profile.towerFloors)
 	else
-		refreshWorld(plotId, {}, 0)
+		refreshWorld(plotId, {}, 0, 0)
 	end
 	PlotService.syncAttributes(player)
 end
@@ -746,6 +850,45 @@ local function isOver(root: BasePart, pad: BasePart): boolean
 	local offset = root.Position - pad.Position
 	local flat = Vector3.new(offset.X, 0, offset.Z).Magnitude
 	return flat <= PAD_RADIUS and offset.Y >= -1 and offset.Y <= PAD_HEIGHT
+end
+
+--- 주인 캐릭터가 자기 부지 TOWER_PAD 위에 있나(occupants 와 같은 isOver 기준). 패드는 강당이 있을 때만 있다
+function PlotService.onTowerPad(player: Player): boolean
+	local plotId = plotOf[player]
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not plotId or not root then
+		return false
+	end
+	local tower = plotModels[plotId]:FindFirstChild(Keys.TOWER_FOLDER)
+	local pad = tower and tower:FindFirstChild(Keys.TOWER_PAD)
+	return pad ~= nil and pad:IsA("BasePart") and isOver(root, pad)
+end
+
+--[[
+	졸업 대피(§3.6 #11). 이 부지 범위 안에서 루트 Y 가 TowerConfig.EVACUATE_Y 를 넘는 사람(주인·방문객)을
+	이 부지 스폰으로 바로 옮긴다. 스트리밍을 기다리지 않아 멈추지 않는다(teardown 전에 동기로 부른다).
+	teleport 를 지나므로 Teleported 가 스티커 과속 기준점을 지운다
+]]
+function PlotService.evacuate(plotId: number)
+	local cf = cframes[plotId]
+	local model = plotModels[plotId]
+	if not cf or not model then
+		return
+	end
+	local spawn = model:FindFirstChild(Keys.SPAWN)
+	local target = if spawn and spawn:IsA("BasePart") then spawn.CFrame else cf * CFrame.new(PlotLayout.SPAWN)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if root and root:IsA("BasePart") then
+			local p = cf:PointToObjectSpace(root.Position)
+			local half = PlotLayout.PLOT_HALF
+			if math.abs(p.X) <= half and math.abs(p.Z) <= half and p.Y > TowerConfig.EVACUATE_Y then
+				PlotService.teleport(player, target, false)
+			end
+		end
+	end
 end
 
 --- 주인 캐릭터가 지금 밟고 있는 패드. 활성 패드만 센다

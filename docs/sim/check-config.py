@@ -87,6 +87,15 @@ rows += [
     ("시설별 부품 수", [f[4] for f in sim.FACILITIES], [len(f[1]) for f in facilities]),
     ("부품 가격(50개)", list(sim.PRICES), [p for f in facilities for p in f[1]]),
 ]
+tow = read("TowerConfig.luau")
+tow_income = re.search(r"assert\(completedIncome == (\d+)", tow)
+rows += [
+    ("탑 STEP", sim.TOWER_STEP, scalar(tow, "TowerConfig", "STEP")),
+    ("탑 GAP_SECONDS", sim.TOWER_GAP_SECONDS, scalar(tow, "TowerConfig", "GAP_SECONDS")),
+    ("탑 MAX(꼭대기 층)", sim.TOWER_TOP_FLOOR, scalar(tow, "TowerConfig", "MAX")),
+    ("탑 FIRST_FLOOR", sim.TOWER_FIRST_FLOOR, scalar(tow, "TowerConfig", "FIRST_FLOOR")),
+    ("탑 완공 수입(assert)", sim.TOWER_COMPLETED_INCOME, int(tow_income.group(1)) if tow_income else None),
+]
 decor = decor_prices()
 rows.append(("꾸미기 가격(27개)", dict(sim.DECOR_PRICES), decor if decor is not None else "DecorConfig 없음"))
 

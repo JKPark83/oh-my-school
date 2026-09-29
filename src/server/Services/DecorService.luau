@@ -143,6 +143,10 @@ local function placedPacket(slot: number, p: Types.DecorPlacement, moved: boolea
 	return { slot = slot, item = p.item, cx = p.cx, cz = p.cz, rot = p.rot, f = p.f or 1, moved = moved }
 end
 
+-- 꾸밀 수 있는 탑 층 수. 강당이 없으면(졸업 뒤) 탑이 비어 있으니 0. 이미 놓인 배치는 그대로 둔다(강당을 다시 지으면 돌아온다)
+local function shownFloors(profile: Types.Profile): number
+	return if profile.facilities.auditorium then profile.towerFloors else 0
+end
 local function place(player: Player, itemId: string, cx: number, cz: number, rot: number, f: number)
 	local profile = DataService.get(player)
 	if not profile or not PlotService.plotOf(player) or not DecorConfig.byId(itemId) then
@@ -152,7 +156,7 @@ local function place(player: Player, itemId: string, cx: number, cz: number, rot
 		Remotes.deny(player, "owned")
 		return
 	end
-	local ok, reason = DecorGrid.canPlace(profile.decorPlaced, profile.towerFloors, itemId, cx, cz, rot, f)
+	local ok, reason = DecorGrid.canPlace(profile.decorPlaced, shownFloors(profile), itemId, cx, cz, rot, f)
 	if not ok then
 		Remotes.deny(player, DENY_OF[reason] or "cell")
 		return
@@ -187,7 +191,7 @@ local function move(player: Player, slot: number, cx: number, cz: number, rot: n
 	end
 	local placement = profile.decorPlaced[slot]
 	local ok, reason =
-		DecorGrid.canPlace(profile.decorPlaced, profile.towerFloors, placement.item, cx, cz, rot, f, slot)
+		DecorGrid.canPlace(profile.decorPlaced, shownFloors(profile), placement.item, cx, cz, rot, f, slot)
 	if not ok then
 		Remotes.deny(player, DENY_OF[reason] or "cell")
 		return

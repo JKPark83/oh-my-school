@@ -6,6 +6,8 @@
 	    졸업 확정 학생(1회 s18, 5회 s23) grant. stickerBoard·giftIndex·decorOwned·decorPlaced·towerFloors·missions 유지
 	  → 즉시 저장 요청 → (요청이 받아들여지면) 리더보드 → Graduated 전체 방송 → ProfileSync
 	  → 8.0초 뒤 잠금 해제 + 월드 철거(teardown). 부지 어트리뷰트도 이때 바뀐다. 퇴장하면 flush() 로 즉시 철거.
+	    철거 직전에 이 부지의 3층 이상에 있는 사람(방문객 포함)을 이 부지 스폰으로 옮긴다(PlotService.evacuate, §3.6 #11).
+	    강당이 사라지면 탑도 사라져 발밑이 비기 때문이다.
 	    꾸미기(Decor 어트리뷰트)는 철거하지 않는다. teardown 의 syncAttributes 가 decorPlaced 그대로 다시 쓴다.
 	8초는 클라이언트 졸업식 연출(§9.5)을 위한 대기일 뿐 프로필과 무관하다.
 ]]
@@ -36,6 +38,10 @@ local function finish(player: Player)
 	pendingTeardown[player] = nil
 	-- 잠금을 먼저 풀어야 teardown 의 syncAttributes 가 어트리뷰트를 쓴다
 	PlotService.lock(player, false)
+	local plotId = PlotService.plotOf(player)
+	if plotId then
+		PlotService.evacuate(plotId)
+	end
 	PlotService.teardown(player)
 end
 

@@ -1,6 +1,6 @@
 --!strict
 --[[
-	사운드 18종. 기획서 §9.6 표.
+	사운드 19종. 기획서 §9.6 표.
 
 	★ id 는 두 종류다. rbxassetid:// 는 Creator Store 의 무료 음원이고,
 	  rbxasset://sounds/* 는 로블록스 엔진 내장 음원을 pitch(PlaybackSpeed)와 volume 으로
@@ -45,6 +45,8 @@ local DEFS: { [string]: SoundDef } = {
 	bell = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.7, speed = 0.7, looped = false },
 	-- 꾸미기가 겹쳐 옆 칸으로 밀림·놓을 수 없는 칸(부정 소리 대신 작고 가벼운 톡). 짧은 핑을 빠르게(≤0.3초)
 	nudge = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.3, speed = 1.8, looped = false },
+	-- 엘리베이터 도착 「띵」(개선계획 §3.6 #7, ≤0.5초·볼륨 ≤0.5). 짧은 핑을 조금 높게
+	elevator = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.4, speed = 1.2, looped = false },
 	-- 복도 웅성거림 배경음(루프). 항상 아주 작게 깔린다
 	hallway = { id = "rbxassetid://9112811182", volume = 0.08, speed = 1, looped = true },
 

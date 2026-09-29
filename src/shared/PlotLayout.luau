@@ -15,6 +15,7 @@ local PlotLayout = {}
 PlotLayout.PLOT_HALF = 75
 PlotLayout.GATE_Z = 67.5
 PlotLayout.WALL_H = 18
+assert(FacilityConfig.STORY_Y[2] == PlotLayout.WALL_H, "FacilityConfig.STORY_Y[2] 는 WALL_H 와 같아야 한다")
 PlotLayout.FLOOR_T = 1 -- 부지 바닥판 두께. 윗면이 y=0
 PlotLayout.SPAWN = Vector3.new(0, 0, 60)
 PlotLayout.CELL = 5 -- 꾸미기 격자 한 칸(§3.5 격자)
@@ -71,6 +72,9 @@ PlotLayout.ELEVATOR = Vector2.new(17.5, -17.5)
 -- 층 구매 패드. 2층 강당 바닥 윗면, 엘리베이터 칸 바로 남쪽 칸
 PlotLayout.TOWER_PAD = Vector3.new(17.5, PlotLayout.WALL_H + PlotLayout.AUDITORIUM_FLOOR_T, -12.5)
 PlotLayout.TOWER_PAD_SIZE = Vector2.new(4, 4) -- 시설 패드(PlotShell PAD_SIZE)와 같은 발자국
+-- 2층 엘리베이터 도착 자리(바닥 윗면 x·z). 남쪽 칸은 TOWER_PAD 라 북쪽 칸에 내린다.
+-- 패드 위에 내리면 다음 1Hz 틱이 주인 몰래 층을 산다. 3층부터는 남쪽 칸(Tower ARRIVE_Z)
+PlotLayout.ELEVATOR_ARRIVAL_2 = Vector2.new(PlotLayout.ELEVATOR.X, PlotLayout.ELEVATOR.Y - PlotLayout.CELL)
 
 --- 루트 Y → 층 번호(1, 2, 3, …). 2층은 강당 바닥(18.2)부터, 3층은 TOWER_BASE_Y 부터
 function PlotLayout.floorOf(y: number): number
@@ -367,6 +371,12 @@ do
 	assert(not overlaps(towerPad, seats), "PlotLayout(d): TOWER_PAD 가 강당 좌석과 겹친다")
 	assert(not overlaps(towerPad, landing), "PlotLayout(d): TOWER_PAD 가 착지대와 겹친다")
 	assert(not overlaps(towerPad, elevator), "PlotLayout(d): TOWER_PAD 가 엘리베이터 칸과 겹친다")
+	-- (e) 2층 도착 칸이 강당 안, 층 패드·좌석·착지대와 겹치지 않음(패드 위 도착 = 몰래 층 구매)
+	local arrival2 = rectAt(PlotLayout.ELEVATOR_ARRIVAL_2, Vector2.new(cell, cell))
+	assert(inside(arrival2, audRect), "PlotLayout(e): 2층 도착 칸이 강당 밖이다")
+	assert(not overlaps(arrival2, towerPad), "PlotLayout(e): 2층 도착 칸이 TOWER_PAD 와 겹친다")
+	assert(not overlaps(arrival2, seats), "PlotLayout(e): 2층 도착 칸이 강당 좌석과 겹친다")
+	assert(not overlaps(arrival2, landing), "PlotLayout(e): 2층 도착 칸이 착지대와 겹친다")
 end
 
 return PlotLayout

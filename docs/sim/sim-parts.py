@@ -145,6 +145,7 @@ TOWER_COMPLETED_INCOME = sum(f[2] for f in FACILITIES)
 TOWER_FIRST_FLOOR = 3
 TOWER_TOP_FLOOR = 20     # 잠정 상한. 층 번호 20(바닥 y 360.2)까지
 TOWER_STEPS = (1.5, 1.3, 1.2, 1.1, 1.0)
+TOWER_STEP = 1.5         # TowerConfig.STEP(잠정). check-config.py 가 대조한다. 표는 TOWER_STEPS 로 그린다
 TOWER_IDLE_SECONDS = 30 * 60
 
 

@@ -8,7 +8,9 @@
 	★ 대상 위치는 PadController 가 안다(패드·스티커). 아직 스트리밍 전이면 nil 이 오므로
 	  매 틱 다시 물어본다. 나를 PadController 가 require 하지 않는다(순환 금지).
 	★ §2.3 에스컬레이션: 대상에서 12 스터드 넘게 떨어진 채 30초 → 큰 화살표 3번 + 손가락 4초, 60초 → 카메라 팬.
-	  가까이 가면 타이머가 0 으로 돌아간다. 단계 ⑤(끝)도 다음 패드를 대상으로 에스컬레이션만 한다.
+	  가까이 가면 타이머가 0 으로 돌아간다. 단계 ⑥(끝)도 다음 패드를 대상으로 에스컬레이션만 한다.
+	★ 단계 ⑤(꾸미기)는 월드 대상이 없다. HUD 「꾸미기」 버튼 옆 2D 손가락 + 버튼 펄스. 시트를 열거나 처음 놓으면 끝.
+	  에스컬레이션은 30초 뒤 말풍선을 한 번 더 띄우는 것뿐이다(팬할 월드 위치가 없다).
 	★ 모듈 최상위 부작용 없음. Start() 에서 폴더·앵커를 만든다.
 ]]
 
@@ -18,14 +20,22 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
+local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Types = require(ReplicatedStorage.Shared.Types)
 
 -- 계획 §3.4 계약(형제 컨트롤러). 형태만 선언하고 any 로 받는다
 type HudApi = {
 	profile: () -> Types.Profile?,
 	onProfile: (fn: (Types.Profile) -> ()) -> (),
+	myPlotId: () -> number?,
+	pulseDecorButton: (on: boolean) -> (),
+	decorButtonRect: () -> (Vector2?, Vector2?),
+}
+type PanelApi = {
+	current: () -> string?,
 }
 type PadApi = {
 	padPosition: (facilityId: string) -> Vector3?,
@@ -40,6 +50,7 @@ type CameraApi = {
 local HudController = (require(script.Parent.HudController) :: any) :: HudApi
 local PadController = (require(script.Parent.PadController) :: any) :: PadApi
 local CameraController = (require(script.Parent.CameraController) :: any) :: CameraApi
+local PanelController = (require(script.Parent.PanelController) :: any) :: PanelApi
 
 local TutorialController = {}
 
@@ -48,12 +59,16 @@ local STAGE_DESK = 1 -- 책상을 사자
 local STAGE_STICKERS = 2 -- 스티커를 줍자
 local STAGE_GROW3 = 3 -- 시설 3개까지(말풍선 없음)
 local STAGE_GROW4 = 4 -- 이제 학교를 키우자
-local STAGE_DONE = 5 -- 끝. 에스컬레이션만
+local STAGE_DECOR = 5 -- 꾸며 보자(HUD 「꾸미기」 버튼)
+local STAGE_DONE = 6 -- 끝. 에스컬레이션만
 
 -- 말풍선(≤12자)
 local BUBBLE_DESK = "책상을 사자!"
 local BUBBLE_STICKERS = "스티커를 줍자!"
 local BUBBLE_GROW = "이제 학교를 키우자!"
+local BUBBLE_DECOR = "꾸며 보자!"
+local HUD_FINGER_TEXT = "👆"
+local PANEL_DECOR = "decor" -- PanelController.PanelName
 local FINGER_TEXT = "👇"
 local ARROW_TEXT = "⬇"
 
@@ -93,6 +108,9 @@ local ARROW_HEIGHT = 10
 local ARROW_BLINKS = 3
 local ARROW_BLINK_SECONDS = 0.3
 local ESCALATE_FINGER_SECONDS = 4
+local HUD_FINGER_SIZE = 48 -- px. 「꾸미기」 버튼 바로 아래에서 위를 가리킨다
+local HUD_FINGER_GAP = 4
+local HUD_FINGER_BOUNCE = 8
 local STUCK_DISTANCE = 12
 local STUCK_FIRST = 30
 local STUCK_SECOND = 60
@@ -105,12 +123,14 @@ local COLOR_PANEL = Color3.fromRGB(31, 41, 55)
 local COLOR_YELLOW = Color3.fromRGB(251, 191, 36)
 local COLOR_WHITE = Color3.new(1, 1, 1)
 
-type StageSpec = { bubble: string?, footprints: boolean, finger: boolean, pillar: boolean }
+-- hud = HUD 「꾸미기」 버튼을 가리키는 2D 손가락 + 버튼 펄스
+type StageSpec = { bubble: string?, footprints: boolean, finger: boolean, pillar: boolean, hud: boolean? }
 local SPECS: { [number]: StageSpec } = {
 	[STAGE_DESK] = { bubble = BUBBLE_DESK, footprints = true, finger = true, pillar = true },
 	[STAGE_STICKERS] = { bubble = BUBBLE_STICKERS, footprints = true, finger = false, pillar = true },
 	[STAGE_GROW3] = { footprints = true, finger = false, pillar = false },
 	[STAGE_GROW4] = { bubble = BUBBLE_GROW, footprints = true, finger = false, pillar = false },
+	[STAGE_DECOR] = { bubble = BUBBLE_DECOR, footprints = false, finger = false, pillar = false, hud = true },
 	[STAGE_DONE] = { footprints = false, finger = false, pillar = false },
 }
 
@@ -133,6 +153,9 @@ local footprintToken = 0
 local stuck = 0
 local escalated = false
 local tickAccum = 0
+local hudGui: ScreenGui? = nil -- 2D 손가락(PlayerGui 바로 아래)
+local hudFinger: Frame? = nil
+local decorSeen = false -- 이번 접속에서 꾸미기 시트를 열었다
 
 -- ── 저수준 헬퍼 ──────────────────────────────────────────────────
 
@@ -275,6 +298,56 @@ local function showFinger()
 	TweenService:Create(gui, bounce, { StudsOffset = Vector3.new(0, FINGER_HEIGHT + FINGER_BOUNCE, 0) }):Play()
 end
 
+local function hideHudFinger()
+	if hudFinger then
+		hudFinger:Destroy()
+		hudFinger = nil
+	end
+end
+
+--- HUD 「꾸미기」 버튼 아래에 붙인다. 버튼이 안 보이면 숨긴다(매 틱 다시 맞춘다)
+local function placeHudFinger()
+	local holder = hudFinger
+	if not holder then
+		return
+	end
+	local position, size = HudController.decorButtonRect()
+	if not (position and size) then
+		holder.Visible = false
+		return
+	end
+	holder.Visible = true
+	holder.Position = UDim2.fromOffset(position.X + size.X / 2, position.Y + size.Y + HUD_FINGER_GAP)
+end
+
+--- 「👆」 2D 손가락. 버튼 쪽으로 위아래로 튄다
+local function showHudFinger()
+	local gui = hudGui
+	if hudFinger or not gui then
+		return
+	end
+	local holder = Instance.new("Frame")
+	holder.Name = "DecorFinger"
+	holder.AnchorPoint = Vector2.new(0.5, 0)
+	holder.Size = UDim2.fromOffset(HUD_FINGER_SIZE, HUD_FINGER_SIZE + HUD_FINGER_BOUNCE)
+	holder.BackgroundTransparency = 1
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromOffset(HUD_FINGER_SIZE, HUD_FINGER_SIZE)
+	label.Position = UDim2.fromOffset(0, HUD_FINGER_BOUNCE)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = HUD_FINGER_SIZE - 8
+	label.TextColor3 = COLOR_YELLOW
+	label.TextStrokeTransparency = 0.3
+	label.Text = HUD_FINGER_TEXT
+	label.Parent = holder
+	holder.Parent = gui
+	hudFinger = holder
+	placeHudFinger()
+	local bounce = TweenInfo.new(FINGER_BOUNCE_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+	TweenService:Create(label, bounce, { Position = UDim2.fromOffset(0, 0) }):Play()
+end
+
 --- 큰 「⬇」 화살표. 에스컬레이션 때만 켜서 3번 깜빡인다
 local function blinkArrow()
 	local gui = arrow or newBillboard("Arrow", ARROW_SIZE, ARROW_HEIGHT, ARROW_TEXT, ARROW_SIZE - 16)
@@ -338,9 +411,28 @@ local function clearVisuals()
 		arrow:Destroy()
 		arrow = nil
 	end
+	hideHudFinger()
+	HudController.pulseDecorButton(false)
 end
 
 -- ── 단계 계산(§2.1) ─────────────────────────────────────────────
+
+--- 내 부지 PlotState 의 Decor 어트리뷰트가 비었나(아직 하나도 안 놓음). 폴더가 아직 없으면 false
+local function plotDecorEmpty(): boolean
+	local plotId = HudController.myPlotId()
+	local states = ReplicatedStorage:FindFirstChild(Keys.PLOT_STATE_FOLDER)
+	local state = if plotId and states then states:FindFirstChild(Keys.plotName(plotId)) else nil
+	if not state then
+		return false
+	end
+	local raw = state:GetAttribute(Keys.ATTR_DECOR)
+	return raw == nil or raw == ""
+end
+
+--- 꾸미기 단계 조건: 시설 4 이상, 보관함에 화분, 아직 하나도 안 놓았고 이번 접속에 시트를 안 열었다
+local function decorPending(profile: Types.Profile): boolean
+	return not decorSeen and (profile.decorOwned[DecorConfig.TUTORIAL_ITEM] or 0) >= 1 and plotDecorEmpty() -- ProfileSync 에는 decorPlaced 가 없다. 놓은 것은 Decor 어트리뷰트로 본다
+end
 
 --- 첫 번째로 참인 행이 단계다
 local function computeStage(profile: Types.Profile): number
@@ -372,6 +464,9 @@ local function computeStage(profile: Types.Profile): number
 	if built < GROW4_FACILITIES then
 		return STAGE_GROW4
 	end
+	if decorPending(profile) then
+		return STAGE_DECOR
+	end
 	return STAGE_DONE
 end
 
@@ -399,6 +494,8 @@ local function resolveTarget(stage: number, profile: Types.Profile): Vector3?
 		return PadController.padPosition(FacilityConfig.ORDER[1])
 	elseif stage == STAGE_STICKERS then
 		return nearestSticker()
+	elseif stage == STAGE_DECOR then
+		return nil -- 월드 대상 없음(HUD 버튼)
 	end
 	local nextRow = FacilityConfig.nextOf(profile.facilities)
 	return if nextRow then PadController.padPosition(nextRow.id) else nil
@@ -434,6 +531,10 @@ local function buildVisuals(stage: number): boolean
 	end
 	if spec.finger then
 		showFinger()
+	end
+	if spec.hud then
+		showHudFinger()
+		HudController.pulseDecorButton(true)
 	end
 	if spec.footprints and plot then
 		buildFootprints(plot:GetPivot())
@@ -486,6 +587,22 @@ local function tick(dt: number)
 	tickAccum = 0
 	local profile = HudController.profile()
 	if not profile then
+		return
+	end
+	if currentStage == STAGE_DECOR then
+		-- 시트를 열면 끝(놓기는 프로필·Decor 어트리뷰트로 끝난다)
+		if PanelController.current() == PANEL_DECOR then
+			decorSeen = true
+			apply(profile)
+			return
+		end
+		placeHudFinger()
+		stuck += step
+		if not escalated and stuck >= STUCK_FIRST then
+			-- 팬할 월드 위치가 없어 말풍선만 한 번 더
+			escalated = true
+			showBubble(BUBBLE_DECOR)
+		end
 		return
 	end
 	if not visualsReady then
@@ -547,6 +664,15 @@ function TutorialController.Start()
 
 	anchor = newPart("Anchor", Vector3.new(0.2, 0.2, 0.2), CFrame.new(), 1)
 
+	-- 2D 손가락. HUD(2) 위, 패널(5) 아래. HUD 와 같은 IgnoreGuiInset 좌표라 버튼 AbsolutePosition 을 그대로 쓴다
+	local screen = Instance.new("ScreenGui")
+	screen.Name = "TutorialHud"
+	screen.ResetOnSpawn = false
+	screen.IgnoreGuiInset = true
+	screen.DisplayOrder = 3
+	screen.Parent = playerGui
+	hudGui = screen
+
 	player.CharacterAdded:Connect(onCharacter)
 	HudController.onProfile(apply)
 	RunService.Heartbeat:Connect(tick)
@@ -560,7 +686,7 @@ function TutorialController.refresh()
 	end
 end
 
---- 현재 단계 1~5(§2.1)
+--- 현재 단계 1~6(§2.1)
 function TutorialController.stage(): number
 	return currentStage
 end
