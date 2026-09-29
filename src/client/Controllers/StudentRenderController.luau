@@ -57,6 +57,8 @@ local PLOTS_NEAR_LOW = 2
 local PLOT_ENTER = 230
 local PLOT_EXIT = 260
 local LOW_QUALITY_MAX = 3
+local LOW_FPS = 30 -- 이 FPS 아래가
+local LOW_FPS_SECONDS = 10 -- 이만큼(평균) 이어지면 저사양으로 바꾼다
 local NEAR_DIST = 60
 local MID_DIST = 120
 local MID_EVERY = 4
@@ -375,6 +377,9 @@ local stateRoot: Instance? = nil
 
 local nearLimit = PLOTS_NEAR
 local animLimit = ANIM_MAX
+local lowSpec = false
+local fpsFrames = 0
+local fpsTime = 0
 
 local frame = 0
 local idleAccum = 0
@@ -1247,7 +1252,37 @@ local function idleTick(dt: number)
 	updateFades(now)
 end
 
+--- 저사양 다이얼(§12.1). 한 번 켜면 끄지 않는다(오르내리며 부지가 깜빡이지 않게). 다음 lodTick 부터 적용된다
+local function enterLowSpec(reason: string)
+	if lowSpec then
+		return
+	end
+	lowSpec = true
+	nearLimit = PLOTS_NEAR_LOW
+	animLimit = ANIM_MAX_LOW
+	print(`[StudentRender] 저사양 다이얼 켬: {reason}`)
+end
+
+--- LOW_FPS_SECONDS 구간마다 평균 FPS 를 본다. 순간 끊김 하나로는 바뀌지 않는다
+local function watchFps(dt: number)
+	if lowSpec then
+		return
+	end
+	fpsFrames += 1
+	fpsTime += dt
+	if fpsTime < LOW_FPS_SECONDS then
+		return
+	end
+	local fps = fpsFrames / fpsTime
+	fpsFrames = 0
+	fpsTime = 0
+	if fps < LOW_FPS then
+		enterLowSpec(`평균 {math.floor(fps)} FPS`)
+	end
+end
+
 local function onHeartbeat(dt: number)
+	watchFps(dt)
 	lodAccum += dt
 	if lodAccum >= LOD_INTERVAL then
 		lodAccum = 0
@@ -1264,6 +1299,11 @@ end
 -------------------------------------------------------------------------------
 -- 공개 API
 -------------------------------------------------------------------------------
+
+--- 저사양 다이얼이 켜졌나. FeedbackController 가 파티클 예산을 줄일 때 본다
+function StudentRenderController.isLowSpec(): boolean
+	return lowSpec
+end
 
 --- GameEvent StudentJoined { plot, studentId, walk }. 내 부지·walk 면 문에서 걸어 들어온다
 function StudentRenderController.onStudentJoined(payload: { plot: number, studentId: string, walk: boolean? })
@@ -1397,7 +1437,7 @@ local function watchPlotModel(model: Instance)
 	markDirty(plotId)
 end
 
-local function isLowSpec(): boolean
+local function qualityIsLow(): boolean
 	local ok, quality = pcall(function()
 		return UserSettings():GetService("UserGameSettings").SavedQualityLevel
 	end)
@@ -1408,9 +1448,8 @@ local function isLowSpec(): boolean
 end
 
 function StudentRenderController.Start()
-	if isLowSpec() then
-		nearLimit = PLOTS_NEAR_LOW
-		animLimit = ANIM_MAX_LOW
+	if qualityIsLow() then
+		enterLowSpec("그래픽 품질 설정")
 	end
 
 	task.spawn(function()

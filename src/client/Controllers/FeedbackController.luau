@@ -61,7 +61,7 @@ local CameraController = (require(script.Parent.CameraController) :: any) :: Cam
 local TransitionController = (require(script.Parent.TransitionController) :: any) :: TransitionApi
 local SoundController = (require(script.Parent.SoundController) :: any) :: SoundApi
 local PadController = (require(script.Parent.PadController) :: any) :: PadApi
--- StudentRenderController.ceremony(plotId, on) 은 계약 밖이라 any 로 받는다
+-- StudentRenderController.ceremony(plotId, on)·isLowSpec() 은 계약 밖이라 any 로 받는다
 local StudentRenderController = require(script.Parent.StudentRenderController) :: any
 
 local FeedbackController = {}
@@ -112,6 +112,7 @@ local FLASH_ALPHA = 0.7
 local FLASH_SECONDS = 0.08
 local FLASH_INTERVAL = 1
 local PARTICLE_BUDGET = 120
+local PARTICLE_BUDGET_LOW = 80 -- 저사양 다이얼(§12.1)
 local PARTICLE_BUDGET_CEREMONY = 200
 local COMBO_PITCH_STEP = 0.06
 local COMBO_PITCH_CAP = 10
@@ -303,7 +304,10 @@ end
 --- 임시 파트에 파티클 하나 달아 count 개만 뿜고 치운다(Rate 0 + Emit). 예산을 넘는 만큼 깎는다
 local function burst(position: Vector3, style: Preset, count: number)
 	local now = os.clock()
-	local cap = if ceremonyActive then PARTICLE_BUDGET_CEREMONY else PARTICLE_BUDGET
+	local cap = if ceremonyActive
+		then PARTICLE_BUDGET_CEREMONY
+		elseif StudentRenderController.isLowSpec() then PARTICLE_BUDGET_LOW
+		else PARTICLE_BUDGET
 	local allowed = math.min(count, cap - liveParticleCount(now))
 	if allowed <= 0 then
 		return
