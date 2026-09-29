@@ -292,11 +292,14 @@ end
 function EconomyService.Start()
 	PlotService.StickerTouched:Connect(onSticker)
 	PlotService.StarTouched:Connect(onStar)
+	-- 순간이동 직후 첫 줍기를 과속으로 보지 않는다(개선계획 §3.6 #1)
+	PlotService.Teleported:Connect(function(player)
+		lastStickerPos[player] = nil
+	end)
 
 	RemoteGuard.wrap(Remotes.SetSkin, { cooldown = SKIN_COOLDOWN, args = { "string", "number" } }, onSetSkin)
 	RemoteGuard.wrap(Remotes.GoHome, { cooldown = HOME_COOLDOWN, args = {} }, function(player)
 		PlotService.goHome(player)
-		lastStickerPos[player] = nil -- 귀가 순간이동을 과속으로 보지 않는다
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)

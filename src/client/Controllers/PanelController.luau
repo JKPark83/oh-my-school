@@ -111,9 +111,6 @@ local ROLL_TIMEOUT = 8 -- 서버 응답이 이만큼 없으면 버튼을 되살�
 local TIER_SOUND: { [string]: string } = { ["반장"] = "arrive", ["전교1등"] = "fanfare", ["전설"] = "legend" }
 local TIER_COLOR: { [string]: Color3 } = { ["반장"] = BLUE, ["전교1등"] = PURPLE, ["전설"] = GOLD }
 
--- 꾸미기
-local PREVIEW_TIME = 3
-
 -- 졸업
 local HOLD_TIME = 1.5
 
@@ -1108,11 +1105,9 @@ local function buildSkin(content: Frame, payload: any)
 
 	local selected = 0
 	local revert: (() -> ())? = nil
-	local previewToken = 0
 	local swatches: { { card: TextButton, ring: UIStroke, price: TextLabel } } = {}
 
 	local function stopPreview()
-		previewToken += 1
 		if revert then
 			revert()
 			revert = nil
@@ -1187,14 +1182,8 @@ local function buildSkin(content: Frame, payload: any)
 			stopPreview()
 			local model = myFacilityModel(id)
 			if model then
+				-- 미리보기는 시트가 닫힐 때까지 유지(개선계획 §3.3 #2)
 				revert = previewSkin(model, id, i)
-				local token = previewToken
-				task.delay(PREVIEW_TIME, function()
-					if token == previewToken and revert then
-						revert()
-						revert = nil
-					end
-				end)
 			end
 			SoundController.play("tick")
 			local p = profileOrNil()
@@ -1210,7 +1199,6 @@ local function buildSkin(content: Frame, payload: any)
 		end
 		stopPreview()
 		Remotes.SetSkin:FireServer(id, selected)
-		SoundController.play("skin")
 	end)
 
 	local profile = profileOrNil()

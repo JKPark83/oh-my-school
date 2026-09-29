@@ -8,7 +8,7 @@
 	  확정이 없으면 되돌림)
 	- 칭찬스티커판: 내 부지 현관 벽 판의 SurfaceGui 에 60칸을 그리고 프로필 stickerBoard 만큼 채운다
 	- 시설 등장: Built=true 모델이 들어오면 파트를 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장)
-	- 스킨 팻말(🎨)·졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
+	- 스킨 팻말(페인트 롤러 팻말)·졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
 	- 다른 부지의 접수대 프롬프트는 로컬에서 끄고, 「우리 학교로」 팻말 프롬프트는 반대로 내 부지에서만 끈다
 	- 방문객 별(하늘색)은 내 부지 것만 로컬로 숨긴다
 
@@ -43,6 +43,7 @@ type PanelApi = {
 }
 local HudController = (require(script.Parent.HudController) :: any) :: HudApi
 local PanelController = (require(script.Parent.PanelController) :: any) :: PanelApi
+local SoundController = require(script.Parent.SoundController)
 
 local PadController = {}
 
@@ -164,6 +165,9 @@ local plotModels: { [number]: Model } = {}
 local plotConns: { [Model]: { RBXScriptConnection } } = {}
 local pads: { [BasePart]: PadEntry } = {}
 local stickers: { [BasePart]: StickerEntry } = {}
+-- 스티커 콤보 5음계(예측 단계 = 마지막 서버 combo + 1)
+local STICKER_PITCH = { 1.0, 1.122, 1.26, 1.498, 1.682, 2.0 }
+local lastStickerCombo = 0
 local facilities: { [Model]: FacilityEntry } = {}
 local ringClock = 0
 local lastHint = 0
@@ -556,10 +560,13 @@ local function popGhost(part: BasePart, gold: boolean)
 	grow:Play()
 end
 
+-- 예측 시점에 소리(개선계획 §3.2 #6·#7). 서버 왕복을 기다리지 않는다.
+-- 예측은 내 부지에서만 돌아서 주인 화면에서만 들린다
 local function predictPickup(entry: StickerEntry)
 	entry.pendingAt = os.clock()
 	popGhost(entry.part, entry.part:GetAttribute(Keys.ATTR_GOLD) == true)
 	applySticker(entry)
+	SoundController.play("sticker", STICKER_PITCH[math.clamp(lastStickerCombo + 1, 1, #STICKER_PITCH)])
 end
 
 local function unwatchSticker(part: Instance)
@@ -755,15 +762,51 @@ local function appear(model: Model)
 	end
 end
 
+--- 페인트 롤러 팻말. 왼쪽에 롤러 그림(이미지 에셋 없이 Frame), 오른쪽에 「색 바꾸기」. 그림이 먼저, 글자는 보조
+local function newSkinSign(name: string, adornee: Instance): (BillboardGui, TextButton)
+	local gui, button = newTapButton(name, adornee, "", 128, COLOR_PANEL)
+	local function box(parent: Instance, size: Vector2, pos: Vector2, color: Color3, radius: number): Frame
+		local frame = Instance.new("Frame")
+		frame.Size = UDim2.fromOffset(size.X, size.Y)
+		frame.Position = UDim2.fromOffset(pos.X, pos.Y)
+		frame.BackgroundColor3 = color
+		frame.BorderSizePixel = 0
+		frame.Parent = parent
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, radius)
+		corner.Parent = frame
+		return frame
+	end
+	-- 롤러 그림 34px 높이를 버튼(56) 세로 가운데에 둔다
+	local roller = Instance.new("Frame")
+	roller.Name = "Roller"
+	roller.BackgroundTransparency = 1
+	roller.Size = UDim2.fromOffset(24, 34)
+	roller.Position = UDim2.fromOffset(16, 11)
+	roller.Parent = button
+	box(roller, Vector2.new(24, 12), Vector2.new(0, 0), Color3.fromRGB(191, 219, 254), 4) -- 롤러 원통(연한 파랑)
+	box(roller, Vector2.new(4, 14), Vector2.new(10, 12), COLOR_WHITE, 1) -- 손잡이 대
+	local grip = box(roller, Vector2.new(6, 8), Vector2.new(9, 26), Color3.fromRGB(17, 24, 39), 2) -- 손잡이
+	local gripStroke = Instance.new("UIStroke")
+	gripStroke.Color = COLOR_WHITE
+	gripStroke.Thickness = 1
+	gripStroke.Parent = grip
+	local label = newLabel(button, "색 바꾸기", 18, COLOR_WHITE)
+	label.Size = UDim2.new(1, -52, 1, 0)
+	label.Position = UDim2.fromOffset(46, 0)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	return gui, button
+end
+
 local function refreshFacility(entry: FacilityEntry)
 	local mine = entry.plotId == myPlotId
 	local model = entry.model
 
-	-- 스킨 팻말(🎨): 내 부지의 지은 시설마다 SkinSign Attachment 위
+	-- 스킨 팻말(페인트 롤러 팻말): 내 부지의 지은 시설마다 SkinSign Attachment 위
 	local signAt = model:FindFirstChild(Keys.SKIN_SIGN, true)
 	if mine and signAt and signAt:IsA("Attachment") then
 		if not entry.sign then
-			local gui, button = newTapButton("SkinSign_" .. entry.facilityId, signAt, "🎨", TAP_SIZE, COLOR_PANEL)
+			local gui, button = newSkinSign("SkinSign_" .. entry.facilityId, signAt)
 			entry.sign = gui
 			button.Activated:Connect(function()
 				PanelController.open(PANEL_SKIN, { facilityId = entry.facilityId })
@@ -1137,7 +1180,11 @@ function PadController.applySkin(payload: { plot: number, facilityId: string, sk
 end
 
 --- StickerCollected: 예측한 스티커를 확정한다(Collected 가 올 때까지 숨긴 채 둔다)
-function PadController.confirmSticker(payload: { stickerId: any })
+-- 서버 combo 로 다음 예측 음정을 맞춘다(끊기면 1 로 돌아와 낮은 음부터)
+function PadController.confirmSticker(payload: { stickerId: any, combo: number? })
+	if type(payload.combo) == "number" then
+		lastStickerCombo = payload.combo
+	end
 	local id = tostring(payload.stickerId)
 	for _, entry in stickers do
 		if entry.plotId == myPlotId and (entry.id == id or entry.part.Name == id) then

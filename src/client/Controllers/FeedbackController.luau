@@ -114,8 +114,6 @@ local FLASH_INTERVAL = 1
 local PARTICLE_BUDGET = 120
 local PARTICLE_BUDGET_LOW = 80 -- 저사양 다이얼(§12.1)
 local PARTICLE_BUDGET_CEREMONY = 200
-local COMBO_PITCH_STEP = 0.06
-local COMBO_PITCH_CAP = 10
 local COMBO_TOAST_EVERY = 5
 local DENY_PITCH = 0.9
 local POPUP_RISE = 3 -- 스터드
@@ -660,7 +658,7 @@ handlers.gold = function(payload: any)
 	afterSticker(payload)
 end
 
--- 스티커: 팝(PadController), 별 파티클 8, 틱(콤보 피치), 「+N」, 햅틱 소
+-- 스티커: 팝·소리(PadController 예측 시점), 별 파티클 8, 「+N」, 햅틱 소
 handlers.sticker = function(payload: any)
 	if payload.gold == true then
 		handlers.gold(payload)
@@ -675,8 +673,6 @@ handlers.sticker = function(payload: any)
 	if position then
 		burst(position, PRESET_STAR, 8)
 	end
-	local combo = if type(payload.combo) == "number" then payload.combo else 0
-	sound(SOUND_TICK, 1 + COMBO_PITCH_STEP * math.min(combo, COMBO_PITCH_CAP))
 	local value = if type(payload.value) == "number" then payload.value else 0
 	popup(`+{Format.coins(value)}`, COLOR_YELLOW)
 	haptic("small")

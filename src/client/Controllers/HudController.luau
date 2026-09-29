@@ -45,7 +45,6 @@ local PANEL_ALPHA = 0.15 -- α0.85
 local YELLOW = Color3.fromRGB(251, 191, 36)
 local GREEN = Color3.fromRGB(52, 211, 153)
 local BLUE = Color3.fromRGB(96, 165, 250)
-local RED = Color3.fromRGB(248, 113, 113) -- 도감 새 학생 점에만 쓴다
 local GOLD = Color3.fromRGB(245, 158, 11)
 local WHITE = Color3.fromRGB(255, 255, 255)
 local MUTED = Color3.fromRGB(209, 213, 219)
@@ -786,7 +785,7 @@ local function buildGui()
 	codexDot.AnchorPoint = Vector2.new(1, 0)
 	codexDot.Position = UDim2.new(1, -4, 0, 4)
 	codexDot.Size = UDim2.fromOffset(12, 12)
-	codexDot.BackgroundColor3 = RED
+	codexDot.BackgroundColor3 = YELLOW
 	codexDot.BorderSizePixel = 0
 	codexDot.Visible = false
 	codexDot.Parent = codexButton

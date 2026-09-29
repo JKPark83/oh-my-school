@@ -6,6 +6,7 @@
 	  - 시설 모델은 buildFacility 가 Geometry/<id>.build 로 넣는다(어트리뷰트 Built/FacilityId/Skin/BuiltAt).
 	  - 패드 상태·실루엣·스티커 스폰 수는 프로필의 facilities 에서 파생해 refresh 한다.
 	  - 스티커·별 Touched 는 여기서 받아 BindableEvent 로 넘긴다(EconomyService 가 구독). 이 모듈은 Economy 를 모른다.
+	  - 서버 순간이동은 teleport 한 곳을 지나고 Teleported 를 쏜다(goHome 도 이것을 쓴다).
 	  - 패드 판정은 Touched 대신 occupants() 가 주인 캐릭터의 HRP 위치로 직접 계산한다(1Hz, 활성 패드 1개뿐).
 	    패드 Touched 는 W7 측정(Metrics 의 패드 체류)에만 쓴다. 주인이 자기 활성 패드에 닿으면 PadTouched 로 넘긴다.
 ]]
@@ -64,9 +65,11 @@ local characterConns: { [Player]: RBXScriptConnection } = {}
 local stickerTouched = Instance.new("BindableEvent")
 local starTouched = Instance.new("BindableEvent")
 local padTouched = Instance.new("BindableEvent")
+local teleported = Instance.new("BindableEvent")
 PlotService.StickerTouched = stickerTouched.Event -- (player: Player, part: BasePart)
 PlotService.StarTouched = starTouched.Event -- (player: Player, plotId: number, part: BasePart)
 PlotService.PadTouched = padTouched.Event -- (player: Player, pad: BasePart). 주인·활성 패드만
+PlotService.Teleported = teleported.Event -- (player: Player). PivotTo 직후
 
 local function playerFromPart(part: BasePart): Player?
 	local character = part.Parent
@@ -572,12 +575,28 @@ function PlotService.goHome(player: Player)
 	end
 	local spawn = plotModels[plotId]:FindFirstChild(Keys.SPAWN)
 	local cf = if spawn then spawn.CFrame else cframes[plotId] * CFrame.new(0, 0, 60)
-	-- 멀리서 순간이동하면 바닥이 아직 안 내려와 떨어질 수 있다. 도착지 주변을 먼저 받게 한다(실패해도 이동은 한다)
-	pcall(player.RequestStreamAroundAsync, player, cf.Position)
-	if player.Character ~= character or not character.Parent then
-		return -- 기다리는 동안 리스폰·퇴장
+	PlotService.teleport(player, cf)
+end
+
+--[[
+	서버 순간이동 공통 경로(개선계획 §3.6 #1). cf 위 4스터드로 옮기고 Teleported 를 쏜다.
+	waitStream 이 false 가 아니면 도착지 스트리밍을 기다리므로 멈춘다(호출자가 멈추면 안 되면 task.spawn).
+	false 면 기다리지 않고 바로 옮긴다(졸업 대피처럼 즉시 옮겨야 할 때).
+]]
+function PlotService.teleport(player: Player, cf: CFrame, waitStream: boolean?)
+	local character = player.Character
+	if not character then
+		return
+	end
+	if waitStream ~= false then
+		-- 멀리서 순간이동하면 바닥이 아직 안 내려와 떨어질 수 있다. 도착지 주변을 먼저 받게 한다(실패해도 이동은 한다)
+		pcall(player.RequestStreamAroundAsync, player, cf.Position)
+		if player.Character ~= character or not character.Parent then
+			return -- 기다리는 동안 리스폰·퇴장
+		end
 	end
 	character:PivotTo(cf + Vector3.new(0, 4, 0))
+	teleported:Fire(player)
 end
 
 function PlotService.lock(player: Player, isLocked: boolean)
