@@ -7,6 +7,7 @@
 	  문 x 는 FacilityConfig 의 방 center.X 에서 읽고, 교실1·현관은 Shell 소유라 기획서 §7.2 상수를 쓴다.
 	  벽은 사실 톤 크림 고정색. 자리·문 Attachment 없음.
 	  뒷줄 방 남벽(z −27~−26)과 이 복도 북벽(z −26~−25)은 등을 맞댄 별개 벽이다.
+	  부품 3개(PartIndex): (1) 바닥판+줄무늬 (2) 북·남벽(상인방 포함)+양 끝벽 (3) 지붕.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -47,10 +48,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number): CFrame
 	return plotCFrame * CFrame.new(x, y, z)
 end
 
---- BuildKit.part 를 월드 CFrame 으로 부른다
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 local function wallOpts(): BuildKit.Opts
@@ -113,7 +119,8 @@ function hall.build(plotCFrame: CFrame): Model
 	local hx, hz = row.size.X / 2, row.size.Z / 2
 	local h = row.size.Y
 
-	-- 바닥판 + 줄무늬. 줄무늬 윗면이 바닥판보다 0.03 높아 면이 겹치지 않는다
+	-- 부품 1. 바닥판 + 줄무늬. 줄무늬 윗면이 바닥판보다 0.03 높아 면이 겹치지 않는다
+	partIndex = 1
 	put(
 		model,
 		"Floor",
@@ -135,7 +142,7 @@ function hall.build(plotCFrame: CFrame): Model
 		}
 	)
 
-	-- 북벽(뒷줄 방 남문) · 남벽(앞줄 방 북문 + 현관 북문)
+	-- 부품 2. 북벽(뒷줄 방 남문) · 남벽(앞줄 방 북문 + 현관 북문)
 	local northDoors = { CLASS1_DOOR_X }
 	for _, id in NORTH_ROOMS do
 		table.insert(northDoors, FacilityConfig.BY_ID[id].center.X)
@@ -144,6 +151,7 @@ function hall.build(plotCFrame: CFrame): Model
 	for _, id in SOUTH_ROOMS do
 		table.insert(southDoors, FacilityConfig.BY_ID[id].center.X)
 	end
+	partIndex = 2
 	wallRow(model, plotCFrame, "WallN", cz - hz + WALL_T / 2, cx - hx, cx + hx, floorY, h, northDoors)
 	wallRow(model, plotCFrame, "WallS", cz + hz - WALL_T / 2, cx - hx, cx + hx, floorY, h, southDoors)
 
@@ -164,7 +172,8 @@ function hall.build(plotCFrame: CFrame): Model
 		wallOpts()
 	)
 
-	-- 지붕은 벽 안쪽만 덮는다. 벽 위까지 덮으면 벽 윗면·바깥면과 겹쳐 깜빡인다(z-fighting)
+	-- 부품 3. 지붕은 벽 안쪽만 덮는다. 벽 위까지 덮으면 벽 윗면·바깥면과 겹쳐 깜빡인다(z-fighting)
+	partIndex = 3
 	local roofSize = Vector3.new(row.size.X - WALL_T * 2, ROOF_T, row.size.Z - WALL_T * 2)
 	put(model, "Roof", roofSize, at(plotCFrame, cx, floorY + h - ROOF_T / 2, cz), {
 		color = C.roof,
@@ -173,6 +182,7 @@ function hall.build(plotCFrame: CFrame): Model
 		light = true,
 	})
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(FACILITY_ID))
 	return model
 end
 

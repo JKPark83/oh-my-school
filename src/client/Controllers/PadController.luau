@@ -8,7 +8,8 @@
 	  세로 빛·반짝 소리를 로컬로 붙인다(개선계획 §3.2 #2·#3·#9). 금 스티커엔 빛기둥. 수평 2.2·높이 4 안이면 먼저 숨기는
 	  클라 예측(0.5초 안에 확정이 없으면 되돌림)
 	- 칭찬스티커판: 내 부지 현관 벽 판의 SurfaceGui 에 60칸을 그리고 프로필 stickerBoard 만큼 채운다
-	- 시설 등장: Built=true 모델이 들어오면 파트를 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장)
+	- 시설 등장: 부품을 살 때마다 시설 모델에 새로 붙는 파트(PartIndex)만 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장).
+	  DescendantAdded 로 모아 한 프레임에 한 번 올린다. 스트리밍으로 다시 들어온 옛 부품은 올리지 않는다
 	- 졸업 종(졸업하기)·접수대 ProximityPrompt → PanelController.open
 	- 다른 부지의 접수대 프롬프트는 로컬에서 끄고, 「우리 학교로」 팻말 프롬프트는 반대로 내 부지에서만 끈다
 	- 방문객 별(하늘색)도 히트박스 + 로컬 표시판이다. 남의 부지에서만 판을 그린다(내 별은 안 보임, §7.5)
@@ -113,6 +114,7 @@ local APPEAR_DROP = 6 -- 스터드
 local APPEAR_SECONDS = 0.5
 local APPEAR_STAGGER = 0.05
 local APPEAR_DELAY = 0.05
+local APPEAR_GRACE = 1 -- 초. 같은 부품 번호가 이 안에 더 오면 같은 등장, 그 뒤는 스트리밍 재진입이라 올리지 않는다
 local HINT_COOLDOWN = 1
 local HINT_SECONDS = 0.4
 local SILHOUETTE_ALPHA = 0.7 -- 서버 PlotService.SILHOUETTE_TRANSPARENCY 와 같다
@@ -176,6 +178,9 @@ type FacilityEntry = {
 	facilityId: string,
 	bell: BillboardGui?,
 	conns: { RBXScriptConnection },
+	appearedAt: { [number]: number }, -- 부품 번호 → 등장을 시작한 os.clock()(-inf 면 처음부터 있던 부품)
+	pending: { BasePart }, -- 이번 프레임에 새로 붙어 올릴 파트
+	flushQueued: boolean,
 }
 
 type BoardEntry = {
@@ -396,7 +401,8 @@ local function updateRing(entry: PadEntry)
 	local profile = HudController.profile()
 	local graduations = if profile then profile.graduations else 0
 	local coins = if profile then profile.coins else 0
-	local price = FacilityConfig.priceOf(entry.facilityId, graduations)
+	local nextIndex = if profile then profile.buildParts + 1 else 1
+	local price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex, graduations)
 	local ratio = if price > 0 then math.clamp(coins / price, 0, 1) else 1
 	ring.price.Text = Format.coins(price)
 	local lit = math.floor(ratio * RING_DOTS + 1e-6)
@@ -982,28 +988,68 @@ end
 
 -- ── 시설 모델 ────────────────────────────────────────────────────
 
---- 파트를 땅 아래 6 스터드에서 Back Out 0.5초로 솟게 한다. 아래쪽 파트부터 0.05초 간격
-local function appear(model: Model)
-	local parts: { BasePart } = {}
-	for _, inst in model:GetDescendants() do
-		if inst:IsA("BasePart") then
-			inst.LocalTransparencyModifier = 1
-			table.insert(parts, inst)
-		end
-	end
+--- 파트를 땅 아래 6 스터드에서 Back Out 0.5초로 솟게 한다. 50ms 뒤 아래쪽 파트부터 0.05초 간격
+local function appear(parts: { BasePart })
 	table.sort(parts, function(a, b)
 		return a.Position.Y < b.Position.Y
 	end)
 	for i, part in parts do
+		part.LocalTransparencyModifier = 1
 		local target = part.CFrame
 		part.CFrame = target - Vector3.new(0, APPEAR_DROP, 0)
-		local delay = (i - 1) * APPEAR_STAGGER
+		local delay = APPEAR_DELAY + (i - 1) * APPEAR_STAGGER
 		local rise = TweenInfo.new(APPEAR_SECONDS, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, delay)
 		TweenService:Create(part, rise, { CFrame = target }):Play()
 		-- 투명도는 Back 의 되튐이 0 아래로 내려가면 안 되므로 따로 Quad 로
 		local fade =
 			TweenInfo.new(APPEAR_SECONDS * 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, delay)
 		TweenService:Create(part, fade, { LocalTransparencyModifier = 0 }):Play()
+	end
+end
+
+--- BasePart 의 부품 번호(Geometry 가 붙인 PartIndex). 없으면 nil
+local function partIndexOf(inst: Instance): number?
+	if not inst:IsA("BasePart") then
+		return nil
+	end
+	local index = inst:GetAttribute(Keys.ATTR_PART_INDEX)
+	return if type(index) == "number" then index else nil
+end
+
+--- 이번 프레임에 모인 파트를 한 번에 올린다
+local function flushAppear(entry: FacilityEntry)
+	entry.flushQueued = false
+	local parts: { BasePart } = {}
+	if facilities[entry.model] == entry then
+		for _, part in entry.pending do
+			if part:IsDescendantOf(entry.model) then
+				table.insert(parts, part)
+			end
+		end
+	end
+	table.clear(entry.pending)
+	if #parts > 0 then
+		appear(parts)
+	end
+end
+
+--- 새로 붙은 파트를 등장 대기열에 넣는다. 처음 보는 부품 번호이거나 그 번호가 막 등장 중일 때만
+local function queueAppear(entry: FacilityEntry, inst: Instance)
+	local index = partIndexOf(inst)
+	if index == nil then
+		return
+	end
+	local now = os.clock()
+	local at = entry.appearedAt[index]
+	if at == nil then
+		entry.appearedAt[index] = now
+	elseif now - at >= APPEAR_GRACE then
+		return
+	end
+	table.insert(entry.pending, inst :: BasePart)
+	if not entry.flushQueued then
+		entry.flushQueued = true
+		task.defer(flushAppear, entry)
 	end
 end
 
@@ -1053,16 +1099,38 @@ local function watchFacility(model: Instance, plotId: number, animate: boolean)
 		facilityId = model.Name,
 		bell = nil,
 		conns = {},
+		appearedAt = {},
+		pending = {},
+		flushQueued = false,
 	}
 	facilities[model] = entry
-	if animate and model:GetAttribute(Keys.ATTR_BUILT) == true then
-		-- 파트가 모델 뒤에 몇 프레임 늦게 붙을 수 있어 잠깐 기다린다(§9.2 구매 50ms)
-		task.delay(APPEAR_DELAY, function()
-			if facilities[model] then
-				appear(model)
-			end
-		end)
+	-- 이미 넣은 부품(ATTR_PARTS)은 animate 면 「방금 등장」, 아니면 「처음부터 있던 것」으로 적는다.
+	-- 재접속 복원처럼 한꺼번에 오는 것도, 스트리밍으로 늦게 오는 파트도 이 표를 따른다
+	local since = if animate then os.clock() else -math.huge
+	local placed = model:GetAttribute(Keys.ATTR_PARTS)
+	if type(placed) == "number" then
+		for i = 1, placed do
+			entry.appearedAt[i] = since
+		end
 	end
+	for _, inst in model:GetDescendants() do
+		local index = partIndexOf(inst)
+		if index == nil then
+			continue
+		end
+		if entry.appearedAt[index] == nil then
+			entry.appearedAt[index] = since
+		end
+		if animate then
+			queueAppear(entry, inst)
+		end
+	end
+	table.insert(
+		entry.conns,
+		model.DescendantAdded:Connect(function(inst)
+			queueAppear(entry, inst)
+		end)
+	)
 	refreshFacility(entry)
 end
 

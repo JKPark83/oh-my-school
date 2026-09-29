@@ -9,6 +9,7 @@
 	  Attachment 만 25개 둔다. Attachment 위치 = 벤치 아래 바닥 중심(방 바닥 높이). 벤치는 층계참(x 5~14, z -16.5~-10.5 부근) 을
 	  피해 서쪽에 몰아 놓았다.
 	  Door = 남문 중심 바닥(LookVector 가 안쪽 -Z).
+	  부품 4개(PartIndex): (1) 바닥 3조각+벽 (2) 상인방(이름판)+지붕 (3) 무대·커튼·벤치 (4) 졸업 종·연단.
 	  Attachment 들은 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
@@ -58,9 +59,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 local function attachment(parent: Instance, name: string, cf: CFrame): Attachment
@@ -95,6 +102,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local x0, x1 = cx - w / 2, cx + w / 2
 	local z0, z1 = cz - d / 2, cz + d / 2
 	local holeX0, holeX1, holeZ0 = PlotLayout.STAIR_X0, PlotLayout.STAIR_X1, PlotLayout.STAIRWELL_Z0
+	partIndex = 1 -- 바닥 + 벽
 	local floor = part(
 		model,
 		"Floor",
@@ -131,13 +139,6 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx + (DOOR_W + segW) / 2, wallY, southZ),
 		wallOpts()
 	)
-	local lintel = part(
-		model,
-		"Lintel",
-		Vector3.new(DOOR_W, h - DOOR_H, WALL_T),
-		at(plotCFrame, cx, floorTop + DOOR_H + (h - DOOR_H) / 2, southZ),
-		wallOpts()
-	)
 	part(
 		model,
 		"WallE",
@@ -150,6 +151,14 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		"WallW",
 		Vector3.new(WALL_T, h, d - 2 * WALL_T),
 		at(plotCFrame, cx - w / 2 + WALL_T / 2, wallY, cz),
+		wallOpts()
+	)
+	partIndex = 2 -- 상인방 + 지붕
+	local lintel = part(
+		model,
+		"Lintel",
+		Vector3.new(DOOR_W, h - DOOR_H, WALL_T),
+		at(plotCFrame, cx, floorTop + DOOR_H + (h - DOOR_H) / 2, southZ),
 		wallOpts()
 	)
 	part(
@@ -182,7 +191,8 @@ function auditorium.build(plotCFrame: CFrame): Model
 	model.PrimaryPart = floor
 	BuildKit.surfaceText(lintel, Enum.NormalId.Front, row.name, COLOR_LABEL, 1.3)
 
-	-- 무대 + 앞 계단. 무대는 북쪽 벽 안쪽 면(z = cz - d/2 + 1)에 붙는다
+	-- 부품 3. 무대 + 앞 계단. 무대는 북쪽 벽 안쪽 면(z = cz - d/2 + 1)에 붙는다
+	partIndex = 3
 	local stageZ = cz - d / 2 + WALL_T + STAGE_D / 2
 	local stageFront = stageZ + STAGE_D / 2
 	part(model, "Stage", Vector3.new(STAGE_W, STAGE_H, STAGE_D), at(plotCFrame, cx, floorTop + STAGE_H / 2, stageZ), {
@@ -240,7 +250,26 @@ function auditorium.build(plotCFrame: CFrame): Model
 	)
 	BuildKit.surfaceText(valance, Enum.NormalId.Back, "졸업식", COLOR_BANNER, 1.6)
 
-	-- 졸업 종: 기둥 둘 + 가로대 + 금색 공. 무대 뒤쪽 가운데(§3.6 (0, -32.5))
+	-- 벤치 5줄 + 좌석 Attachment 25개. 모두 무대(-Z) 를 본다
+	local benchX = (SEAT_COLS[1] + SEAT_COLS[#SEAT_COLS]) / 2
+	for r, rz in SEAT_ROWS do
+		part(
+			model,
+			"Bench" .. r,
+			Vector3.new(BENCH_W, SEAT_H, BENCH_D),
+			at(plotCFrame, benchX, floorTop + SEAT_H / 2, rz),
+			{
+				color = COLOR_BENCH,
+				material = Enum.Material.Wood,
+			}
+		)
+		for c, sx in SEAT_COLS do
+			attachment(seats, seatName((r - 1) * #SEAT_COLS + c), at(plotCFrame, sx, floorTop, rz))
+		end
+	end
+
+	-- 부품 4. 졸업 종: 기둥 둘 + 가로대 + 금색 공. 무대 뒤쪽 가운데(§3.6 (0, -32.5))
+	partIndex = 4
 	local bellZ = STAGE_Z
 	local frameH = 5
 	for _, side in { { name = "W", dx = -1.5 }, { name = "E", dx = 1.5 } } do
@@ -278,27 +307,10 @@ function auditorium.build(plotCFrame: CFrame): Model
 		material = Enum.Material.Wood,
 	})
 
-	-- 벤치 5줄 + 좌석 Attachment 25개. 모두 무대(-Z) 를 본다
-	local benchX = (SEAT_COLS[1] + SEAT_COLS[#SEAT_COLS]) / 2
-	for r, rz in SEAT_ROWS do
-		part(
-			model,
-			"Bench" .. r,
-			Vector3.new(BENCH_W, SEAT_H, BENCH_D),
-			at(plotCFrame, benchX, floorTop + SEAT_H / 2, rz),
-			{
-				color = COLOR_BENCH,
-				material = Enum.Material.Wood,
-			}
-		)
-		for c, sx in SEAT_COLS do
-			attachment(seats, seatName((r - 1) * #SEAT_COLS + c), at(plotCFrame, sx, floorTop, rz))
-		end
-	end
-
 	-- 문(남쪽, 층계참 쪽)
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, southZ))
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(row.id))
 	return model
 end
 

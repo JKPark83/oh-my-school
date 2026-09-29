@@ -8,6 +8,7 @@
 	  Door = 교실 1 남문 중심(기획서 §7.2 (−60,−32.5)), LookVector 가 방 안쪽(−Z).
 	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 	  책상 상판 윗면 = CharacterBuilder.SIT_DESK, 좌판 윗면 = SIT_HIP — 앉은 NPC 와 맞물린다.
+	  부품 3개(PartIndex): 줄마다 하나 — (1) 1줄 책상+의자 2 (2) 2줄 (3) 3줄.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -46,10 +47,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
---- BuildKit.part 를 월드 CFrame 으로 부른다
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 --- 월드 CFrame 을 그대로 가진 Attachment(부모가 BasePart 가 아니다)
@@ -76,6 +82,7 @@ function desk.build(plotCFrame: CFrame): Model
 	local cx, floorY = row.center.X, row.center.Y
 	local seatIndex = 0
 	for r, dz in ROW_DZ do
+		partIndex = r -- 한 줄(책상 + 의자 2)이 부품 하나
 		local z = row.center.Z + dz
 		local deskName = string.format("Desk%02d", r)
 		put(model, deskName .. "Top", DESK_TOP, at(plotCFrame, cx, floorY + SIT_DESK - DESK_TOP.Y / 2, z), {
@@ -125,6 +132,7 @@ function desk.build(plotCFrame: CFrame): Model
 
 	attach(model, Keys.DOOR, at(plotCFrame, CLASS1_DOOR.X, floorY, CLASS1_DOOR.Z))
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(FACILITY_ID))
 	return model
 end
 

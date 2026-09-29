@@ -3,8 +3,9 @@
 	부지 12개 + 광장. 기획서 §7.1·§7.5·§11.4, 계획서 §3.2·§3.5.
 	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 6개)를 만든다.
 	  - 접속 순서로 번호가 가장 작은 빈 부지를 준다. 나가면 즉시 비운다.
-	  - 시설 모델은 buildFacility 가 Geometry/<id>.build 로 넣는다(어트리뷰트 Built/FacilityId/BuiltAt).
-	  - 패드 상태·실루엣·스티커 스폰 수는 프로필의 facilities 에서 파생해 refresh 한다.
+	  - 시설 모델은 buildPart 가 부품 단위로 넣는다(개선계획 §3.4). Geometry/<id>.build 로 전체를 임시로 짓고
+	    PartIndex == k 인 파트만 실제 모델로 옮긴다. 어트리뷰트 FacilityId/Parts/BuiltAt, 마지막 부품이면 Built.
+	  - 패드 상태·실루엣·스티커 스폰 수는 프로필의 facilities·buildParts 에서 파생해 refresh 한다.
 	  - 스티커·별 Touched 는 여기서 받아 BindableEvent 로 넘긴다(EconomyService 가 구독). 이 모듈은 Economy 를 모른다.
 	  - 서버 순간이동은 teleport 한 곳을 지나고 Teleported 를 쏜다(goHome 도 이것을 쓴다).
 	  - 패드 판정은 Touched 대신 occupants() 가 주인 캐릭터의 HRP 위치로 직접 계산한다(1Hz, 활성 패드 1개뿐).
@@ -184,28 +185,48 @@ local function refreshPads(plotId: number, built: { [string]: boolean })
 	end
 end
 
---- 다음의 다음 시설 실루엣 하나
-local function refreshSilhouette(plotId: number, built: { [string]: boolean })
+--- 다음 시설의 아직 안 산 부품(PartIndex > buildParts) 실루엣 하나. 같은 시설·같은 부품 수면 다시 짓지 않는다
+local function refreshSilhouette(plotId: number, built: { [string]: boolean }, buildParts: number)
 	local model = plotModels[plotId]
 	local old = model:FindFirstChild(Keys.SILHOUETTE)
-	local afterRow = FacilityConfig.afterNextOf(built)
+	local nextRow = FacilityConfig.nextOf(built)
 	if old then
-		if afterRow and old:GetAttribute(Keys.ATTR_FACILITY_ID) == afterRow.id then
-			return
+		local oldParts = old:GetAttribute(Keys.ATTR_PARTS)
+		if nextRow and old:GetAttribute(Keys.ATTR_FACILITY_ID) == nextRow.id and type(oldParts) == "number" then
+			if oldParts == buildParts then
+				return
+			end
+			if oldParts < buildParts then
+				-- 같은 시설의 부품이 늘었다. 통째로 다시 짓지 않고 산 부품만 뺀다(부품마다 전체 재복제를 피한다)
+				for _, part in old:GetDescendants() do
+					if part:IsA("BasePart") and (part:GetAttribute(Keys.ATTR_PART_INDEX) or 0) <= buildParts then
+						part:Destroy()
+					end
+				end
+				old:SetAttribute(Keys.ATTR_PARTS, buildParts)
+				return
+			end
 		end
 		old:Destroy()
 	end
-	if not afterRow then
-		return
+	if not nextRow then
+		return -- W6: 다음 층 실루엣 자리(개선계획 §3.6 #8)
 	end
-	local builder = facilityBuilder(afterRow.id)
+	local builder = facilityBuilder(nextRow.id)
 	if not builder then
 		return
 	end
 	local silhouette = builder.build(cframes[plotId])
 	BuildKit.localizeAttachments(silhouette)
 	silhouette.Name = Keys.SILHOUETTE
-	silhouette:SetAttribute(Keys.ATTR_FACILITY_ID, afterRow.id)
+	silhouette:SetAttribute(Keys.ATTR_FACILITY_ID, nextRow.id)
+	silhouette:SetAttribute(Keys.ATTR_PARTS, buildParts)
+	-- 이미 산 부품은 실제 모델에 있다. 겹치지 않게 뺀다
+	for _, part in silhouette:GetDescendants() do
+		if part:IsA("BasePart") and (part:GetAttribute(Keys.ATTR_PART_INDEX) or 0) <= buildParts then
+			part:Destroy()
+		end
+	end
 	for _, part in silhouette:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Transparency = SILHOUETTE_TRANSPARENCY
@@ -222,14 +243,15 @@ local function refreshSilhouette(plotId: number, built: { [string]: boolean })
 	silhouette.Parent = model
 end
 
---- 2층 「공사 중」 실루엣: 강당이 서면 숨긴다
-local function refreshConstruction(plotId: number, built: { [string]: boolean })
+--- 2층 「공사 중」 실루엣: 강당 부품이 하나라도 들어가면 숨긴다(부품 1 이 바닥+벽이라 공사판과 겹친다)
+local function refreshConstruction(plotId: number, built: { [string]: boolean }, buildParts: number)
 	local shell = plotModels[plotId]:FindFirstChild(Keys.SHELL)
 	local construction = shell and shell:FindFirstChild(Keys.CONSTRUCTION)
 	if not construction then
 		return
 	end
-	local hidden = built.auditorium == true
+	local nextRow = FacilityConfig.nextOf(built)
+	local hidden = built.auditorium == true or (nextRow ~= nil and nextRow.id == "auditorium" and buildParts >= 1)
 	for _, part in construction:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Transparency = if hidden then 1 else SILHOUETTE_TRANSPARENCY
@@ -239,15 +261,16 @@ local function refreshConstruction(plotId: number, built: { [string]: boolean })
 	end
 end
 
---- 부지 로컬 수평 자리의 바닥 윗면 y. 지어진 시설(복도·운동장) 발자국 안이면 그 구역 floorY, 아니면 마당 0.
---- 구역 floorY 는 시설이 있을 때 값이라 안 지은 시설 자리는 0 이다. 홈 자리(복도 2·운동장 3)도 같은 규칙
+--- 부지 로컬 수평 자리의 바닥 윗면 y. 시설(복도·운동장)의 부품이 하나라도 들어간 발자국 안이면 그 구역 floorY, 아니면 마당 0.
+--- 바닥은 부품 1 에 있다(Geometry 규약). 구역 floorY 는 시설이 있을 때 값이라 안 지은 시설 자리는 0 이다.
+--- 홈 자리(복도 2·운동장 3)도 같은 규칙
 local function floorYAt(plotId: number, spot: Vector2): number
 	local model = plotModels[plotId]
 	for _, zone in PlotLayout.STICKER_ZONES do
 		local facilityId = zone.facilityId
 		local row = facilityId and FacilityConfig.BY_ID[facilityId]
 		local facility = facilityId and model:FindFirstChild(facilityId)
-		if row and facility and facility:GetAttribute(Keys.ATTR_BUILT) then
+		if row and facility and (facility:GetAttribute(Keys.ATTR_PARTS) or 0) >= 1 then
 			local c, size = row.center, row.size
 			if math.abs(spot.X - c.X) <= size.X / 2 and math.abs(spot.Y - c.Z) <= size.Z / 2 then
 				return zone.floorY
@@ -307,12 +330,12 @@ end
 
 --- 스폰 수(3 → 5 → 8)만큼만 스티커를 켠다. 새로 열리는 스폰은 즉시 보인다.
 --- 켜기·끄기 때는 홈 자리로 돌린다. 나머지는 수평 자리를 두고 높이만 바닥에 맞춘다(시설이 서거나 없어지면 바닥이 바뀐다)
-local function refreshStickers(plotId: number, built: { [string]: boolean })
+local function refreshStickers(plotId: number, built: { [string]: boolean }, buildParts: number)
 	local stickers = plotModels[plotId]:FindFirstChild(Keys.STICKERS_FOLDER)
 	if not stickers then
 		return
 	end
-	local count = EconomyConfig.spawnCount(built)
+	local count = EconomyConfig.spawnCount(built, buildParts)
 	for _, part in stickers:GetChildren() do
 		if not part:IsA("BasePart") then
 			continue
@@ -331,30 +354,69 @@ local function refreshStickers(plotId: number, built: { [string]: boolean })
 	end
 end
 
-local function refreshWorld(plotId: number, built: { [string]: boolean })
+local function refreshWorld(plotId: number, built: { [string]: boolean }, buildParts: number)
 	refreshPads(plotId, built)
-	refreshSilhouette(plotId, built)
-	refreshConstruction(plotId, built)
-	refreshStickers(plotId, built)
+	refreshSilhouette(plotId, built, buildParts)
+	refreshConstruction(plotId, built, buildParts)
+	refreshStickers(plotId, built, buildParts)
 end
 
-local function insertFacility(plotId: number, facilityId: string, fresh: boolean): Model?
+--[[
+	시설 facilityId 의 부품 first..last 를 부지에 넣는다. 구매는 first == last == k, 복원은 1..n.
+	Geometry 로 전체 모델을 임시로 짓고(Workspace 밖) PartIndex 가 범위 안인 BasePart 만 실제 모델로 옮긴 뒤 임시 모델은 버린다.
+	Geometry 규약상 BasePart 는 전부 모델의 직계 자식이다.
+	first == 1 이면 실제 모델을 새로 만든다(같은 이름 모델은 버린다): 피벗·Seats·Door·그 밖의 BasePart 아닌 자식·어트리뷰트를 옮긴다.
+	Parts = last, 마지막 부품까지 들어가면 Built = true(클라 완공 연출 트리거).
+]]
+local function insertParts(plotId: number, facilityId: string, first: number, last: number, fresh: boolean): Model?
 	local builder = facilityBuilder(facilityId)
 	if not builder then
 		return nil
 	end
 	local model = plotModels[plotId]
-	local old = model:FindFirstChild(facilityId)
-	if old then
-		old:Destroy()
+	local facility = model:FindFirstChild(facilityId)
+	if first > 1 and not facility then
+		first = 1 -- 앞 부품이 없으면(있을 수 없지만) 처음부터 다시 넣는다
 	end
-	local facility = builder.build(cframes[plotId])
-	BuildKit.localizeAttachments(facility)
-	facility.Name = facilityId
-	facility:SetAttribute(Keys.ATTR_BUILT, true)
-	facility:SetAttribute(Keys.ATTR_FACILITY_ID, facilityId)
-	if fresh then
-		facility:SetAttribute("BuiltAt", Workspace:GetServerTimeNow())
+	local temp = builder.build(cframes[plotId])
+	BuildKit.localizeAttachments(temp)
+
+	local isNew = first == 1
+	if isNew then
+		if facility then
+			facility:Destroy()
+		end
+		facility = Instance.new("Model")
+		facility.Name = facilityId
+	end
+	for _, child in temp:GetChildren() do
+		local index = child:GetAttribute(Keys.ATTR_PART_INDEX)
+		if child:IsA("BasePart") and index and index >= first and index <= last then
+			child.Parent = facility
+		end
+	end
+	if isNew then
+		-- 파트를 먼저 옮기고 피벗을 쓴다. 빈 모델에 첫 파트가 들어올 때 피벗이 다시 잡히지 않게.
+		-- Attachment 는 localizeAttachments 가 이 피벗 기준 로컬로 바꿔 두었다
+		facility.WorldPivot = temp.WorldPivot
+		for _, child in temp:GetChildren() do
+			if not child:IsA("BasePart") then
+				child.Parent = facility
+			end
+		end
+		for name, value in temp:GetAttributes() do
+			facility:SetAttribute(name, value)
+		end
+		facility:SetAttribute(Keys.ATTR_FACILITY_ID, facilityId)
+		if fresh then
+			facility:SetAttribute("BuiltAt", Workspace:GetServerTimeNow())
+		end
+	end
+	temp:Destroy()
+
+	facility:SetAttribute(Keys.ATTR_PARTS, last)
+	if last >= FacilityConfig.partCount(facilityId) then
+		facility:SetAttribute(Keys.ATTR_BUILT, true)
 	end
 	facility.Parent = model
 	return facility
@@ -363,7 +425,7 @@ end
 local function removeFacilities(plotId: number)
 	local model = plotModels[plotId]
 	for _, child in model:GetChildren() do
-		if child:IsA("Model") and child:GetAttribute(Keys.ATTR_BUILT) then
+		if child:IsA("Model") and FacilityConfig.BY_ID[child.Name] and child:GetAttribute(Keys.ATTR_FACILITY_ID) then
 			child:Destroy()
 		end
 	end
@@ -453,7 +515,7 @@ function PlotService.Start()
 		plotModels[plotId].Parent = plotsFolder
 		stateFolders[plotId].Parent = stateRoot
 		resetState(plotId)
-		refreshWorld(plotId, {})
+		refreshWorld(plotId, {}, 0)
 		wireTouches(plotId)
 	end
 	stateRoot.Parent = ReplicatedStorage
@@ -519,12 +581,17 @@ function PlotService.assign(player: Player): number?
 
 	local profile = DataService.get(player)
 	if profile then
+		-- 완공 시설은 부품 전부, 짓다 만 다음 시설은 산 부품까지
 		for _, id in FacilityConfig.ORDER do
 			if profile.facilities[id] then
-				insertFacility(plotId, id, false)
+				insertParts(plotId, id, 1, FacilityConfig.partCount(id), false)
 			end
 		end
-		refreshWorld(plotId, profile.facilities)
+		local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
+		if nextPart and profile.buildParts > 0 then
+			insertParts(plotId, nextPart.facility.id, 1, profile.buildParts, false)
+		end
+		refreshWorld(plotId, profile.facilities, profile.buildParts)
 	end
 	PlotService.syncAttributes(player)
 	if player.Character then
@@ -553,7 +620,7 @@ function PlotService.release(player: Player)
 			part:SetAttribute("Enabled", nil)
 		end
 	end
-	refreshWorld(plotId, {})
+	refreshWorld(plotId, {}, 0)
 	resetState(plotId)
 end
 
@@ -599,20 +666,20 @@ function PlotService.syncAttributes(player: Player)
 	setGateSign(plotId, player.DisplayName)
 end
 
---- 시설 모델 삽입 + 패드·실루엣·스티커 갱신. 프로필 facilities 는 호출자가 먼저 바꾼다
-function PlotService.buildFacility(player: Player, facilityId: string): Model?
+--- 부품 k 삽입 + 패드·실루엣·스티커 갱신. 프로필 facilities·buildParts 는 호출자가 먼저 바꾼다
+function PlotService.buildPart(player: Player, facilityId: string, k: number): Model?
 	local plotId = plotOf[player]
 	local profile = DataService.get(player)
 	if not plotId or not profile then
 		return nil
 	end
-	local facility = insertFacility(plotId, facilityId, true)
-	refreshWorld(plotId, profile.facilities)
+	local facility = insertParts(plotId, facilityId, k, k, true)
+	refreshWorld(plotId, profile.facilities, profile.buildParts)
 	PlotService.syncAttributes(player)
 	return facility
 end
 
---- 졸업: 시설 모델 전부 제거, 스폰 0(책상을 다시 사면 3), 실루엣. 프로필은 이미 비워져 있다
+--- 졸업: 시설 모델 전부 제거, 스폰 0(책상 첫 부품을 다시 사면 3), 실루엣. 프로필(facilities·buildParts)은 이미 비워져 있다
 function PlotService.teardown(player: Player)
 	local plotId = plotOf[player]
 	local profile = DataService.get(player)
@@ -620,7 +687,11 @@ function PlotService.teardown(player: Player)
 		return
 	end
 	removeFacilities(plotId)
-	refreshWorld(plotId, if profile then profile.facilities else {})
+	if profile then
+		refreshWorld(plotId, profile.facilities, profile.buildParts)
+	else
+		refreshWorld(plotId, {}, 0)
+	end
 	PlotService.syncAttributes(player)
 end
 

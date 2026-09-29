@@ -63,6 +63,7 @@ local ARROW_TEXT = "⬇"
 
 -- 단계 문턱(§2.1)
 local STICKER_HINT_COUNT = EconomyConfig.STICKER_HOME_UNTIL -- 앞마당 스티커 1~3번(서버 홈 리스폰 기준과 같은 값)
+-- 안 A 시뮬 활동형에서 시설 3 은 0:52, 시설 4 는 1:16 이라 임계값을 바꾸지 않는다(개선계획 §3.4 #11)
 local GROW3_FACILITIES = 3
 local GROW4_FACILITIES = 4
 local REENTRY_TICKETS = 3 -- ⑦에서 원서 3장인데 한 번도 안 뽑았으면 ④로
@@ -352,11 +353,25 @@ local function computeStage(profile: Types.Profile): number
 	local built = FacilityConfig.count(profile.facilities)
 	local stats = profile.stats
 	local noPulls = stats.totalPulls == 0
-	if built == 0 then
+	-- 책상 첫 부품은 시작 용돈으로 산다. 수입은 완공 때만 붙으므로 부품 2·3 은 스티커로 사야 해서
+	-- 부품 1 뒤에는 시설이 0 이어도 스티커로 보내고, 스티커를 다 주우면 책상 패드로 돌려보낸다
+	if FacilityConfig.partsBuilt(profile.facilities, profile.buildParts) == 0 then
 		return STAGE_DESK
 	end
 	if stats.totalStickers < STICKER_HINT_COUNT then
 		return STAGE_STICKERS
+	end
+	if built == 0 then
+		-- 졸업 뒤에는 totalStickers 가 남아 있어 위 분기를 지나친다. 다음 부품 살 돈이 없으면 스티커로 보낸다
+		local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
+		if
+			nextPart
+			and profile.coins
+				< FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index, profile.graduations)
+		then
+			return STAGE_STICKERS
+		end
+		return STAGE_DESK -- 책상 마저 짓기
 	end
 	if built < GROW3_FACILITIES then
 		return STAGE_GROW3
@@ -552,7 +567,7 @@ function TutorialController.Start()
 	RunService.Heartbeat:Connect(tick)
 end
 
---- 프로필이 바뀌었을 때(init.client 가 FacilityBuilt 뒤에 부른다). onProfile 로도 따라가므로 겹쳐도 무해
+--- 프로필이 바뀌었을 때(init.client 가 PartBuilt·FacilityBuilt 뒤에 부른다). onProfile 로도 따라가므로 겹쳐도 무해
 function TutorialController.refresh()
 	local profile = HudController.profile()
 	if profile then

@@ -128,6 +128,9 @@ local ORBIT_RADIUS = 24
 local ORBIT_PITCH = 30
 local ORBIT_SECONDS = 4
 local CLASSROOM_CAMERA = Vector3.new(0, 17.5, 27.5) -- 교실1 을 내려다보는 카메라 오프셋(부지 로컬)
+-- 부품 하나(PartBuilt): 부품 번호 1..4 → build 음정. 한 시설 안에서 올라가다 마지막에 완공 연출로 끝난다
+local PART_PITCH = { 1.0, 1.12, 1.26, 1.41 }
+local PART_DUST = 6
 
 type Preset = {
 	color: ColorSequence,
@@ -724,6 +727,30 @@ handlers.purchase = function(payload: any)
 	end)
 	task.delay(1.2, function()
 		sound(SOUND_PAD)
+	end)
+end
+
+-- 부품: 주인 화면에서만 build 소리(부품 번호별 음정)·먼지 6·햅틱 약. 플래시·FOV·흔들림 없음(§7.5).
+-- 마지막 부품은 FacilityBuilt(purchase) 가 바로 뒤따르므로 소리를 내지 않는다(이중 소리 방지)
+handlers.part = function(payload: any)
+	local plotId = if type(payload.plot) == "number" then payload.plot else nil
+	if plotId == nil or plotId ~= PadController.myPlot() then
+		return -- 방문객 화면은 아무것도 없음
+	end
+	local facilityId = if type(payload.facilityId) == "string" then payload.facilityId else ""
+	local index = if type(payload.partIndex) == "number" then payload.partIndex else 1
+	local count = if type(payload.partCount) == "number" then payload.partCount else index
+	if index >= count then
+		return -- 마지막 부품은 바로 뒤에 오는 FacilityBuilt(purchase)가 소리·햅틱·먼지를 맡는다
+	end
+	sound(SOUND_BUILD, PART_PITCH[index] or PART_PITCH[#PART_PITCH])
+	haptic("small")
+	-- 부품 파트가 복제될 틈을 준다(purchase 와 같은 50ms). 시설 모델이 아직 없으면 패드 자리에
+	task.delay(0.05, function()
+		local dustAt = PadController.facilityPosition(plotId, facilityId) or PadController.padPosition(facilityId)
+		if dustAt then
+			burst(dustAt, PRESET_DUST, PART_DUST)
+		end
 	end)
 end
 

@@ -46,7 +46,9 @@ Keys.ATTR_STUDENTS = "Students" -- CSV "s01,s02"
 Keys.ATTR_INCOME = "Income" -- number, 초당 수입
 
 -- 파트·모델 어트리뷰트
-Keys.ATTR_BUILT = "Built" -- 시설 모델: 서버가 넣을 때 true. 클라가 등장 연출 트리거로 쓴다
+Keys.ATTR_BUILT = "Built" -- 시설 모델: 마지막 부품을 넣어 완공될 때 true
+Keys.ATTR_PARTS = "Parts" -- 시설 모델: 지금까지 넣은 부품 수(number). 클라가 등장 연출 트리거로 쓴다
+Keys.ATTR_PART_INDEX = "PartIndex" -- 시설 BasePart: 부품 번호(1..부품 수). Geometry 가 붙인다
 Keys.ATTR_COLLECTED = "Collected" -- 스티커: true 면 수집됨(리스폰 대기)
 Keys.ATTR_GOLD = "Gold" -- 스티커: 다음 스폰이 금 스티커
 Keys.ATTR_FACILITY_ID = "FacilityId" -- 패드·실루엣 ↔ 시설

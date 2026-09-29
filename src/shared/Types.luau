@@ -39,6 +39,7 @@ export type Profile = {
 	stickerBoard: number, -- 0 … 59
 	graduations: number,
 	facilities: { [FacilityId]: boolean },
+	buildParts: number, -- 다음 시설에 이미 산 부품 수(0..부품 수-1). 시설이 완공되면 0
 	students: { [StudentId]: number }, -- 보유 수(중복 포함). 0 이면 키 없음
 	pity: number, -- 마지막 전설 이후 뽑은 횟수
 	missions: Missions,
@@ -52,7 +53,8 @@ export type Seat = {
 }
 
 export type GameEventKind =
-	"FacilityBuilt"
+	"PartBuilt" -- { plot, facilityId, partIndex, partCount }. 마지막 부품이면 뒤에 FacilityBuilt 가 온다
+	| "FacilityBuilt"
 	| "StudentJoined"
 	| "GachaResult"
 	| "MissionDone"

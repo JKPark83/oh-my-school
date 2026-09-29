@@ -6,6 +6,7 @@
 	  별동 30×45, 높이 20. 문은 서쪽(-X, 본관 쪽) 폭 8·높이 9: 서벽을 두 조각 + 상인방으로 비운다. 벽·지붕은 fade.
 	  코트는 남북(Z) 방향이라 골대 둘이 북·남 끝에 선다. 좌석 없음(Seats 폴더는 비어 있다).
 	  Door = 서문 중심 바닥(LookVector 가 안쪽 +X).
+	  부품 4개(PartIndex): (1) 코트 바닥+벽 (2) 상인방(이름판)+지붕 (3) 코트 선·골대 둘 (4) 매트·뜀틀·공.
 	  Door Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
@@ -44,9 +45,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 local function attachment(parent: Instance, name: string, cf: CFrame): Attachment
@@ -70,6 +77,7 @@ local function buildShell(model: Model, plotCFrame: CFrame, row: FacilityConfig.
 	local westX = cx - w / 2 + WALL_T / 2
 	local segD = (d - DOOR_W) / 2 - WALL_T -- 남북 벽이 모서리를 차지하므로 그만큼 짧다
 
+	partIndex = 1 -- 벽
 	part(model, "WallN", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz - d / 2 + WALL_T / 2), wallOpts())
 	part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
 	part(
@@ -93,6 +101,7 @@ local function buildShell(model: Model, plotCFrame: CFrame, row: FacilityConfig.
 		at(plotCFrame, westX, wallY, cz + (DOOR_W + segD) / 2),
 		wallOpts()
 	)
+	partIndex = 2 -- 상인방 + 지붕
 	local lintel = part(
 		model,
 		"Lintel",
@@ -164,7 +173,8 @@ function gym.build(plotCFrame: CFrame): Model
 	seats.Name = Keys.SEATS_FOLDER
 	seats.Parent = model
 
-	-- 코트 바닥(primary)
+	-- 부품 1. 코트 바닥(primary)
+	partIndex = 1
 	local floor = part(model, "Floor", Vector3.new(w, FLOOR_T, d), at(plotCFrame, cx, row.center.Y + FLOOR_T / 2, cz), {
 		color = COLOR_PRIMARY,
 		material = MATERIAL,
@@ -174,7 +184,8 @@ function gym.build(plotCFrame: CFrame): Model
 	local lintel = buildShell(model, plotCFrame, row)
 	BuildKit.surfaceText(lintel, Enum.NormalId.Left, row.name, COLOR_LABEL, 1.3)
 
-	-- 코트 선: 센터 라인 + 자유투 라인 둘
+	-- 부품 3. 코트 선: 센터 라인 + 자유투 라인 둘
+	partIndex = 3
 	local lineOpts = function(): BuildKit.Opts
 		return { color = COLOR_WHITE, collide = false, cast = false }
 	end
@@ -186,7 +197,8 @@ function gym.build(plotCFrame: CFrame): Model
 	buildHoop(model, plotCFrame, "N", cx, floorTop, cz - d / 2 + 2.5, 1)
 	buildHoop(model, plotCFrame, "S", cx, floorTop, cz + d / 2 - 2.5, -1)
 
-	-- 매트 둘(secondary) · 뜀틀 · 공: 동쪽 벽 쪽
+	-- 부품 4. 매트 둘(secondary) · 뜀틀 · 공: 동쪽 벽 쪽
+	partIndex = 4
 	for _, side in { { name = "N", dz = -15 }, { name = "S", dz = 15 } } do
 		part(model, "Mat" .. side.name, Vector3.new(6, 0.3, 4), at(plotCFrame, cx + 7, floorTop + 0.15, cz + side.dz), {
 			color = COLOR_SECONDARY,
@@ -205,6 +217,7 @@ function gym.build(plotCFrame: CFrame): Model
 	-- 문(서쪽)
 	attachment(model, Keys.DOOR, at(plotCFrame, westX, floorTop, cz, CFrame.Angles(0, -math.pi / 2, 0)))
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(row.id))
 	return model
 end
 

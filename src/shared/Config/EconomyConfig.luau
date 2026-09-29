@@ -1,7 +1,7 @@
 --!strict
 --[[
-	경제 상수와 공식. 기획서 §1·§5.1. docs/sim/sim-final.py 와 같은 값(docs/sim/check-config.py 로 대조)이어야 한다.
-	  초당 수입 = Σ(지은 시설 income) × (1 + Σ 보유 학생 기여) × (1 + 0.5 × 졸업)
+	경제 상수와 공식. 기획서 §1·§5.1. docs/sim/sim-parts.py 와 같은 값(docs/sim/check-config.py 로 대조)이어야 한다.
+	  초당 수입 = Σ(지은 시설 income) × (1 + Σ 보유 학생 기여) × (1 + 1.0 × 졸업)
 	서버(EconomyService)와 클라(HUD 예상 시간·패드 링)가 같은 함수를 쓴다.
 ]]
 
@@ -11,14 +11,14 @@ local StudentConfig = require(script.Parent.StudentConfig)
 
 local EconomyConfig = {}
 
-EconomyConfig.START_COINS = 10 -- 졸업 후 10 × 1.4^N
+EconomyConfig.START_COINS = 10 -- 졸업 후 10 × 1.35^N
 EconomyConfig.PRICE_SCALE = FacilityConfig.PRICE_SCALE
-EconomyConfig.GRAD_STEP = 0.5 -- 졸업 1회당 배율 +0.5
+EconomyConfig.GRAD_STEP = 1.0 -- 졸업 1회당 배율 +1.0(안 A, sim-parts.py 와 같다)
 EconomyConfig.CONTRIB = StudentConfig.CONTRIB
 EconomyConfig.TICK = 1 -- 수입·패드 확인 주기(초)
 
 -- 칭찬스티커
-EconomyConfig.STICKER_MIN = 10 -- ×1.4^졸업
+EconomyConfig.STICKER_MIN = 10 -- ×1.35^졸업
 EconomyConfig.STICKER_SECONDS = 1.2 -- 가치 = max(최소, 초당 수입 × 1.2)
 EconomyConfig.GOLD_EVERY = 12 -- 12장마다 금 스티커
 EconomyConfig.GOLD_MULT = 5
@@ -48,7 +48,7 @@ function EconomyConfig.facilityIncome(profile: Types.Profile): number
 	return sum
 end
 
---- 배율 = (1 + 학생 기여 합) × (1 + 0.5 × 졸업)
+--- 배율 = (1 + 학생 기여 합) × (1 + GRAD_STEP × 졸업)
 function EconomyConfig.multiplier(profile: Types.Profile): number
 	local students = 1 + StudentConfig.contribSum(profile.students)
 	local grads = 1 + EconomyConfig.GRAD_STEP * profile.graduations
@@ -72,12 +72,17 @@ function EconomyConfig.startCoins(graduations: number): number
 end
 
 --- 활성 스티커 스폰 수(3 → 5 → 8)
-function EconomyConfig.spawnCount(facilities: { [Types.FacilityId]: boolean }): number
+function EconomyConfig.spawnCount(facilities: { [Types.FacilityId]: boolean }, buildParts: number): number
 	local n = 0
 	for _, row in FacilityConfig.LIST do
 		if facilities[row.id] then
 			n += row.spawns
 		end
+	end
+	-- 기본 3(책상)은 책상 첫 부품을 사면 켜진다. 수입은 완공 때만 붙으므로 책상 부품 2·3 은 스티커로 산다(기획서 §3.1)
+	local first = FacilityConfig.LIST[1]
+	if not facilities[first.id] and buildParts >= 1 then
+		n += first.spawns
 	end
 	return n
 end

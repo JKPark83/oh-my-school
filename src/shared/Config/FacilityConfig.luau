@@ -1,6 +1,8 @@
 --!strict
 --[[
 	시설 14개. 기획서 §3.1 표를 그대로 옮겼다.
+	시설마다 부품 3~4개(합계 50)를 차례로 사서 짓는다. 수입은 마지막 부품을 넣어 완공될 때만 붙는다.
+	부품 가격은 docs/sim/sim-parts.py 의 표(sim-parts-output.md 「Config 옮김용 가격 배열」)와 같아야 한다.
 	좌표는 전부 부지 로컬(부지 CFrame 기준, +Z 가 교문 쪽). y 는 바닥 높이.
 	Geometry/<id>.luau 가 center·size·pad 를 읽어 짓는다. 코드에 좌표를 직접 적지 않는다.
 ]]
@@ -12,7 +14,7 @@ local FacilityConfig = {}
 export type Facility = {
 	id: Types.FacilityId,
 	name: string,
-	price: number, -- 졸업 0회 기준. priceOf 로 배율 적용
+	parts: { number }, -- 부품 가격(졸업 0회 기준, 구매 순서). partPriceOf 로 배율 적용. 길이 3 또는 4
 	income: number, -- 초당
 	student: Types.StudentId?, -- 지으면 전학 오는 학생
 	center: Vector3, -- 부지 로컬
@@ -24,7 +26,7 @@ export type Facility = {
 	floor: number, -- 1 | 2
 }
 
-FacilityConfig.PRICE_SCALE = 1.4 -- 졸업 1회마다 가격 ×1.4
+FacilityConfig.PRICE_SCALE = 1.35 -- 졸업 1회마다 가격 ×1.35
 
 local function V(x: number, y: number, z: number): Vector3
 	return Vector3.new(x, y, z)
@@ -34,7 +36,7 @@ local LIST: { Facility } = {
 	{
 		id = "desk",
 		name = "책상 세트",
-		price = 10,
+		parts = { 10, 10, 10 },
 		income = 1,
 		student = "s01",
 		center = V(-60, 0, -50),
@@ -48,7 +50,7 @@ local LIST: { Facility } = {
 	{
 		id = "board",
 		name = "칠판",
-		price = 60,
+		parts = { 14, 14, 15 },
 		income = 3,
 		student = "s02",
 		center = V(-60, 0, -61.5),
@@ -62,7 +64,7 @@ local LIST: { Facility } = {
 	{
 		id = "locker",
 		name = "사물함",
-		price = 180,
+		parts = { 35, 37, 39 },
 		income = 6,
 		student = "s03",
 		center = V(-46, 0, -47.5),
@@ -76,7 +78,7 @@ local LIST: { Facility } = {
 	{
 		id = "hall",
 		name = "복도",
-		price = 500,
+		parts = { 88, 92, 97 },
 		income = 12,
 		student = "s04",
 		center = V(0, 0, -25),
@@ -90,7 +92,7 @@ local LIST: { Facility } = {
 	{
 		id = "class2",
 		name = "교실2",
-		price = 1500,
+		parts = { 250, 260, 270 },
 		income = 25,
 		student = "s05",
 		center = V(-20, 0, -47.5),
@@ -104,7 +106,7 @@ local LIST: { Facility } = {
 	{
 		id = "cafeteria",
 		name = "급식실",
-		price = 4000,
+		parts = { 610, 640, 680 },
 		income = 50,
 		student = "s06",
 		center = V(20, 0, -47.5),
@@ -118,7 +120,7 @@ local LIST: { Facility } = {
 	{
 		id = "library",
 		name = "도서관",
-		price = 11000,
+		parts = { 1500, 1500, 1600, 1700 },
 		income = 90,
 		student = "s07",
 		center = V(60, 0, -47.5),
@@ -132,7 +134,7 @@ local LIST: { Facility } = {
 	{
 		id = "nurse",
 		name = "보건실",
-		price = 30000,
+		parts = { 3500, 3600, 3800, 4000 },
 		income = 150,
 		student = "s08",
 		center = V(-60, 0, -5),
@@ -146,7 +148,7 @@ local LIST: { Facility } = {
 	{
 		id = "science",
 		name = "과학실",
-		price = 70000,
+		parts = { 7600, 8000, 8400, 8800 },
 		income = 260,
 		student = "s09",
 		center = V(-30, 0, -5),
@@ -160,7 +162,7 @@ local LIST: { Facility } = {
 	{
 		id = "music",
 		name = "음악실",
-		price = 160000,
+		parts = { 16000, 17000, 18000, 19000 },
 		income = 420,
 		student = "s10",
 		center = V(30, 0, -5),
@@ -174,7 +176,7 @@ local LIST: { Facility } = {
 	{
 		id = "gym",
 		name = "체육관",
-		price = 350000,
+		parts = { 34000, 36000, 38000, 40000 },
 		income = 700,
 		student = "s11",
 		center = V(60, 0, 37.5),
@@ -188,7 +190,7 @@ local LIST: { Facility } = {
 	{
 		id = "field",
 		name = "운동장",
-		price = 750000,
+		parts = { 71000, 74000, 78000, 82000 },
 		income = 1100,
 		student = "s12",
 		center = V(-45, 0, 37.5),
@@ -202,7 +204,7 @@ local LIST: { Facility } = {
 	{
 		id = "principal",
 		name = "교장실",
-		price = 1800000,
+		parts = { 160000, 170000, 180000, 190000 },
 		income = 1800,
 		student = "s13",
 		center = V(60, 0, -5),
@@ -216,7 +218,7 @@ local LIST: { Facility } = {
 	{
 		id = "auditorium",
 		name = "강당",
-		price = 3800000,
+		parts = { 320000, 340000, 350000, 370000 },
 		income = 3000,
 		student = nil,
 		center = V(0, 18, -17.5),
@@ -243,12 +245,20 @@ FacilityConfig.BY_ID = BY_ID
 FacilityConfig.ORDER = ORDER -- 구매 순서. 선형 트리라 i 번째는 i-1 번째가 있어야 산다
 FacilityConfig.COUNT = #LIST
 
---- 졸업 횟수를 반영한 가격
-function FacilityConfig.priceOf(id: Types.FacilityId, graduations: number): number
-	local row = BY_ID[id]
-	assert(row, `모르는 시설: {id}`)
-	return math.floor(row.price * FacilityConfig.PRICE_SCALE ^ graduations + 0.5)
+-- 다음에 살 부품. index 는 1..count
+export type NextPart = {
+	facility: Facility,
+	index: number,
+	count: number,
+}
+
+local partTotal = 0
+for _, row in LIST do
+	assert(#row.parts == 3 or #row.parts == 4, `{row.id} 부품 수는 3 또는 4 여야 한다`)
+	partTotal += #row.parts
 end
+assert(partTotal == 50, `부품 합계가 50 이 아니다: {partTotal}`)
+FacilityConfig.PART_COUNT = partTotal -- 14 시설 부품 합(50)
 
 --- 구매 순서 번호(1~14)
 function FacilityConfig.indexOf(id: Types.FacilityId): number
@@ -276,18 +286,40 @@ function FacilityConfig.nextOf(built: { [Types.FacilityId]: boolean }): Facility
 	return nil
 end
 
---- 다음 시설의 다음(실루엣 30% 로 보여 줄 것). 없으면 nil
-function FacilityConfig.afterNextOf(built: { [Types.FacilityId]: boolean }): Facility?
-	local seen = false
-	for _, id in ORDER do
-		if not built[id] then
-			if seen then
-				return BY_ID[id]
-			end
-			seen = true
+--- 시설의 부품 수(3 또는 4)
+function FacilityConfig.partCount(id: Types.FacilityId): number
+	local row = BY_ID[id]
+	assert(row, `모르는 시설: {id}`)
+	return #row.parts
+end
+
+--- 졸업 횟수를 반영한 부품 k 가격
+function FacilityConfig.partPriceOf(id: Types.FacilityId, k: number, graduations: number): number
+	local row = BY_ID[id]
+	assert(row, `모르는 시설: {id}`)
+	local base = row.parts[k]
+	assert(base, `{id} 에 부품 {k} 이 없다`)
+	return math.floor(base * FacilityConfig.PRICE_SCALE ^ graduations + 0.5)
+end
+
+--- 다음에 살 부품. index = buildParts + 1, count = 그 시설 부품 수. 다 지었으면 nil(호출처가 W6 「다음 층」 분기를 둔다)
+function FacilityConfig.nextPartOf(built: { [Types.FacilityId]: boolean }, buildParts: number): NextPart?
+	local row = FacilityConfig.nextOf(built)
+	if not row then
+		return nil
+	end
+	return { facility = row, index = buildParts + 1, count = #row.parts }
+end
+
+--- 지금까지 산 부품 수(0..PART_COUNT) = 완공 시설 부품 합 + 다음 시설의 산 부품 수
+function FacilityConfig.partsBuilt(built: { [Types.FacilityId]: boolean }, buildParts: number): number
+	local n = 0
+	for _, row in LIST do
+		if built[row.id] then
+			n += #row.parts
 		end
 	end
-	return nil
+	return n + buildParts
 end
 
 --- 지을 수 있는 순서인가(바로 앞 시설까지 전부 있어야 한다)

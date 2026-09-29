@@ -1,6 +1,6 @@
 --!nonstrict
 --[[
-	파트로 물건을 짓는 데 쓰는 헬퍼 두 개.
+	파트로 물건을 짓는 데 쓰는 헬퍼들.
 
 	Phase 4까지는 교실 템플릿 안에만 있었다. Phase 5에서 운동장 허브가 생기면서
 	같은 코드를 쓰는 곳이 둘이 됐고, 그래서 밖으로 뺐다.
@@ -119,6 +119,29 @@ function BuildKit.localizeAttachments(model: Model)
 	for _, d in model:GetDescendants() do
 		if d:IsA("Attachment") and not d.Parent:IsA("BasePart") then
 			d.CFrame = pivot:ToObjectSpace(d.CFrame)
+		end
+	end
+end
+
+--[[
+	부품 번호 검사(개선계획 §3.4). 모델 안 모든 BasePart 에 PartIndex 가 1..count 정수로 붙어 있고
+	1..count 각 번호가 파트 하나 이상에 쓰였는지 본다. Geometry build 끝에서 부른다.
+	PlotService 가 이 번호로 부품 k 의 파트만 골라 부지에 넣으므로, 빠진 번호가 있으면 그 부품을 사도 아무것도 안 생긴다.
+]]
+function BuildKit.assertPartIndex(model: Model, count: number)
+	local used = {}
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			local index = d:GetAttribute(Keys.ATTR_PART_INDEX)
+			if type(index) ~= "number" or index ~= math.floor(index) or index < 1 or index > count then
+				error(`{model.Name}: 파트 {d.Name} 의 {Keys.ATTR_PART_INDEX}({index}) 가 1..{count} 밖이다`, 2)
+			end
+			used[index] = true
+		end
+	end
+	for k = 1, count do
+		if not used[k] then
+			error(`{model.Name}: 부품 {k} 번을 쓴 파트가 없다(1..{count})`, 2)
 		end
 	end
 end

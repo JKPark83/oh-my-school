@@ -1,7 +1,7 @@
 --!nonstrict
 --[[
 	용돈·구매·스티커·별. 기획서 §2.2·§3.2·§5·§7.5·§9.1·§11.5, 계획서 §3.2.
-	  1Hz 틱   수입 지급 → 활성 패드 위에 서 있고 돈이 되면 자동 구매 → ProfileSync
+	  1Hz 틱   수입 지급 → 활성 패드 위에 서 있고 돈이 되면 다음 부품 1개 자동 구매(개선계획 §3.4) → ProfileSync
 	  스티커   PlotService.StickerTouched → 검증(주인·간격·속도·거리) → 가치·콤보·판 → 15초 뒤 리스폰(금 판단)
 	  별       PlotService.StarTouched → 방문자 판 +1 (부지·60초당 2개)
 	  GoHome   PlotService.goHome (5초 쿨다운)
@@ -56,15 +56,36 @@ function EconomyService.grant(player: Player, amount: number)
 	DataService.syncNow(player)
 end
 
---- 시설 구매. 돈은 호출자가 확인했다
-local function buy(player: Player, profile: Types.Profile, row: FacilityConfig.Facility)
-	local price = FacilityConfig.priceOf(row.id, profile.graduations)
+--- 부품 1개 구매. 돈은 호출자가 확인했다. 마지막 부품이면 시설 완공(수입·티켓·전학생은 완공 때만)
+local function buy(player: Player, profile: Types.Profile, nextPart: FacilityConfig.NextPart)
+	local row = nextPart.facility
+	local price = FacilityConfig.partPriceOf(row.id, nextPart.index, profile.graduations)
+	local done = nextPart.index >= nextPart.count
 	profile.coins -= price
-	profile.facilities[row.id] = true
-	profile.tickets += 1
+	-- 프로필을 먼저 바꾼다. buildPart 가 이 값으로 패드·실루엣·스티커를 갱신한다
+	if done then
+		profile.buildParts = 0
+		profile.facilities[row.id] = true
+	else
+		profile.buildParts = nextPart.index
+	end
 	local plotId = PlotService.plotOf(player)
-	PlotService.buildFacility(player, row.id)
-	Metrics.facilityBuilt(player, row.spawns)
+	PlotService.buildPart(player, row.id, nextPart.index)
+	Metrics.partBuilt(player)
+	Remotes.event(nil, "PartBuilt", {
+		plot = plotId,
+		facilityId = row.id,
+		partIndex = nextPart.index,
+		partCount = nextPart.count,
+	})
+	if not done then
+		DataService.syncNow(player)
+		DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
+		return
+	end
+
+	profile.tickets += 1
+	Metrics.facilityBuilt(player)
 	Remotes.event(nil, "FacilityBuilt", { plot = plotId, facilityId = row.id })
 
 	-- 이미 데리고 있던 학생 중 이 시설에 자리가 있는 아이들이 걸어 들어온다
@@ -97,11 +118,13 @@ local function tick()
 		if income > 0 then
 			addCoins(profile, income)
 		end
-		local nextRow = FacilityConfig.nextOf(profile.facilities)
-		if nextRow and PlotService.plotOf(player) then
-			local price = FacilityConfig.priceOf(nextRow.id, profile.graduations)
-			if profile.coins >= price and PlotService.occupants(player)[nextRow.id] then
-				buy(player, profile, nextRow)
+		-- 틱당 부품 1개. nil 이면 14개 완공(W6: 다음 층 분기 자리, 개선계획 §3.6 #8)
+		local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
+		if nextPart and PlotService.plotOf(player) then
+			local id = nextPart.facility.id
+			local price = FacilityConfig.partPriceOf(id, nextPart.index, profile.graduations)
+			if profile.coins >= price and PlotService.occupants(player)[id] then
+				buy(player, profile, nextPart)
 				continue
 			end
 		end

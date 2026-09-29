@@ -131,6 +131,18 @@ call(HudController, "HudController", "onProfile", applySettings)
 -- GameEvent kind → 받는 컨트롤러 표(구현계획 §3.7). 각 줄이 독립 pcall 이라 앞 것이 죽어도 뒤는 간다
 type Handler = (payload: any) -> ()
 local dispatch: { [string]: { Handler } } = {
+	-- 부품 하나. 마지막 부품이면 서버가 바로 뒤에 FacilityBuilt 도 보낸다
+	PartBuilt = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "part", payload)
+		end,
+		function()
+			call(PadController, "PadController", "refresh")
+		end,
+		function()
+			call(TutorialController, "TutorialController", "refresh")
+		end,
+	},
 	FacilityBuilt = {
 		function(payload)
 			call(FeedbackController, "FeedbackController", "play", "purchase", payload)

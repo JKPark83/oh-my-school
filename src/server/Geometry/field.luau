@@ -6,6 +6,7 @@
 	  60×45 땅(primary) + 안쪽 테두리 트랙 띠 넷(secondary) + 축구 골대 둘(동·서). 벽·지붕·문 없음(동쪽이 본관 쪽으로 열림).
 	  땅과 트랙은 높이 ≤1 이라 Shell 바닥에서 걸려 넘어지지 않는다. 좌석 없음(Seats 폴더는 비어 있다).
 	  door 가 nil 이라 Door Attachment 는 없다.
+	  부품 4개(PartIndex): (1) 땅 (2) 트랙 띠 넷+하프 라인 (3) 서쪽 골대 (4) 동쪽 골대.
 	  스티커 3개(§7.2, (-60,25)(-45,37.5)(-30,50)) 는 PlotShell 이 놓으므로 여기서는 손대지 않는다.
 ]]
 
@@ -35,9 +36,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 --- 골대 3파트: 기둥 둘 + 크로스바. 골문은 Z 방향으로 열린다
@@ -82,7 +89,8 @@ function field.build(plotCFrame: CFrame): Model
 	seats.Name = Keys.SEATS_FOLDER
 	seats.Parent = model
 
-	-- 땅(primary)
+	-- 부품 1. 땅(primary)
+	partIndex = 1
 	local ground =
 		part(model, "Ground", Vector3.new(w, GROUND_T, d), at(plotCFrame, cx, row.center.Y + GROUND_T / 2, cz), {
 			color = COLOR_PRIMARY,
@@ -90,7 +98,8 @@ function field.build(plotCFrame: CFrame): Model
 		})
 	model.PrimaryPart = ground
 
-	-- 트랙 띠 넷(secondary): 땅 가장자리 안쪽을 한 바퀴 두른다
+	-- 부품 2. 트랙 띠 넷(secondary): 땅 가장자리 안쪽을 한 바퀴 두른다
+	partIndex = 2
 	local trackOpts = function(): BuildKit.Opts
 		return { color = COLOR_SECONDARY, material = MATERIAL, collide = false, cast = false }
 	end
@@ -105,15 +114,18 @@ function field.build(plotCFrame: CFrame): Model
 		part(model, s.name, s.size, at(plotCFrame, s.x, trackY, s.z), trackOpts())
 	end
 
-	-- 하프 라인 + 골대 둘(서·동)
+	-- 하프 라인(부품 2) + 골대 둘(서 부품 3·동 부품 4)
 	part(model, "HalfLine", Vector3.new(0.5, TRACK_T, d - 2 * TRACK_W), at(plotCFrame, cx, trackY, cz), {
 		color = COLOR_WHITE,
 		collide = false,
 		cast = false,
 	})
+	partIndex = 3
 	buildGoal(model, plotCFrame, "W", cx - GOAL_INSET, groundTop, cz)
+	partIndex = 4
 	buildGoal(model, plotCFrame, "E", cx + GOAL_INSET, groundTop, cz)
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(row.id))
 	return model
 end
 

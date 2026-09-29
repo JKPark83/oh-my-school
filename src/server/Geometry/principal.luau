@@ -10,6 +10,7 @@
 	    BuildKit.part 는 Part 만 만들므로 이 하나만 Instance.new("Seat") 로 같은 속성을 준다.
 	  Seats/S01 = 손님 의자(부지 로컬 (50, -2.5), 교장 의자를 바라본다).
 	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z).
+	  부품 4개(PartIndex): (1) 바닥+벽 (2) 상인방(이름판)+지붕 (3) 큰 책상·손님 의자·책장 (4) 교장 의자·트로피·화분·액자.
 	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
@@ -55,9 +56,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 local function attachment(parent: Instance, name: string, cf: CFrame): Attachment
@@ -87,6 +94,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local northZ = cz - d / 2 + WALL_T / 2
 	local segW = (w - DOOR_W) / 2
 
+	partIndex = 1 -- 바닥 + 벽
 	local floor = part(
 		model,
 		"Floor",
@@ -108,13 +116,6 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx + (DOOR_W + segW) / 2, wallY, northZ),
 		wallOpts()
 	)
-	local lintel = part(
-		model,
-		"Lintel",
-		Vector3.new(DOOR_W, h - DOOR_H, WALL_T),
-		at(plotCFrame, cx, floorTop + DOOR_H + (h - DOOR_H) / 2, northZ),
-		wallOpts()
-	)
 	part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
 	part(
 		model,
@@ -128,6 +129,14 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		"WallW",
 		Vector3.new(WALL_T, h, d - 2 * WALL_T),
 		at(plotCFrame, cx - w / 2 + WALL_T / 2, wallY, cz),
+		wallOpts()
+	)
+	partIndex = 2 -- 상인방 + 지붕
+	local lintel = part(
+		model,
+		"Lintel",
+		Vector3.new(DOOR_W, h - DOOR_H, WALL_T),
+		at(plotCFrame, cx, floorTop + DOOR_H + (h - DOOR_H) / 2, northZ),
 		wallOpts()
 	)
 	part(
@@ -170,6 +179,7 @@ local function buildPrincipalChair(parent: Instance, base: CFrame)
 	seat.Disabled = false
 	seat.TopSurface = Enum.SurfaceType.Smooth
 	seat.BottomSurface = Enum.SurfaceType.Smooth
+	seat:SetAttribute(Keys.ATTR_PART_INDEX, partIndex) -- BuildKit.part 를 거치지 않으니 여기서 붙인다
 	seat.Parent = parent
 
 	part(parent, "PrincipalChairBack", Vector3.new(2.6, 3.2, 0.5), base * CFrame.new(0, SIT_HIP + 1.6, 1.55), {
@@ -207,8 +217,8 @@ function principal.build(plotCFrame: CFrame): Model
 	model.PrimaryPart = floor
 	BuildKit.surfaceText(lintel, Enum.NormalId.Front, row.name, COLOR_LABEL, 1.3)
 
-	-- 교장 의자(남쪽을 본다) 와 그 앞의 큰 책상(primary)
-	buildPrincipalChair(model, at(plotCFrame, CHAIR_X, floorTop, CHAIR_Z, CFrame.Angles(0, math.pi, 0)))
+	-- 부품 3. 교장 의자 앞의 큰 책상(primary)
+	partIndex = 3
 	local deskZ = CHAIR_Z + 3.8
 	part(model, "DeskTop", Vector3.new(9, 0.5, 3.6), at(plotCFrame, CHAIR_X, floorTop + SIT_DESK - 0.25, deskZ), {
 		color = COLOR_PRIMARY,
@@ -232,11 +242,15 @@ function principal.build(plotCFrame: CFrame): Model
 	buildChair(model, "GuestChair", guestCF, COLOR_LEATHER, Enum.Material.Leather)
 	attachment(seats, seatName(1), guestCF)
 
-	-- 책장(동쪽 벽) · 화분 · 트로피 · 남쪽 벽 액자
+	-- 책장(동쪽 벽)
 	part(model, "Bookshelf", Vector3.new(1, 8, 8), at(plotCFrame, eastX - 0.5, floorTop + 4, cz + 2), {
 		color = COLOR_WOOD,
 		material = Enum.Material.Wood,
 	})
+
+	-- 부품 4. 교장 의자(남쪽을 본다) · 화분 · 트로피 · 남쪽 벽 액자
+	partIndex = 4
+	buildPrincipalChair(model, at(plotCFrame, CHAIR_X, floorTop, CHAIR_Z, CFrame.Angles(0, math.pi, 0)))
 	part(
 		model,
 		"PlantPot",
@@ -271,6 +285,7 @@ function principal.build(plotCFrame: CFrame): Model
 	-- 문
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, northZ, CFrame.Angles(0, math.pi, 0)))
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(row.id))
 	return model
 end
 

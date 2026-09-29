@@ -5,7 +5,7 @@
 	  회수율        주운 스티커 / 기회. 기회 = Σ(켜진 스폰 수 × 초) / RESPAWN.
 	                sim-final.py COLLECT_RATE 와 같은 뜻이다(스폰마다 다시 뜨자마자 주우면 100%).
 	                "뜬 횟수"로 나누지 않는다. 안 주운 스티커는 다시 뜨지 않아 분모가 분자를 따라가기 때문이다.
-	  5분 완료      5:00 에 시설·전학생(중복 제외)·뽑기로 온 새 학생·뽑기·미션을 찍고 §2.4 기준으로 판정
+	  5분 완료      5:00 에 부품·시설·전학생(중복 제외)·뽑기로 온 새 학생·뽑기·미션을 찍고 §2.4·개선계획 §13.1 기준으로 판정
 	  30분 시설     30:00 의 시설 수 + 누적 졸업. 이번 세션에 졸업했으면 14/14 를 이미 지난 것으로 본다
 	  첫 뽑기       세션 시작부터 첫 뽑기까지. 일어난 순간 찍는다
 	  패드 3초 미만 활성 패드 Touched 로 관찰을 시작해 0.25초마다 구매 판정과 같은 기준(PlotService.standsOn)으로 본다.
@@ -28,7 +28,7 @@ local Metrics = {}
 local FIVE_MINUTES = 5 * 60
 local THIRTY_MINUTES = 30 * 60
 local FIRST_PULL_GOAL = 2 * 60
-local FIVE_FACILITIES = 7
+local FIVE_PARTS = 24 -- 첫 5분 부품 수(개선계획 §13.1)
 local FIVE_STUDENTS = 8
 local FIVE_PULLS = 4
 local FIVE_MISSIONS = 2
@@ -85,14 +85,15 @@ local function setSpawns(session: Session, count: number)
 	session.spawnSince = now
 end
 
---- 다음 시설 값이 지금 용돈으로 되나
+--- 다음 부품 값이 지금 용돈으로 되나
 local function canAfford(player: Player): boolean
 	local profile = DataService.get(player)
 	if not profile then
 		return false
 	end
-	local nextRow = FacilityConfig.nextOf(profile.facilities)
-	return nextRow ~= nil and profile.coins >= FacilityConfig.priceOf(nextRow.id, profile.graduations)
+	local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
+	return nextPart ~= nil
+		and profile.coins >= FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index, profile.graduations)
 end
 
 local function snapshotFive(player: Player, session: Session)
@@ -101,16 +102,17 @@ local function snapshotFive(player: Player, session: Session)
 	if sessions[player] ~= session or not profile then
 		return
 	end
+	local parts = FacilityConfig.partsBuilt(profile.facilities, profile.buildParts)
 	local facilities = FacilityConfig.count(profile.facilities)
 	local students = StudentConfig.ownedCount(profile.students)
-	local passed = facilities >= FIVE_FACILITIES
+	local passed = parts >= FIVE_PARTS
 		and students >= FIVE_STUDENTS
 		and session.gachaNew >= 1
 		and session.pulls >= FIVE_PULLS
 		and session.missions >= FIVE_MISSIONS
 	session.passedFive = passed
 	local counts =
-		`시설 {facilities}(≥{FIVE_FACILITIES}) · 전학생 {students}(≥{FIVE_STUDENTS}, 뽑기로 {session.gachaNew})`
+		`부품 {parts}(≥{FIVE_PARTS}) · 시설 {facilities} · 전학생 {students}(≥{FIVE_STUDENTS}, 뽑기로 {session.gachaNew})`
 	local actions = `뽑기 {session.pulls}(≥{FIVE_PULLS}) · 미션 {session.missions}(≥{FIVE_MISSIONS})`
 	log(player, `5분 · {counts} · {actions} → {verdict(passed)} · {kind(session)}`)
 end
@@ -177,11 +179,12 @@ function Metrics.begin(player: Player)
 	end
 	local now = os.clock()
 	local facilities = FacilityConfig.count(profile.facilities)
+	local parts = FacilityConfig.partsBuilt(profile.facilities, profile.buildParts)
 	local session: Session = {
 		startedAt = now,
-		isNew = profile.graduations == 0 and facilities == 0 and profile.stats.totalPulls == 0,
+		isNew = profile.graduations == 0 and parts == 0 and profile.stats.totalPulls == 0,
 		collected = 0,
-		spawns = EconomyConfig.spawnCount(profile.facilities),
+		spawns = EconomyConfig.spawnCount(profile.facilities, profile.buildParts),
 		spawnSince = now,
 		spawnSeconds = 0,
 		pulls = 0,
@@ -243,15 +246,25 @@ function Metrics.stickerCollected(player: Player)
 	end
 end
 
---- 시설 1개 구매. spawns 는 이 시설이 여는 스티커 스폰 수
-function Metrics.facilityBuilt(player: Player, spawns: number)
+--- 부품 1개 구매(프로필 갱신 뒤). 패드 3초 미만 판정의 「그 사이 구매」, 스폰 수는 프로필에서 다시 센다
+function Metrics.partBuilt(player: Player)
 	local session = sessions[player]
-	if not session then
+	local profile = DataService.get(player)
+	if not session or not profile then
 		return
 	end
 	session.padBought = true
-	if spawns > 0 then
-		setSpawns(session, session.spawns + spawns)
+	local spawns = EconomyConfig.spawnCount(profile.facilities, profile.buildParts)
+	if spawns ~= session.spawns then
+		setSpawns(session, spawns)
+	end
+end
+
+--- 시설 1개 완공(마지막 부품). 스폰 수는 partBuilt 가 이미 맞췄다
+function Metrics.facilityBuilt(player: Player)
+	local session = sessions[player]
+	if session then
+		session.padBought = true
 	end
 end
 

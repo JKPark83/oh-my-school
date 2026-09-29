@@ -5,6 +5,7 @@
 	  FacilityConfig.board 의 center (−60,0,−61.5) 는 북벽 안쪽 면 위 바닥점이다. 칠판은 그 면에서 방 쪽(+Z)으로 붙는다.
 	  틀(secondary) + 칠판면(primary) + 분필받침 + 지우개 + 시계 + 급훈 액자. 자리·문 없음.
 	  글자는 BuildKit.surfaceText(한글은 SurfaceGui 로만 낼 수 있다).
+	  부품 3개(PartIndex): (1) 틀+칠판면 (2) 분필받침+지우개 (3) 시계+급훈 액자.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -48,10 +49,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
---- BuildKit.part 를 월드 CFrame 으로 부른다
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 function board.build(plotCFrame: CFrame): Model
@@ -66,7 +72,8 @@ function board.build(plotCFrame: CFrame): Model
 	local w, h = row.size.X, row.size.Y
 	local faceY = floorY + BOARD_BOTTOM + h / 2
 
-	-- 틀: 벽면에 붙는다. 칠판면: 틀 앞에 얹는다
+	-- 부품 1. 틀: 벽면에 붙는다. 칠판면: 틀 앞에 얹는다
+	partIndex = 1
 	put(
 		model,
 		"Frame",
@@ -84,7 +91,8 @@ function board.build(plotCFrame: CFrame): Model
 		})
 	BuildKit.surfaceText(face, Enum.NormalId.Back, TEXT_CHALK, C.chalk, 0.9)
 
-	-- 분필받침 + 지우개
+	-- 부품 2. 분필받침 + 지우개
+	partIndex = 2
 	local trayZ = wallZ + FRAME_T + TRAY.Z / 2
 	put(model, "Tray", Vector3.new(w, TRAY.Y, TRAY.Z), at(plotCFrame, cx, floorY + BOARD_BOTTOM - TRAY.Y / 2, trayZ), {
 		color = C.tray,
@@ -96,7 +104,8 @@ function board.build(plotCFrame: CFrame): Model
 		collide = false,
 	})
 
-	-- 시계: Cylinder 축이 X 라 Y 로 90° 돌려 면이 방(+Z)을 보게 한다
+	-- 부품 3. 시계: Cylinder 축이 X 라 Y 로 90° 돌려 면이 방(+Z)을 보게 한다
+	partIndex = 3
 	put(
 		model,
 		"Clock",
@@ -124,6 +133,7 @@ function board.build(plotCFrame: CFrame): Model
 	)
 	BuildKit.surfaceText(motto, Enum.NormalId.Back, TEXT_MOTTO, C.text, 0.55)
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(FACILITY_ID))
 	return model
 end
 

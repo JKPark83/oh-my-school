@@ -7,6 +7,7 @@
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
 	  Seats/S01 = 침대 옆 의자. Attachment 위치 = 의자 아래 바닥 중심, LookVector = 학생이 보는 방향(침대 쪽 -X).
 	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z).
+	  부품 4개(PartIndex): (1) 바닥+벽 (2) 상인방(이름판)+지붕 (3) 침대·커튼 (4) 의자·책상·약장·체중계.
 	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 ]]
 
@@ -47,10 +48,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
---- BuildKit.part 를 월드 CFrame 으로 부른다
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 --- 월드 CFrame 을 그대로 가진 Attachment(부모가 BasePart 가 아니다)
@@ -81,6 +87,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local northZ = cz - d / 2 + WALL_T / 2
 	local segW = (w - DOOR_W) / 2
 
+	partIndex = 1 -- 바닥 + 벽
 	local floor = part(
 		model,
 		"Floor",
@@ -102,13 +109,6 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx + (DOOR_W + segW) / 2, wallY, northZ),
 		wallOpts()
 	)
-	local lintel = part(
-		model,
-		"Lintel",
-		Vector3.new(DOOR_W, h - DOOR_H, WALL_T),
-		at(plotCFrame, cx, floorTop + DOOR_H + (h - DOOR_H) / 2, northZ),
-		wallOpts()
-	)
 	part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
 	part(
 		model,
@@ -122,6 +122,14 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		"WallW",
 		Vector3.new(WALL_T, h, d - 2 * WALL_T),
 		at(plotCFrame, cx - w / 2 + WALL_T / 2, wallY, cz),
+		wallOpts()
+	)
+	partIndex = 2 -- 상인방 + 지붕
+	local lintel = part(
+		model,
+		"Lintel",
+		Vector3.new(DOOR_W, h - DOOR_H, WALL_T),
+		at(plotCFrame, cx, floorTop + DOOR_H + (h - DOOR_H) / 2, northZ),
 		wallOpts()
 	)
 	part(
@@ -180,7 +188,8 @@ function nurse.build(plotCFrame: CFrame): Model
 	model.PrimaryPart = floor
 	BuildKit.surfaceText(lintel, Enum.NormalId.Front, row.name, COLOR_LABEL, 1.3)
 
-	-- 침대: 서쪽 벽 쪽, 머리가 북쪽. 발치에 이불(secondary)
+	-- 부품 3. 침대: 서쪽 벽 쪽, 머리가 북쪽. 발치에 이불(secondary)
+	partIndex = 3
 	local bx, bz = cx - 8, cz + 1.5
 	part(model, "BedFrame", Vector3.new(3.2, 0.8, 6.6), at(plotCFrame, bx, floorTop + 0.4, bz), {
 		color = COLOR_STEEL,
@@ -212,7 +221,8 @@ function nurse.build(plotCFrame: CFrame): Model
 		cast = false,
 	})
 
-	-- 의자 S01: 침대 옆에서 침대(-X)를 본다
+	-- 부품 4. 의자 S01: 침대 옆에서 침대(-X)를 본다
+	partIndex = 4
 	local chairX, chairZ = cx - 4.6, cz + 3
 	buildChair(model, "Chair", plotCFrame, chairX, floorTop, chairZ, math.pi / 2, COLOR_WOOD, Enum.Material.Wood)
 	attachment(seats, seatName(1), at(plotCFrame, chairX, floorTop, chairZ, CFrame.Angles(0, math.pi / 2, 0)))
@@ -260,6 +270,7 @@ function nurse.build(plotCFrame: CFrame): Model
 	-- 문(복도 쪽 북벽)
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, northZ, CFrame.Angles(0, math.pi, 0)))
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(row.id))
 	return model
 end
 

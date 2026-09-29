@@ -8,6 +8,7 @@
 	  바닥판은 Shell 바닥 위에 얹는 얇은 판이라 방 바닥 높이 = center.Y + FLOOR_T 이고 자리 Attachment 는 그 높이.
 	  Seats/S01~S03 = 탁자 남쪽에 나란히, 탁자(−Z)를 본다. S03 은 규약대로 예비 자리(학생 수 2).
 	  Door = 남문 중심 바닥(Shell 바닥 높이), LookVector 가 방 안쪽(−Z).
+	  부품 4개(PartIndex): (1) 바닥판+벽 (2) 상인방+지붕 (3) 책장·책 (4) 열람 탁자·의자·사서 카운터.
 	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 ]]
 
@@ -64,10 +65,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
---- BuildKit.part 를 월드 CFrame 으로 부른다
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 --- 월드 CFrame 을 그대로 가진 Attachment(부모가 BasePart 가 아니다)
@@ -83,12 +89,24 @@ local function wallOpts(): BuildKit.Opts
 	return { color = C.wall, material = Enum.Material.Concrete, fade = true }
 end
 
---- 벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 파트 8개
+--- 벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 파트 8개. 바닥판·벽은 부품 1, 상인방·지붕은 부품 2
 local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.Facility)
 	local cx, floorY, cz = row.center.X, row.center.Y, row.center.Z
 	local hx, hz = row.size.X / 2, row.size.Z / 2
 	local h = row.size.Y
 	local y = floorY + h / 2
+	partIndex = 1
+	-- 부품 1. 바닥판: 벽 속으로 0.4 묻어 벽 안쪽 면과 면이 겹치지 않게 한다
+	put(
+		model,
+		"Floor",
+		Vector3.new(row.size.X - WALL_T * 0.4, FLOOR_T, row.size.Z - WALL_T * 0.4),
+		at(plotCFrame, cx, floorY + FLOOR_T / 2, cz),
+		{
+			color = C.floor,
+			material = Enum.Material.Wood,
+		}
+	)
 	put(model, "WallN", Vector3.new(row.size.X, h, WALL_T), at(plotCFrame, cx, y, cz - hz + WALL_T / 2), wallOpts())
 	local sideLen = row.size.Z - WALL_T * 2
 	put(model, "WallW", Vector3.new(WALL_T, h, sideLen), at(plotCFrame, cx - hx + WALL_T / 2, y, cz), wallOpts())
@@ -97,6 +115,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local side = (row.size.X - DOOR_W) / 2
 	put(model, "WallSW", Vector3.new(side, h, WALL_T), at(plotCFrame, cx - hx + side / 2, y, sz), wallOpts())
 	put(model, "WallSE", Vector3.new(side, h, WALL_T), at(plotCFrame, cx + hx - side / 2, y, sz), wallOpts())
+	partIndex = 2 -- 상인방 + 지붕
 	put(
 		model,
 		"Lintel",
@@ -112,17 +131,6 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		fade = true,
 		light = true,
 	})
-	-- 바닥판: 벽 속으로 0.4 묻어 벽 안쪽 면과 면이 겹치지 않게 한다
-	put(
-		model,
-		"Floor",
-		Vector3.new(row.size.X - WALL_T * 0.4, FLOOR_T, row.size.Z - WALL_T * 0.4),
-		at(plotCFrame, cx, floorY + FLOOR_T / 2, cz),
-		{
-			color = C.floor,
-			material = Enum.Material.Wood,
-		}
-	)
 end
 
 function library.build(plotCFrame: CFrame): Model
@@ -142,7 +150,8 @@ function library.build(plotCFrame: CFrame): Model
 	local shelfY = floorY + SHELF.Y / 2
 	local booksSize = Vector3.new(SHELF.X - BOOKS_PAD, SHELF.Y - BOOKS_PAD * 2, BOOKS_T)
 
-	-- 북벽 책장 3: 뒷면이 북벽 안쪽 면에 닿는다. 책 판은 책장 앞면(+Z)에
+	-- 부품 3. 북벽 책장 3: 뒷면이 북벽 안쪽 면에 닿는다. 책 판은 책장 앞면(+Z)에
+	partIndex = 3
 	local shelfZ = cz - hz + WALL_T + SHELF.Z / 2
 	for i, dx in SHELF_DX do
 		local x = cx + dx
@@ -185,7 +194,8 @@ function library.build(plotCFrame: CFrame): Model
 		}
 	)
 
-	-- 열람 탁자 + 의자 3(남쪽에 나란히, 탁자를 본다)
+	-- 부품 4. 열람 탁자 + 의자 3(남쪽에 나란히, 탁자를 본다) + 사서 카운터
+	partIndex = 4
 	local seats = Instance.new("Folder")
 	seats.Name = Keys.SEATS_FOLDER
 	seats.Parent = model
@@ -233,6 +243,7 @@ function library.build(plotCFrame: CFrame): Model
 	local doorZ = cz + hz
 	attach(model, Keys.DOOR, at(plotCFrame, cx, row.center.Y, doorZ))
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(FACILITY_ID))
 	return model
 end
 

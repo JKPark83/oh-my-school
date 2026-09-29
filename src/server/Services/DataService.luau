@@ -33,6 +33,7 @@ local TEMPLATE: Types.Profile = {
 	stickerBoard = 0,
 	graduations = 0,
 	facilities = {},
+	buildParts = 0, -- 필드가 없는 옛 프로필은 Reconcile 이 0 으로 채운다
 	students = {},
 	pity = 0,
 	missions = { day = 0, stickers = 0, built = 0, chair = false, done = { false, false, false } },

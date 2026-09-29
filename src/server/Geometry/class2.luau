@@ -6,6 +6,7 @@
 	  칠판은 파트 대신 북벽 안쪽 면 SurfaceGui 의 초록 Frame 이다(파트 예산 때문).
 	  2인 책상 3(상판+앞판) + 의자 6(좌판 블록+등받이) = 18. 줄 간격 4, 자리 x = center.X ± 1.5. 전부 칠판(−Z)을 본다.
 	  Seats/S01~S06 = 의자 아래 바닥 중심, LookVector −Z. Door = 남문 중심 바닥, LookVector 가 방 안쪽(−Z).
+	  부품 3개(PartIndex): (1) 벽(상인방 빼고) (2) 상인방+지붕 (3) 책걸상.
 	  두 Attachment 는 BasePart 아래가 아니므로
 	  CFrame 에 월드 CFrame 을 그대로 넣는다(WorldCFrame 과 같은 값).
 ]]
@@ -54,10 +55,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
---- BuildKit.part 를 월드 CFrame 으로 부른다
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 --- 월드 CFrame 을 그대로 가진 Attachment(부모가 BasePart 가 아니다)
@@ -75,6 +81,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local hx, hz = row.size.X / 2, row.size.Z / 2
 	local h = row.size.Y
 	local y = floorY + h / 2
+	partIndex = 1
 	local function wall(name: string, size: Vector3, x: number, wy: number, z: number): Part
 		return put(
 			model,
@@ -92,6 +99,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local side = (row.size.X - DOOR_W) / 2
 	wall("WallSW", Vector3.new(side, h, WALL_T), cx - hx + side / 2, y, sz)
 	wall("WallSE", Vector3.new(side, h, WALL_T), cx + hx - side / 2, y, sz)
+	partIndex = 2 -- 상인방 + 지붕
 	wall("Lintel", Vector3.new(DOOR_W, h - DOOR_H, WALL_T), cx, floorY + (DOOR_H + h) / 2, sz)
 	-- 지붕은 벽 안쪽만 덮는다. 벽 위까지 덮으면 벽 윗면·바깥면과 겹쳐 깜빡인다(z-fighting)
 	local roofSize = Vector3.new(row.size.X - WALL_T * 2, ROOF_T, row.size.Z - WALL_T * 2)
@@ -151,6 +159,7 @@ function class2.build(plotCFrame: CFrame): Model
 	seats.Parent = model
 
 	local cx, floorY, cz = row.center.X, row.center.Y, row.center.Z
+	partIndex = 3 -- 책걸상
 	local seatIndex = 0
 	for r, dz in ROW_DZ do
 		local z = cz + dz
@@ -196,6 +205,7 @@ function class2.build(plotCFrame: CFrame): Model
 	local doorZ = cz + row.size.Z / 2
 	attach(model, Keys.DOOR, at(plotCFrame, cx, floorY, doorZ))
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(FACILITY_ID))
 	return model
 end
 

@@ -7,3 +7,4 @@ roblox.yml
 *.rbxl.lock
 *.rbxlx.lock
 globalTypes.d.luau
+__pycache__/

@@ -163,14 +163,18 @@ local function watchPlot(plotModel: Instance)
 		if child.Name ~= PRINCIPAL_FACILITY_ID then
 			return
 		end
-		task.spawn(function()
-			local seat = child:FindFirstChild(Keys.PRINCIPAL_CHAIR, true) or child:WaitForChild(Keys.PRINCIPAL_CHAIR, 5)
-			if seat and seat:IsA("Seat") then
-				watchSeat(plotId, seat)
-			else
-				warn(`[MissionService] {plotModel.Name}.principal 에 Seat {Keys.PRINCIPAL_CHAIR} 가 없다`)
+		-- 교장실은 부품 단위로 들어온다. 모델은 부품 1 에서 붙고 의자는 마지막 부품에서 들어오므로
+		-- 시간 제한 없이 의자가 들어오는 순간을 기다린다. 이미 있는 의자(재접속 복원)는 먼저 처리한다
+		local function onDescendant(descendant: Instance)
+			if descendant.Name == Keys.PRINCIPAL_CHAIR and descendant:IsA("Seat") then
+				watchSeat(plotId, descendant)
 			end
-		end)
+		end
+		child.DescendantAdded:Connect(onDescendant)
+		local seat = child:FindFirstChild(Keys.PRINCIPAL_CHAIR, true)
+		if seat then
+			onDescendant(seat)
+		end
 	end
 	for _, child in plotModel:GetChildren() do
 		onChild(child)

@@ -5,6 +5,7 @@
 	  FacilityConfig.locker 의 center (−46,0,−47.5) 는 동벽 안쪽 면 위 바닥점, size (1.6,6,12) 는 몸통이다.
 	  몸통은 벽에서 방 쪽(−X)으로 붙는다. 서쪽 면에 문짝 8개(4열×2단), 위 마감·아래 받침.
 	  자리·문 없음.
+	  부품 3개(PartIndex): (1) 몸통+아래 받침 (2) 아랫단 문짝 4 (3) 윗단 문짝 4+위 마감.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -34,10 +35,15 @@ local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFra
 	return if rot then cf * rot else cf
 end
 
---- BuildKit.part 를 월드 CFrame 으로 부른다
+-- 지금 짓는 부품 번호. build 가 1 로 시작해 부품 경계마다 올린다
+local partIndex = 1
+
+--- BuildKit.part 를 월드 CFrame 으로 부르고 부품 번호(Keys.ATTR_PART_INDEX)를 붙인다
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
-	return BuildKit.part(parent, name, size, cf.Position, opts)
+	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
 end
 
 function locker.build(plotCFrame: CFrame): Model
@@ -52,6 +58,7 @@ function locker.build(plotCFrame: CFrame): Model
 	local depth, height, length = row.size.X, row.size.Y, row.size.Z
 	local cx = wallX - depth / 2 -- 몸통 중심. 동쪽 면이 벽에 닿는다
 
+	partIndex = 1
 	put(model, "Body", row.size, at(plotCFrame, cx, floorY + height / 2, cz), {
 		color = COLOR_PRIMARY,
 		material = MATERIAL,
@@ -63,6 +70,7 @@ function locker.build(plotCFrame: CFrame): Model
 	local faceX = wallX - depth - PANEL_T / 2
 	for c = 1, COLS do
 		for r = 1, ROWS do
+			partIndex = r + 1 -- 아랫단은 부품 2, 윗단은 부품 3
 			local z = cz - length / 2 + (c - 0.5) * (length / COLS)
 			local y = floorY + (r - 0.5) * (height / ROWS)
 			put(
@@ -81,16 +89,19 @@ function locker.build(plotCFrame: CFrame): Model
 
 	-- 위 마감·아래 받침: 몸통보다 조금 크다. 서쪽으로 문짝(PANEL_T)보다 더 나와야 문짝 앞면과 겹치지 않는다
 	local trimSize = Vector3.new(depth + 0.4, TRIM_T, length + 0.4)
+	partIndex = 3
 	put(model, "Trim", trimSize, at(plotCFrame, cx, floorY + height + TRIM_T / 2, cz), {
 		color = COLOR_TRIM,
 		material = Enum.Material.Metal,
 		collide = false,
 	})
+	partIndex = 1
 	put(model, "Plinth", trimSize, at(plotCFrame, cx, floorY + TRIM_T / 2, cz), {
 		color = COLOR_TRIM,
 		material = Enum.Material.Metal,
 	})
 
+	BuildKit.assertPartIndex(model, FacilityConfig.partCount(FACILITY_ID))
 	return model
 end
 

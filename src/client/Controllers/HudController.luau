@@ -404,6 +404,28 @@ local function newlyBuilt(prev: Profile?, now: Profile): string?
 	return nil
 end
 
+--- prev → now 사이에 산 부품 하나의 가격. 산 부품이 없으면 nil(졸업으로 줄어든 것도 nil)
+local function boughtPartPrice(prev: Profile?, now: Profile): number?
+	if not prev then
+		return nil
+	end
+	local before = FacilityConfig.partsBuilt(prev.facilities, prev.buildParts)
+	local after = FacilityConfig.partsBuilt(now.facilities, now.buildParts)
+	if after <= before then
+		return nil
+	end
+	-- 방금 완공이면 그 시설의 마지막 부품, 아니면 다음 시설의 buildParts 번째 부품
+	local builtId = newlyBuilt(prev, now)
+	if builtId then
+		return FacilityConfig.partPriceOf(builtId, FacilityConfig.partCount(builtId), now.graduations)
+	end
+	local nextRow = FacilityConfig.nextOf(now.facilities)
+	if nextRow and now.buildParts > 0 then
+		return FacilityConfig.partPriceOf(nextRow.id, now.buildParts, now.graduations)
+	end
+	return nil
+end
+
 -- ── 위젯 갱신 ──
 
 local function renderCoins(profile: Profile, prev: Profile?)
@@ -414,9 +436,8 @@ local function renderCoins(profile: Profile, prev: Profile?)
 		coinsLabel.Text = Format.coins(profile.coins)
 	end
 
-	local builtId = newlyBuilt(prev, profile)
-	if builtId then
-		local price = FacilityConfig.priceOf(builtId, profile.graduations)
+	local price = boughtPartPrice(prev, profile)
+	if price then
 		coinsDelta.Text = `-{Format.coins(price)}`
 		coinsDelta.TextTransparency = 0
 		coinsDelta.Position = UDim2.fromOffset(216, 12)
@@ -494,9 +515,9 @@ local function renderButtons(profile: Profile)
 	missionBadge.Text = `{missionsDone(profile)}/{#MissionConfig.LIST}`
 end
 
---- 「다음 시설」 카드. 매 초 다시 계산한다(링·예상 초·자기 부지 여부)
+--- 「다음 부품」 카드. 매 초 다시 계산한다(링·예상 초·자기 부지 여부)
 local function renderCard(profile: Profile)
-	local nextRow = FacilityConfig.nextOf(profile.facilities)
+	local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
 	local home = HudController.isOnOwnPlot()
 	local key: string
 	if not home then
@@ -507,7 +528,8 @@ local function renderCard(profile: Profile)
 		cardSub.Text = TEXT_GO_HOME_SUB
 		cardBar.Visible = false
 		pulse(cardStroke, false)
-	elseif nextRow == nil then
+	elseif nextPart == nil then
+		-- W6: 다음 층 분기 자리
 		key = "graduate"
 		cardCaption.Text = `{facilityCount(profile)}/{FacilityConfig.COUNT}`
 		cardName.Text = TEXT_GRADUATE
@@ -518,12 +540,14 @@ local function renderCard(profile: Profile)
 		cardFill.BackgroundColor3 = GOLD
 		pulse(cardStroke, true)
 	else
-		key = nextRow.id
-		local price = FacilityConfig.priceOf(nextRow.id, profile.graduations)
+		-- 키는 시설 단위라 카드는 시설이 바뀔 때만 미끄러진다(부품마다 흔들지 않는다)
+		local facility = nextPart.facility
+		key = facility.id
+		local price = FacilityConfig.partPriceOf(facility.id, nextPart.index, profile.graduations)
 		local eta = EconomyConfig.etaSeconds(profile, price)
 		local affordable = eta <= 0
 		cardCaption.Text = TEXT_NEXT_CAPTION
-		cardName.Text = nextRow.name
+		cardName.Text = `{facility.name} {nextPart.index}/{nextPart.count}`
 		cardPrice.Text = `{GLYPH_COINS}{Format.coins(price)}`
 		cardSub.Text = if affordable
 			then TEXT_AFFORD
