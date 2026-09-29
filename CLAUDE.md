@@ -35,7 +35,7 @@ export PATH="$HOME/.rokit/bin:$PATH" && stylua src && rojo sourcemap default.pro
 
 - `src/server/Services/` 서비스 8개(Data·Plot·Economy·Student·Decor·Mission·Graduation·Leaderboard). 부팅 순서는 `init.server.luau`.
 - `src/server/Geometry/` 시설·부지·광장·탑(`Tower.luau`, 층 올리기)을 파트로 짓는 모듈. 공용 헬퍼는 `BuildKit.luau`.
-- `src/client/Controllers/` 컨트롤러 10개. 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
+- `src/client/Controllers/` 컨트롤러 11개(W7 `TowerRenderController` = 탑 벽 클라 렌더). 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
 - `src/shared/Config/` 수치의 단일 소스. 가격·확률·시간·문구는 여기서만 바꾼다.
 - `src/shared/Remotes.luau`(프로토콜은 기획서 §11.5), `Types.luau`, `Seats.luau`, `CharacterBuilder.luau`, 꾸미기 공용 `DecorGrid`·`DecorCodec`·`DecorBuilder`(수치는 `Config/DecorConfig.luau`). `src/first/` 로딩 화면.
 

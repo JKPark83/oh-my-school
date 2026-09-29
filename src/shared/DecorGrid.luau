@@ -17,6 +17,7 @@
 local DecorConfig = require(script.Parent.Config.DecorConfig)
 local FacilityConfig = require(script.Parent.Config.FacilityConfig)
 local PlotLayout = require(script.Parent.PlotLayout)
+local TowerConfig = require(script.Parent.Config.TowerConfig) -- TowerConfig 는 DecorGrid 를 require 하지 않는다(순환 없음)
 
 local DecorGrid = {}
 
@@ -151,6 +152,7 @@ local foot = PlotLayout.TOWER_FOOTPRINT
 local towerX0, towerZ0 = PlotLayout.cellOf(foot.x0 + CELL / 2, foot.z0 + CELL / 2)
 local towerX1, towerZ1 = PlotLayout.cellOf(foot.x1 - CELL / 2, foot.z1 - CELL / 2)
 local elevatorX, elevatorZ = PlotLayout.cellOf(PlotLayout.ELEVATOR.X, PlotLayout.ELEVATOR.Y)
+local furnitureX, furnitureZ = TowerConfig.furnitureCell() -- 층 기본 가구 칸(단일 소스)
 
 --- 1층 정적 장애물 칸인가. 격자 밖이면 true
 function DecorGrid.isStaticBlocked(cx: number, cz: number): boolean
@@ -176,8 +178,8 @@ function DecorGrid.isFloorBlocked(f: number, cx: number, cz: number): boolean
 	if cx == elevatorX and (cz == elevatorZ or cz == elevatorZ + 1) then
 		return true
 	end
-	-- 층 기본 가구(발자국 x0·z0 모서리 칸)
-	return cx == towerX0 and cz == towerZ0
+	-- 층 기본 가구(발자국 x0·z0 모서리 칸, TowerConfig.furnitureCell)
+	return cx == furnitureX and cz == furnitureZ
 end
 
 --- 발자국 크기(x 칸, z 칸). 아이템이 없으면 nil

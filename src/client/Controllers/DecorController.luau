@@ -41,6 +41,7 @@ local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 
 type DecorPlacement = Types.DecorPlacement
@@ -67,7 +68,6 @@ local GHOST_AHEAD = 10 -- 스터드. 캐릭터 앞 2칸
 local PITCH_DEG = 55
 local PITCH_SECONDS = 0.4
 local LOD_INTERVAL = 1
-local NEAR_COUNT = 3
 local PENDING_TIMEOUT = 2
 local NUDGE_SECONDS = 0.2
 local FADE_SECONDS = 0.2
@@ -344,30 +344,35 @@ local function renderPlot(plotId: number)
 	end
 end
 
---- 내 부지 + 캐릭터에서 가까운 부지 NEAR_COUNT 개
+--- 내 부지 + 가까운 다른 부지로 채워 모두 TowerConfig.NEAR_COUNT 개(TowerRenderController 와 같은 값·같은 규칙).
+--- 지금 그리는 부지는 NEAR_HYSTERESIS 만큼 가깝게 쳐서 경계에서 매초 바뀌지 않는다
 local function updateNear()
 	local character = player.Character
 	local hrp = if character then character:FindFirstChild("HumanoidRootPart") else nil
 	local cam = Workspace.CurrentCamera
 	local from: Vector3? = if hrp and hrp:IsA("BasePart") then hrp.Position elseif cam then cam.CFrame.Position else nil
 
-	local order: { { id: number, dist: number } } = {}
+	local order: { { id: number, score: number } } = {}
 	for plotId = 1, Keys.PLOT_COUNT do
 		local pivot = plotPivot(plotId)
-		if pivot and from then
-			table.insert(order, { id = plotId, dist = (pivot.Position - from).Magnitude })
+		if pivot and from and plotId ~= myPlotId then
+			local dist = (pivot.Position - from).Magnitude
+			local score = if near[plotId] then dist - TowerConfig.NEAR_HYSTERESIS else dist
+			table.insert(order, { id = plotId, score = score })
 		end
 	end
 	table.sort(order, function(a, b)
-		return a.dist < b.dist
+		return a.score < b.score
 	end)
 
 	local want: { [number]: boolean } = {}
-	for i = 1, math.min(NEAR_COUNT, #order) do
-		want[order[i].id] = true
-	end
+	local slots = TowerConfig.NEAR_COUNT
 	if myPlotId then
 		want[myPlotId] = true
+		slots -= 1
+	end
+	for i = 1, math.min(slots, #order) do
+		want[order[i].id] = true
 	end
 
 	for plotId in near do
@@ -849,6 +854,7 @@ local function tapAt(position: Vector2)
 		return
 	end
 	local ray = cam:ScreenPointToRay(position.X, position.Y)
+	-- Include 라 내 DecorFx 폴더만 맞는다. TowerFx 탑 벽(가림 페이드용 CanQuery true)은 레이를 막지 않는다
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = { mine.folder }

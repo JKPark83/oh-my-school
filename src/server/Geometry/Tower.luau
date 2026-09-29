@@ -26,8 +26,8 @@ local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local Tower = {}
 
-local PLATE_T = 1 -- 바닥판·지붕 두께
-local LIFT = 0.05 -- 바닥판 윗면을 floorY 보다 이만큼 올린다(강당 지붕과 면 겹침 방지)
+local PLATE_T = TowerConfig.PLATE_T -- 바닥판·지붕 두께(클라 벽 높이도 이 값으로 맞춘다)
+local LIFT = TowerConfig.LIFT -- 바닥판 윗면을 floorY 보다 이만큼 올린다(강당 지붕과 면 겹침 방지)
 local INSET = 0.05 -- 바닥판 발자국을 사방으로 이만큼 줄인다(강당 지붕 옆면과 겹침 방지)
 local ANCHOR_SIZE = Vector3.new(4, 6, 4) -- 엘리베이터 프롬프트 앵커(투명). 한 칸(CELL 5) 안
 local ARRIVE_Z = 4 -- 3층부터 도착 자리 = 앵커에서 +Z(교문 쪽) 4스터드. DecorGrid 가 막는 칸 앞 칸. 2층은 PlotLayout.ELEVATOR_ARRIVAL_2
