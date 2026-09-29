@@ -1,6 +1,6 @@
 --!strict
 --[[
-	경제 상수와 공식. 기획서 §1·§5.1. docs/sim/sim-economy.py 와 같은 값이어야 한다.
+	경제 상수와 공식. 기획서 §1·§5.1. docs/sim/sim-final.py 와 같은 값(docs/sim/check-config.py 로 대조)이어야 한다.
 	  초당 수입 = Σ(지은 시설 income) × (1 + Σ 보유 학생 기여) × (1 + 0.5 × 졸업)
 	서버(EconomyService)와 클라(HUD 예상 시간·패드 링)가 같은 함수를 쓴다.
 ]]

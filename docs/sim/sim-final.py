@@ -2,7 +2,7 @@
 """「교장이 되어보자!」 최종 경제 시뮬레이션 — final.md §5 의 근거 (merged.md 판 sim-final.py 를 수정)
 
 실행: python3 sim-final.py            (마크다운 표를 표준 출력 → sim-final-output.md)
-      python3 sim-final.py --tune     (뽑기 확률·천장·회수율 변형 비교)
+      python3 sim-final.py --tune     (뽑기 확률·천장 변형 비교)
 
 ■ merged.md 판 대비 바뀐 점
   1. 학생 id 를 도감 번호(s01~s24)로 통일. 시설 확정 13명 = s01~s13, 뽑기 9명 + 졸업 확정 2명 = s14~s24.
