@@ -1,0 +1,45 @@
+--- /tmp/graphify_extract.py.orig	2026-09-30 08:21:14
++++ extract.py	2026-09-30 08:21:14
+@@ -1527,6 +1527,10 @@
+ )
+ 
+ 
++import dataclasses as _dc
++_LUAU_CONFIG = _dc.replace(_LUA_CONFIG, ts_module="tree_sitter_luau")
++
++
+ def _import_swift(node, source: bytes, file_nid: str, stem: str, edges: list, str_path: str, scope_stack: list[str] | None = None) -> list[tuple[str, str]]:
+     """Emit module-level ``imports`` edges and report the imported modules.
+ 
+@@ -2956,6 +2960,11 @@
+     return _extract_generic(path, _LUA_CONFIG)
+ 
+ 
++def extract_luau(path: Path) -> dict:
++    """Luau(.luau) — Lua 문법기로는 타입·if표현식·보간문자열에서 파싱이 끊긴다. 전용 grammar 사용."""
++    return _extract_generic(path, _LUAU_CONFIG)
++
++
+ def extract_swift(path: Path) -> dict:
+     """Extract classes, structs, protocols, functions, imports, and calls from a .swift file."""
+     return _extract_generic(path, _SWIFT_CONFIG)
+@@ -6643,7 +6652,7 @@
+     ".php": extract_php,
+     ".swift": extract_swift,
+     ".lua": extract_lua,
+-    ".luau": extract_lua,
++    ".luau": extract_luau,
+     ".toc": extract_lua,
+     ".zig": extract_zig,
+     ".ps1": extract_powershell,
+--- /tmp/graphify_engine.py.orig	2026-09-30 08:21:14
++++ extractors/engine.py	2026-09-30 08:21:14
+@@ -3838,7 +3838,7 @@
+         # declared inside. So this only fires for a call that IS require,
+         # checked ahead of (and independently from) the import_types dispatch
+         # below (#3320).
+-        if (config.ts_module == "tree_sitter_lua" and t == "function_call"
++        if (config.ts_module in ("tree_sitter_lua", "tree_sitter_luau") and t == "function_call"
+                 and config.import_handler and _lua_is_require_call(node, source)):
+             config.import_handler(node, source, file_nid, stem, edges, str_path, scope_stack)
+             return

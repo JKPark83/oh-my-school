@@ -8,3 +8,6 @@ roblox.yml
 *.rbxlx.lock
 globalTypes.d.luau
 __pycache__/
+
+# graphify 산출물 (로컬 캐시)
+graphify-out/

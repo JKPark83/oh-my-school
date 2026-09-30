@@ -1,0 +1,9 @@
+# graphify 제외 목록 — 게임 코드·기획 문서만 그래프에 넣는다
+.claude/
+ServerPackages/
+studio/
+*.rbxl
+*.rbxlx
+sourcemap.json
+globalTypes.d.luau
+roblox.yml
