@@ -3,8 +3,8 @@
 	꾸미기(W5). 개선계획 §3.5 #3~#5.
 	  BuyDecor(itemId)                       상점 구매 → 보관함 +1. 친구 아이템이면 그 학생도 온다(처음 한 번)
 	  ReturnDecor(itemId)                    보관함 1개를 산 값 그대로 돌려받는다(decorPaid 맨 뒤 값. 무료로 받은 것은 0). 친구 학생은 그대로 둔다
-	  PlaceDecor(itemId, cx, cz, rot, f)     보관함 → 격자
-	  MoveDecor(slot, cx, cz, rot, f)        배치 옮기기(자기 자리와 겹침·개수 상한 무시)
+	  PlaceDecor(itemId, cx, cz, rot)        보관함 → 격자
+	  MoveDecor(slot, cx, cz, rot)           배치 옮기기(자기 자리와 겹침·개수 상한 무시)
 	  StoreDecor(slot)                       격자 → 보관함
 	판정은 전부 서버가 DecorGrid·DecorConfig 로 한다. 가격도 서버가 계산한다(클라는 무엇을 할지만 보낸다).
 	실패는 Remotes.deny 만 보낸다(위반 카운트 없음. 정상 클라도 겹침·상한은 낼 수 있다).
@@ -35,7 +35,6 @@ local COOLDOWN = 0.2 -- 초. 리모트·플레이어별
 local DENY_OF: { [string]: "owned" | "cell" | "limit" } = {
 	item = "owned",
 	cell = "cell",
-	floor = "cell",
 	blocked = "cell",
 	overlap = "cell",
 	limit = "limit",
@@ -141,14 +140,10 @@ local function sell(player: Player, itemId: string)
 end
 
 local function placedPacket(slot: number, p: Types.DecorPlacement, moved: boolean): Types.DecorPlaced
-	return { slot = slot, item = p.item, cx = p.cx, cz = p.cz, rot = p.rot, f = p.f or 1, moved = moved }
+	return { slot = slot, item = p.item, cx = p.cx, cz = p.cz, rot = p.rot, moved = moved }
 end
 
--- 꾸밀 수 있는 탑 층 수. 강당이 없으면(졸업 뒤) 탑이 비어 있으니 0. 이미 놓인 배치는 그대로 둔다(강당을 다시 지으면 돌아온다)
-local function shownFloors(profile: Types.Profile): number
-	return if profile.facilities.auditorium then profile.towerFloors else 0
-end
-local function place(player: Player, itemId: string, cx: number, cz: number, rot: number, f: number)
+local function place(player: Player, itemId: string, cx: number, cz: number, rot: number)
 	local profile = DataService.get(player)
 	if not profile or not PlotService.plotOf(player) or not DecorConfig.byId(itemId) then
 		return
@@ -157,7 +152,7 @@ local function place(player: Player, itemId: string, cx: number, cz: number, rot
 		Remotes.deny(player, "owned")
 		return
 	end
-	local ok, reason = DecorGrid.canPlace(profile.decorPlaced, shownFloors(profile), itemId, cx, cz, rot, f)
+	local ok, reason = DecorGrid.canPlace(profile.decorPlaced, itemId, cx, cz, rot)
 	if not ok then
 		Remotes.deny(player, DENY_OF[reason] or "cell")
 		return
@@ -168,7 +163,6 @@ local function place(player: Player, itemId: string, cx: number, cz: number, rot
 		cx = cx,
 		cz = cz,
 		rot = rot,
-		f = if f ~= 1 then f else nil,
 	}
 	table.insert(profile.decorPlaced, placement)
 	DecorService.refreshAttribute(player)
@@ -182,7 +176,7 @@ local function validSlot(profile: Types.Profile, slot: number): boolean
 	return slot == math.floor(slot) and slot >= 1 and slot <= #profile.decorPlaced
 end
 
-local function move(player: Player, slot: number, cx: number, cz: number, rot: number, f: number)
+local function move(player: Player, slot: number, cx: number, cz: number, rot: number)
 	local profile = DataService.get(player)
 	if not profile or not PlotService.plotOf(player) then
 		return
@@ -192,8 +186,7 @@ local function move(player: Player, slot: number, cx: number, cz: number, rot: n
 		return
 	end
 	local placement = profile.decorPlaced[slot]
-	local ok, reason =
-		DecorGrid.canPlace(profile.decorPlaced, shownFloors(profile), placement.item, cx, cz, rot, f, slot)
+	local ok, reason = DecorGrid.canPlace(profile.decorPlaced, placement.item, cx, cz, rot, slot)
 	if not ok then
 		Remotes.deny(player, DENY_OF[reason] or "cell")
 		return
@@ -201,7 +194,6 @@ local function move(player: Player, slot: number, cx: number, cz: number, rot: n
 	placement.cx = cx
 	placement.cz = cz
 	placement.rot = rot
-	placement.f = if f ~= 1 then f else nil
 	DecorService.refreshAttribute(player)
 	Remotes.event(player, "DecorPlaced", placedPacket(slot, placement, true))
 	DataService.markDirty(player)
@@ -231,12 +223,12 @@ function DecorService.Start()
 	RemoteGuard.wrap(Remotes.ReturnDecor, { cooldown = COOLDOWN, args = { "string" } }, sell)
 	RemoteGuard.wrap(
 		Remotes.PlaceDecor,
-		{ cooldown = COOLDOWN, args = { "string", "number", "number", "number", "number" } },
+		{ cooldown = COOLDOWN, args = { "string", "number", "number", "number" } },
 		place
 	)
 	RemoteGuard.wrap(
 		Remotes.MoveDecor,
-		{ cooldown = COOLDOWN, args = { "number", "number", "number", "number", "number" } },
+		{ cooldown = COOLDOWN, args = { "number", "number", "number", "number" } },
 		move
 	)
 	RemoteGuard.wrap(Remotes.StoreDecor, { cooldown = COOLDOWN, args = { "number" } }, store)

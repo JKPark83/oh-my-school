@@ -43,7 +43,13 @@ export type Item = {
 
 DecorConfig.CELL = PlotLayout.CELL
 DecorConfig.GRID = PlotLayout.GRID
-DecorConfig.MAX_PLACED = 40 -- 모든 층 합(§3.6 #10)
+DecorConfig.MAX_PLACED = 40
+-- 꾸미기·방 소품을 그리는 부지 수. 내 부지(있으면 항상) + 캐릭터에서 가까운 다른 부지로 채워 모두 NEAR_COUNT 개다
+-- (DecorController·InteriorRenderController 같은 값·같은 규칙). 그래서 부지 수는 늘 NEAR_COUNT 이하다
+DecorConfig.NEAR_COUNT = 3
+-- LOD 교체 이력(스터드). 지금 그리는 부지는 거리에서 이만큼 빼고 순위를 매긴다. 새 부지가 이만큼 더 가까워야
+-- 자리를 뺏으므로 두 부지 사이 경계에서 매초 지웠다 다시 짓지 않는다(학생 LOD 230/260 의 폭 30 과 같다)
+DecorConfig.NEAR_HYSTERESIS = 30
 DecorConfig.MAX_OWNED = 10 -- 아이템 하나당 보관함 + 배치 합 상한
 DecorConfig.TUTORIAL_ITEM = "planter" -- 새 프로필 보관함에 넣어 두는 아이템(튜토리얼 ⑤)
 DecorConfig.TUTORIAL_FREE = 2

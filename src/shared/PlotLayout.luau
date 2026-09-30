@@ -2,9 +2,7 @@
 --[[
 	부지 좌표의 단일 소스. 개선계획 §3.5 #2, §3.6 #2, §3.2 #4.
 	좌표는 전부 부지 로컬(중심 0,0, +Z 가 교문 쪽)이고 바닥 윗면은 y=0 이다.
-	PlotShell·auditorium(서버)과 스티커·꾸미기·탑(서버·클라)이 같은 값을 읽는다.
-
-	로드 때 탑 배치를 assert 로 검사한다(§3.6 #2 (a)~(d)). 틀리면 require 가 실패해 부팅이 멈춘다.
+	PlotShell·auditorium(서버)과 스티커·꾸미기(서버·클라)가 같은 값을 읽는다.
 ]]
 
 local FacilityConfig = require(script.Parent.Config.FacilityConfig)
@@ -37,19 +35,21 @@ PlotLayout.ENTRANCE_SIZE = Vector3.new(30, PlotLayout.WALL_H, 25)
 PlotLayout.CLASS1 = Vector3.new(-60, 0, -47.5)
 PlotLayout.CLASS1_SIZE = Vector3.new(30, PlotLayout.WALL_H, 30)
 
--- ── 2층 계단·착지대(§3.6 수치: 바꾸지 않는다) ──────────────────
--- 계단 11단(높이 1.5)을 x 5~14 · z 6 → -10.5 로 두고 12단째를 착지대(y18)로 삼는다
+-- ── 2층 계단·착지대(§3.6) ──────────────────────────────────────
+-- 계단 11단(높이 1.5, 너비 1.2)을 x 5~14 · z 2.7 → -10.5 로 두고 12단째를 착지대(y18)로 삼는다.
+-- 단 너비 1.5 일 때는 첫 단(z 6)이 현관 남벽 안쪽 면(z 6.5)에 붙어 계단 앞이 벽에 막혀 보였다.
+-- 1.2 로 줄여 첫 단 앞에 3.8 studs 빈 바닥을 둔다. 착지대·구멍 북쪽 끝은 그대로다
 PlotLayout.STAIR_X0 = 5
 PlotLayout.STAIR_X1 = 14 -- 현관 동쪽 벽 안쪽 면
-PlotLayout.STAIR_Z_BOTTOM = 6
 PlotLayout.STAIR_STEPS = 11 -- 1.5 × 12 = 18. 12단째가 착지대
 PlotLayout.STAIR_RISE = 1.5
-PlotLayout.STAIR_RUN = 1.5
+PlotLayout.STAIR_RUN = 1.2
 -- 착지대 x -5~14 · z -16.5~-10.5. 윗면 y18(LANDING.Y 가 윗면)
 PlotLayout.LANDING = Vector3.new(4.5, PlotLayout.WALL_H, -13.5)
 PlotLayout.LANDING_SIZE = Vector3.new(19, 1, 6)
 -- 현관 지붕·강당 바닥에 뚫는 구멍의 북쪽 끝(x STAIR_X0~STAIR_X1)
 PlotLayout.STAIRWELL_Z0 = -10.5
+PlotLayout.STAIR_Z_BOTTOM = PlotLayout.STAIRWELL_Z0 + PlotLayout.STAIR_STEPS * PlotLayout.STAIR_RUN -- 2.7
 
 -- ── 강당(2층) ────────────────────────────────────────────────────
 PlotLayout.AUDITORIUM_FLOOR_T = 0.2 -- 강당 바닥판 두께. 바닥 윗면 = WALL_H + 0.2 = 18.2
@@ -59,35 +59,6 @@ PlotLayout.AUDITORIUM_SEAT_COLS = { -17.9, -15.5, -13.1, -10.7, -8.3 }
 PlotLayout.AUDITORIUM_SEAT_ROWS = { -23, -20, -17, -14, -11 }
 PlotLayout.AUDITORIUM_BENCH_W = 12.4
 PlotLayout.AUDITORIUM_BENCH_D = 1.6
-
--- ── 탑(3층부터, §3.6) ────────────────────────────────────────────
--- 3층 바닥 = 강당 지붕 윗면 = 1층 벽 18 + 강당 바닥 0.2 + 강당 높이 18 + 지붕 1
-PlotLayout.TOWER_BASE_Y = PlotLayout.WALL_H
-	+ PlotLayout.AUDITORIUM_FLOOR_T
-	+ PlotLayout.WALL_H
-	+ PlotLayout.AUDITORIUM_ROOF_T
-PlotLayout.FLOOR_STEP = 19 -- n층 바닥 y = TOWER_BASE_Y + (n-3) × FLOOR_STEP
--- 탑 후보 40×30 = 8×6칸
-PlotLayout.TOWER_FOOTPRINT = { x0 = -20, x1 = 20, z0 = -35, z1 = -5 }
--- 엘리베이터 칸(2층~꼭대기 같은 x·z). 강당 동쪽, 동쪽 커튼(z -28.5)과 착지대(x ≤14) 사이
-PlotLayout.ELEVATOR = Vector2.new(17.5, -17.5)
--- 층 구매 패드. 2층 강당 바닥 윗면, 엘리베이터 칸 바로 남쪽 칸
-PlotLayout.TOWER_PAD = Vector3.new(17.5, PlotLayout.WALL_H + PlotLayout.AUDITORIUM_FLOOR_T, -12.5)
-PlotLayout.TOWER_PAD_SIZE = Vector2.new(4, 4) -- 시설 패드(PlotShell PAD_SIZE)와 같은 발자국
--- 2층 엘리베이터 도착 자리(바닥 윗면 x·z). 남쪽 칸은 TOWER_PAD 라 북쪽 칸에 내린다.
--- 패드 위에 내리면 다음 1Hz 틱이 주인 몰래 층을 산다. 3층부터는 남쪽 칸(Tower ARRIVE_Z)
-PlotLayout.ELEVATOR_ARRIVAL_2 = Vector2.new(PlotLayout.ELEVATOR.X, PlotLayout.ELEVATOR.Y - PlotLayout.CELL)
-
---- 루트 Y → 층 번호(1, 2, 3, …). 2층은 강당 바닥(18.2)부터, 3층은 TOWER_BASE_Y 부터
-function PlotLayout.floorOf(y: number): number
-	if y < PlotLayout.WALL_H then
-		return 1
-	end
-	if y < PlotLayout.TOWER_BASE_Y then
-		return 2
-	end
-	return 3 + math.floor((y - PlotLayout.TOWER_BASE_Y) / PlotLayout.FLOOR_STEP)
-end
 
 -- ── 스티커(§3.2 #4·#5·#10) ───────────────────────────────────────
 PlotLayout.MIN_GAP = 8 -- 다른 활성 스티커와 최소 거리
@@ -294,91 +265,6 @@ function PlotLayout.pickStickerSpot(
 	local pool = if #best > 0 then best elseif #spaced > 0 then spaced else notPrev
 	local pick = pool[rng:NextInteger(1, #pool)]
 	return pick.spot, pick.floorY
-end
-
--- ── 로드 assert(§3.6 #2) ─────────────────────────────────────────
-type Rect = { x0: number, x1: number, z0: number, z1: number }
-
-local function rectAt(center: Vector2, size: Vector2): Rect
-	return {
-		x0 = center.X - size.X / 2,
-		x1 = center.X + size.X / 2,
-		z0 = center.Y - size.Y / 2,
-		z1 = center.Y + size.Y / 2,
-	}
-end
-
--- 면이 닿기만 하는 것은 겹침이 아니다
-local function overlaps(a: Rect, b: Rect): boolean
-	return a.x0 < b.x1 and b.x0 < a.x1 and a.z0 < b.z1 and b.z0 < a.z1
-end
-
-local function inside(inner: Rect, outer: Rect): boolean
-	return inner.x0 >= outer.x0 and inner.x1 <= outer.x1 and inner.z0 >= outer.z0 and inner.z1 <= outer.z1
-end
-
-local function onGrid(v: number): boolean
-	return v % PlotLayout.CELL == 0
-end
-
-do
-	local aud = FacilityConfig.BY_ID.auditorium
-	assert(aud, "PlotLayout: FacilityConfig 에 auditorium 행이 없다")
-	local audRect = rectAt(Vector2.new(aud.center.X, aud.center.Z), Vector2.new(aud.size.X, aud.size.Z))
-	local foot = PlotLayout.TOWER_FOOTPRINT :: Rect
-	local cell = PlotLayout.CELL
-	local elevator = rectAt(PlotLayout.ELEVATOR, Vector2.new(cell, cell))
-	local stairwell: Rect = {
-		x0 = PlotLayout.STAIR_X0,
-		x1 = PlotLayout.STAIR_X1,
-		z0 = PlotLayout.STAIRWELL_Z0,
-		z1 = PlotLayout.STAIR_Z_BOTTOM,
-	}
-	local landing = rectAt(
-		Vector2.new(PlotLayout.LANDING.X, PlotLayout.LANDING.Z),
-		Vector2.new(PlotLayout.LANDING_SIZE.X, PlotLayout.LANDING_SIZE.Z)
-	)
-	local cols, rows = PlotLayout.AUDITORIUM_SEAT_COLS, PlotLayout.AUDITORIUM_SEAT_ROWS
-	local benchW, benchD = PlotLayout.AUDITORIUM_BENCH_W, PlotLayout.AUDITORIUM_BENCH_D
-	local benchCX = (cols[1] + cols[#cols]) / 2
-	local seats: Rect = {
-		x0 = math.min(benchCX - benchW / 2, cols[1]),
-		x1 = math.max(benchCX + benchW / 2, cols[#cols]),
-		z0 = rows[1] - benchD / 2,
-		z1 = rows[#rows] + benchD / 2,
-	}
-	local towerPad = rectAt(Vector2.new(PlotLayout.TOWER_PAD.X, PlotLayout.TOWER_PAD.Z), PlotLayout.TOWER_PAD_SIZE)
-	local audPad = rectAt(Vector2.new(aud.pad.X, aud.pad.Z), PlotLayout.TOWER_PAD_SIZE)
-
-	-- (a) 엘리베이터 칸이 강당 안쪽·탑 발자국 안
-	assert(inside(elevator, audRect), "PlotLayout(a): 엘리베이터 칸이 강당 밖이다")
-	assert(inside(elevator, foot), "PlotLayout(a): 엘리베이터 칸이 TOWER_FOOTPRINT 밖이다")
-	-- (b) 계단 구멍·착지대·좌석과 겹치지 않음
-	assert(not overlaps(elevator, stairwell), "PlotLayout(b): 엘리베이터 칸이 계단 구멍과 겹친다")
-	assert(not overlaps(elevator, landing), "PlotLayout(b): 엘리베이터 칸이 착지대와 겹친다")
-	assert(not overlaps(elevator, seats), "PlotLayout(b): 엘리베이터 칸이 강당 좌석과 겹친다")
-	-- (c) 탑 발자국이 CELL 격자에 맞음
-	assert(
-		onGrid(foot.x0) and onGrid(foot.x1) and onGrid(foot.z0) and onGrid(foot.z1),
-		"PlotLayout(c): TOWER_FOOTPRINT 가 CELL 격자에 안 맞는다"
-	)
-	-- (d) 층 구매 패드가 강당 안, 강당 패드·좌석·착지대·2층 칸과 겹치지 않음
-	assert(inside(towerPad, audRect), "PlotLayout(d): TOWER_PAD 가 강당 밖이다")
-	assert(
-		-- Vector3 는 float32 라 18.2 가 정확히 같지 않다
-		math.abs(PlotLayout.TOWER_PAD.Y - (aud.center.Y + PlotLayout.AUDITORIUM_FLOOR_T)) < 1e-4,
-		"PlotLayout(d): TOWER_PAD 높이가 강당 바닥 윗면이 아니다"
-	)
-	assert(not overlaps(towerPad, audPad), "PlotLayout(d): TOWER_PAD 가 강당 패드와 겹친다")
-	assert(not overlaps(towerPad, seats), "PlotLayout(d): TOWER_PAD 가 강당 좌석과 겹친다")
-	assert(not overlaps(towerPad, landing), "PlotLayout(d): TOWER_PAD 가 착지대와 겹친다")
-	assert(not overlaps(towerPad, elevator), "PlotLayout(d): TOWER_PAD 가 엘리베이터 칸과 겹친다")
-	-- (e) 2층 도착 칸이 강당 안, 층 패드·좌석·착지대와 겹치지 않음(패드 위 도착 = 몰래 층 구매)
-	local arrival2 = rectAt(PlotLayout.ELEVATOR_ARRIVAL_2, Vector2.new(cell, cell))
-	assert(inside(arrival2, audRect), "PlotLayout(e): 2층 도착 칸이 강당 밖이다")
-	assert(not overlaps(arrival2, towerPad), "PlotLayout(e): 2층 도착 칸이 TOWER_PAD 와 겹친다")
-	assert(not overlaps(arrival2, seats), "PlotLayout(e): 2층 도착 칸이 강당 좌석과 겹친다")
-	assert(not overlaps(arrival2, landing), "PlotLayout(e): 2층 도착 칸이 착지대와 겹친다")
 end
 
 return PlotLayout

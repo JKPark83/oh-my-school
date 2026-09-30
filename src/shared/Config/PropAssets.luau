@@ -15,6 +15,20 @@ export type MeshAsset = {
 	triangles: number, -- 삼각형 수(성능 예산 기록용)
 }
 
+-- 여러 파트로 나뉜 메시 하나. offset = 밑면 중심에서 파트 중심까지(스터드, 파트 회전 0)
+export type MeshPiece = {
+	name: string,
+	id: number, -- 0 = 전체를 파트 폴백
+	texture: number, -- 원래 텍스처(0 = 없음)
+	size: Vector3,
+	offset: Vector3,
+}
+
+export type PieceAsset = {
+	pieces: { MeshPiece },
+	triangles: number, -- 파트를 모두 더한 삼각형 수
+}
+
 export type StoreModel = {
 	id: number,
 	name: string,
@@ -24,11 +38,11 @@ export type StoreModel = {
 	use: "plaza", -- 광장에만 둔다(비핵심)
 }
 
--- 교실형 시설 바깥벽·탑 벽 창. 한 칸(타일) = 창 하나. U 는 벽 가로, V 는 세로.
+-- 교실형 시설 바깥벽 창. 한 칸(타일) = 창 하나. U 는 벽 가로, V 는 세로.
 -- 그림: assets/textures/window.png(256×512, 흰 틀·십자 창살·유리 205,235,255, 가장자리 투명). 2026-09-30 게임 소유자 계정 업로드.
 -- sill     = 벽 파트 아랫면에서 그림 속 창 아랫변까지 높이(계약 +3)
 -- tileSill = 타일 아랫변에서 그림 속 창 아랫변까지(스터드, studsPerTile.Y 기준). 그림 불투명 행 96~416 px → (512−416)/512 × 12
--- BuildKit.window(시설)와 TowerRenderController(탑)가 같은 식으로 OffsetStudsV 를 구한다
+-- BuildKit.window 가 이 값으로 OffsetStudsV 를 구한다
 PropAssets.WINDOW_TEXTURE = {
 	id = 81776882157738,
 	studsPerTile = Vector2.new(6, 12),
@@ -50,19 +64,64 @@ function PropAssets.windowTile(width: number, height: number): (number, number)
 	return tileU, (height - spec.sill - (tileV - spec.tileSill)) % tileV
 end
 
+-- 도서관 책 판 앞면. 한 칸(타일) = 책장 한 칸 폭, 세로는 책 판 높이 전체(선반 4단).
+-- 그림: assets/textures/bookshelf.png(320×800, 책등 색·높이·띠·제목 라벨이 제각각, 선반 판 4개, 가로로 이어 붙여도 책이 안 잘린다).
+-- 2026-09-30 게임 소유자 계정 업로드. id 0 이면 색 판 폴백
+PropAssets.BOOKSHELF_TEXTURE = {
+	id = 126193849530960,
+	studsPerTileU = 2.7, -- 그림 비율 0.4 × 책 판 높이 6.8
+}
+
+-- 방 안 디테일 그림(Decal/Texture). 그림 원본은 tools/make_interior_textures.py 가 assets/textures/ 에 만든다.
+-- 2026-09-30 게임 소유자 계정 업로드. id 0 이면 그 장식만 빠지고 파트는 그대로 보인다
+PropAssets.INTERIOR = {
+	LOCKER_DOOR = 118044559496398, -- 사물함 문 한 칸: 환기구·이름표·손잡이(투명 덧그림, 문 색이 비친다)
+	CABINET = 138121015793531, -- 실험대 아래 수납장: 문 2짝·손잡이·서랍(투명 덧그림)
+	REAGENT_SHELF = 97858711469174, -- 시약장 앞면: 선반 3단의 병·플라스크
+	POSTER_PERIODIC = 71679361990193, -- 주기율표 포스터(제목 포함)
+	FLOOR_TILE = 115351275941700, -- 바닥 타일 2×2(Texture, 한 장 = FLOOR_TILE_STUDS)
+	WAINSCOT = 92495608817163, -- 벽 아래 걸레받이 띠(흰 그림, Decal.Color3 로 물들인다)
+	BULLETIN = 84095873609622, -- 교실 게시판 "우리 반 게시판"(코르크·그림)
+	CLOCK = 138739129865742, -- 벽시계 10:10(원 밖 투명)
+}
+PropAssets.FLOOR_TILE_STUDS = 8
+
 -- 메시 원본을 기다리는 상한(초, 요청 시작부터). 넘으면 파트 폴백. 부팅(PlotService.Start)이 에셋 서버에 묶이지 않게
 PropAssets.MESH_TIMEOUT = 5
 
 --[[
 	소품 메시(2026-09-30 게임 소유자 계정 업로드, CreateMeshPartAsync 로 불러오기 확인).
-	  tree      메시 1개(삼각형 1,488). 원래 텍스처를 버리고 WorldPalette.leaf 한 색이라 줄기까지 초록이다(계약).
 	  flowerbed id 0 = 파트 폴백. 메시(89627977834807, 삼각형 600)는 1.79×1.5×1.29 로 만들어져 4×2 로 늘리면 비율이 깨지고,
 	            한 색이면 꽃색이 사라져 흙판 + 꽃 뭉치 3 파트(팔레트 색)가 낫다.
 ]]
 PropAssets.MESHES = {
-	tree = { id = 108393554385767, size = Vector3.new(7.0586, 9, 6.9734), triangles = 1488 } :: MeshAsset,
 	flowerbed = { id = 0, size = Vector3.new(4, 1.6, 2), triangles = 0 } :: MeshAsset,
 }
+
+--[[
+	나무(2026-10-01 generate_mesh, 게임 소유자 계정). 줄기·잎 2파트에 원래 텍스처를 쓴다(팔레트 색 아님).
+	옛 나무(메시 1개, 삼각형 1,488, 초록 한 색)는 줄기까지 초록이라 브로콜리처럼 보여 바꿨다.
+	잎 4,594 + 줄기 406 = 5,000. 크기는 생성물 그대로(가로 7 · 높이 7.68), PropLibrary 가 0.85~1.15 배로 흔든다.
+]]
+PropAssets.TREE = {
+	pieces = {
+		{
+			name = "Trunk",
+			id = 138095690243968,
+			texture = 115801787263442,
+			size = Vector3.new(3.5885, 6.271, 3.6473),
+			offset = Vector3.new(0.1015, 3.1353, -0.1864),
+		},
+		{
+			name = "Leaves",
+			id = 113328258589502,
+			texture = 78791543336333,
+			size = Vector3.new(7, 5.2329, 6.8751),
+			offset = Vector3.new(0, 5.0617, 0),
+		},
+	},
+	triangles = 5000,
+} :: PieceAsset
 
 --[[
 	≤3개. 출처 표(이름·만든 이·주소)를 같이 적는다. 비면 광장에 아무것도 안 넣는다.

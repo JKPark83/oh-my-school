@@ -7,7 +7,7 @@
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
 	  Seats/S01 = 피아노 의자(피아노 앞, 북쪽 -Z 를 본다), S02 = 피아노 옆 의자(북쪽을 본다).
 	  Door = 북문 중심 바닥(LookVector 가 방 안쪽 +Z).
-	  부품 4개(PartIndex): (1) 바닥+벽 (2) 상인방(이름판)+지붕 (3) 피아노·피아노 의자 (4) 의자·보면대·큰북·스피커·음표 장식.
+	  부품 4개(PartIndex): (1) 바닥+벽 (2) 상인방(이름판)+지붕 (3) 피아노(건반 줄 SurfaceGui)·피아노 의자 (4) 의자·보면대(받침·기둥·판)·큰북·스피커·음표 장식.
 	  두 Attachment 는 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
@@ -40,6 +40,8 @@ local COLOR_WHITE = Color3.fromRGB(245, 245, 245)
 local COLOR_DARK = Color3.fromRGB(40, 40, 44)
 local COLOR_WOOD = Color3.fromRGB(150, 110, 70)
 local COLOR_NOTE = Color3.fromRGB(70, 60, 90)
+local COLOR_KEY_LINE = Color3.fromRGB(150, 150, 156)
+local KEY_COUNT = 10 -- 흰 건반 수. InteriorRenderController 의 검은 건반 자리와 같다
 
 local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFrame?): CFrame
 	local cf = plotCFrame * CFrame.new(x, y, z)
@@ -67,6 +69,25 @@ end
 
 local function seatName(index: number): string
 	return string.format("S%02d", index)
+end
+
+--- 흰 건반 판 윗면에 건반 사이 줄 9개(흰 건반 10개). 파트가 아니라 SurfaceGui 라 시설 파트 수는 그대로다
+local function keyLines(keys: Part)
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Top
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 1
+	for i = 1, KEY_COUNT - 1 do
+		local line = Instance.new("Frame")
+		line.AnchorPoint = Vector2.new(0.5, 0)
+		line.Position = UDim2.fromScale(i / KEY_COUNT, 0)
+		line.Size = UDim2.new(0, 2, 1, 0)
+		line.BorderSizePixel = 0
+		line.BackgroundColor3 = COLOR_KEY_LINE
+		line.Parent = gui
+	end
+	gui.Parent = keys
 end
 
 local function wallOpts(): BuildKit.Opts
@@ -195,14 +216,11 @@ function music.build(plotCFrame: CFrame): Model
 		color = COLOR_PRIMARY,
 		material = MATERIAL,
 	})
-	part(model, "PianoKeys", Vector3.new(5.6, 0.3, 1.2), at(plotCFrame, px, floorTop + 2.6, pz + 1.55), {
+	local keys = part(model, "PianoKeys", Vector3.new(5.6, 0.3, 1.2), at(plotCFrame, px, floorTop + 2.6, pz + 1.55), {
 		color = COLOR_WHITE,
 	})
-	part(model, "PianoBlackKeys", Vector3.new(5.4, 0.12, 0.5), at(plotCFrame, px, floorTop + 2.8, pz + 1.25), {
-		color = COLOR_DARK,
-		collide = false,
-		cast = false,
-	})
+	keyLines(keys)
+	-- 검은 건반·뚜껑·볼·악보대·페달은 방 안 소품(클라, InteriorRenderController.music)이 그린다
 
 	-- 피아노 의자(secondary) S01: 건반 앞에서 북쪽(피아노)을 본다
 	local bz = pz + 3.4
@@ -228,8 +246,15 @@ function music.build(plotCFrame: CFrame): Model
 	buildChair(model, "Chair", plotCFrame, chairX, floorTop, chairZ, 0, COLOR_WOOD, Enum.Material.Wood)
 	attachment(seats, seatName(2), at(plotCFrame, chairX, floorTop, chairZ))
 
-	-- 보면대: 의자 앞
-	part(model, "StandPost", Vector3.new(0.2, 3.6, 0.2), at(plotCFrame, chairX, floorTop + 1.8, chairZ - 3), {
+	-- 보면대: 의자 앞. 둥근 받침 + 기둥 + 기울인 작은 판
+	part(
+		model,
+		"StandFoot",
+		Vector3.new(0.12, 1.3, 1.3),
+		at(plotCFrame, chairX, floorTop + 0.06, chairZ - 3, CFrame.Angles(0, 0, math.pi / 2)),
+		{ color = COLOR_STEEL, material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, collide = false }
+	)
+	part(model, "StandPost", Vector3.new(0.16, 3.4, 0.16), at(plotCFrame, chairX, floorTop + 1.7, chairZ - 3), {
 		color = COLOR_STEEL,
 		material = Enum.Material.Metal,
 		collide = false,
@@ -237,9 +262,9 @@ function music.build(plotCFrame: CFrame): Model
 	part(
 		model,
 		"StandBoard",
-		Vector3.new(2, 1.6, 0.1),
-		at(plotCFrame, chairX, floorTop + 4, chairZ - 3.2, CFrame.Angles(-0.4, 0, 0)),
-		{ color = COLOR_DARK, collide = false }
+		Vector3.new(1.6, 1.1, 0.08),
+		at(plotCFrame, chairX, floorTop + 3.8, chairZ - 3.1, CFrame.Angles(-0.3, 0, 0)),
+		{ color = COLOR_DARK, material = Enum.Material.Metal, collide = false }
 	)
 
 	-- 큰북(secondary): 동쪽 구석. 스피커: 남서쪽

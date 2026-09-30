@@ -15,7 +15,7 @@
 	★ 바닥 윗면은 y=0 이다(시설 빌더들이 center.Y=0 을 바닥으로 본다). 광장 지면은 면이 겹치지 않게 Plaza 쪽이 0.05 내려가 있다.
 	★ 담장은 두께 0.6 을 부지 경계 바깥으로 0.2 내밀었다(중심 ±74.9). 경계에 붙는 방 벽(교실1·도서관·체육관…)의
 	  바깥 면 x=±75 가 담장 속에 묻혀서 면끼리 겹치지 않는다.
-	★ 2층 계단: 계단 11단(높이 1.5)을 x 5~14 · z 6 → -10.5 로 두고 12단째를 착지대(y18)로 삼았다.
+	★ 2층 계단: 계단 11단(높이 1.5, 너비 1.2)을 x 5~14 · z 2.7 → -10.5 로 두고 12단째를 착지대(y18)로 삼았다.
 	  현관 지붕은 계단 위(x 5~14, z -10.5~6.5)를 뚫어 뒀다.
 ]]
 
@@ -117,6 +117,8 @@ local C = {
 	deskDome = P.deskDome,
 	deskSlot = P.darkText,
 	cork = P.cork,
+	wainscot = Color3.fromRGB(122, 170, 210), -- 교실 1 벽 아래 띠(하늘색)
+	classFloor = Color3.fromRGB(232, 222, 196), -- 교실 1 바닥 타일(연한 베이지)
 	ghost = P.ghost,
 	ghostText = P.ghostText,
 	spawn = P.spawn,
@@ -158,19 +160,20 @@ local function wallWithDoor(
 	to: number,
 	doorAt: number,
 	fixed: number
-)
+): (Part, Part)
 	local opts = { color = C.wall, material = Enum.Material.Concrete, fade = true }
 	local d0, d1 = doorAt - DOOR_W / 2, doorAt + DOOR_W / 2
-	local function seg(suffix: string, a: number, b: number, y: number, h: number)
+	local function seg(suffix: string, a: number, b: number, y: number, h: number): Part
 		local len = b - a
 		local mid = (a + b) / 2
 		local size = if axis == "X" then Vector3.new(len, h, WALL_T) else Vector3.new(WALL_T, h, len)
 		local pos = if axis == "X" then Vector3.new(mid, y, fixed) else Vector3.new(fixed, y, mid)
-		put(parent, name .. suffix, size, plotCFrame * CFrame.new(pos), table.clone(opts))
+		return put(parent, name .. suffix, size, plotCFrame * CFrame.new(pos), table.clone(opts))
 	end
-	seg("A", from, d0, WALL_H / 2, WALL_H)
-	seg("B", d1, to, WALL_H / 2, WALL_H)
+	local a = seg("A", from, d0, WALL_H / 2, WALL_H)
+	local b = seg("B", d1, to, WALL_H / 2, WALL_H)
 	seg("Lintel", d0, d1, (DOOR_H + WALL_H) / 2, WALL_H - DOOR_H)
+	return a, b -- 문 양옆 두 토막(바닥까지 닿는 것)
 end
 
 local function solidWall(
@@ -181,12 +184,12 @@ local function solidWall(
 	from: number,
 	to: number,
 	fixed: number
-)
+): Part
 	local len = to - from
 	local mid = (from + to) / 2
 	local size = if axis == "X" then Vector3.new(len, WALL_H, WALL_T) else Vector3.new(WALL_T, WALL_H, len)
 	local pos = if axis == "X" then Vector3.new(mid, WALL_H / 2, fixed) else Vector3.new(fixed, WALL_H / 2, mid)
-	put(
+	return put(
 		parent,
 		name,
 		size,
@@ -457,11 +460,27 @@ local function buildClass1(shell: Model, plotCFrame: CFrame)
 	local z0, z1 = CLASS1.Z - hz, CLASS1.Z + hz
 	local inner = WALL_T / 2
 
-	solidWall(shell, "Class1WallN", plotCFrame, "X", x0, x1, z0 + inner)
-	solidWall(shell, "Class1WallW", plotCFrame, "Z", z0 + WALL_T, z1 - WALL_T, x0 + inner)
-	solidWall(shell, "Class1WallE", plotCFrame, "Z", z0 + WALL_T, z1 - WALL_T, x1 - inner)
-	wallWithDoor(shell, "Class1WallS", plotCFrame, "X", x0, x1, CLASS1.X, z1 - inner)
+	local north = solidWall(shell, "Class1WallN", plotCFrame, "X", x0, x1, z0 + inner)
+	local west = solidWall(shell, "Class1WallW", plotCFrame, "Z", z0 + WALL_T, z1 - WALL_T, x0 + inner)
+	local east = solidWall(shell, "Class1WallE", plotCFrame, "Z", z0 + WALL_T, z1 - WALL_T, x1 - inner)
+	local southA, southB = wallWithDoor(shell, "Class1WallS", plotCFrame, "X", x0, x1, CLASS1.X, z1 - inner)
 	roof(shell, "Class1Roof", plotCFrame, x0 + WALL_T, x1 - WALL_T, z0 + WALL_T, z1 - WALL_T)
+
+	-- 방 안 디테일(그림 id 0 이면 색 판만). 벽 안쪽 면 아래 띠: 북 +Z(Back)·서 +X(Right)·동 −X(Left)·남 −Z(Front)
+	BuildKit.wainscot(north, Enum.NormalId.Back, C.wainscot)
+	BuildKit.wainscot(west, Enum.NormalId.Right, C.wainscot)
+	BuildKit.wainscot(east, Enum.NormalId.Left, C.wainscot)
+	BuildKit.wainscot(southA, Enum.NormalId.Front, C.wainscot)
+	BuildKit.wainscot(southB, Enum.NormalId.Front, C.wainscot)
+	-- 교실 바닥: 흙마당(FloorBack) 위에 타일 판. 윗면을 0.02 올려 겹침 깜빡임을 피한다. 책상·의자 높이는 그대로
+	local floor = put(
+		shell,
+		"Class1Floor",
+		Vector3.new(CLASS1_SIZE.X - WALL_T * 2, FLOOR_T, CLASS1_SIZE.Z - WALL_T * 2),
+		plotCFrame * CFrame.new(CLASS1.X, 0.02 - FLOOR_T / 2, CLASS1.Z),
+		{ color = C.classFloor, material = Enum.Material.SmoothPlastic }
+	)
+	BuildKit.floorTile(floor)
 end
 
 -- 「공사 중」 실루엣. 강당 자리(2층)에 벽 4 + 지붕 1, 30% 만 보인다. 강당을 지으면 PlotService 가 없앤다

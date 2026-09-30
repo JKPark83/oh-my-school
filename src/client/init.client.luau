@@ -2,7 +2,7 @@
 --[[
 	클라이언트 부트스트랩. 컨트롤러 시작 순서와 리모트 배선을 아는 유일한 곳이다(구현계획 §3.7).
 
-	  ★ 순서: Remotes.wait() → Hud → Panel → Pad → StudentRender → Feedback → Tutorial → Camera → Decor → TowerRender → Sound → Transition.
+	  ★ 순서: Remotes.wait() → Hud → Panel → Pad → StudentRender → Feedback → Tutorial → Camera → Decor → Sound → Transition.
 	    Hud 가 프로필 캐시를 들고 있으므로 가장 먼저, Panel 은 Hud 를 읽으므로 바로 다음이다.
 	  ★ 컨트롤러 Start 는 각각 pcall 이다. 하나가 죽어도 나머지는 뜬다 — 검정 화면보다 반쪽 HUD 가 낫다.
 	  ★ ProfileSync 는 HudController.setProfile 하나로만 들어간다(seq 필터도 거기). GameEvent 는 kind 별 표로
@@ -54,9 +54,9 @@ local FeedbackController = load("FeedbackController")
 local TutorialController = load("TutorialController")
 local CameraController = load("CameraController")
 local DecorController = load("DecorController")
-local TowerRenderController = load("TowerRenderController")
 local SoundController = load("SoundController")
 local TransitionController = load("TransitionController")
+local InteriorRenderController = load("InteriorRenderController")
 
 --- 컨트롤러의 함수를 pcall 로 부른다. 함수가 없으면 조용히 건너뛴다(구현 전 컨트롤러 허용)
 local function call(controller: any, name: string, method: string, ...: any)
@@ -90,9 +90,9 @@ start(FeedbackController, "FeedbackController")
 start(TutorialController, "TutorialController")
 start(CameraController, "CameraController")
 start(DecorController, "DecorController")
-start(TowerRenderController, "TowerRenderController")
 start(SoundController, "SoundController")
 start(TransitionController, "TransitionController")
+start(InteriorRenderController, "InteriorRenderController")
 
 -- ── 설정 반영 ──
 -- 프로필 settings 가 바뀔 때만 각 컨트롤러에 알린다. 첫 프로필은 무조건 한 번 반영한다
@@ -224,28 +224,6 @@ local dispatch: { [string]: { Handler } } = {
 		end,
 		function(payload)
 			call(PanelController, "PanelController", "onDecorEvent", payload)
-		end,
-	},
-	-- 탑 한 층(본인에게만 온다). 소리·카메라·「N층!」 카드, 탑 링 가격과 다음 층 카드 갱신.
-	-- 탑 벽은 TowerFloors 어트리뷰트 변화로 다시 그린다(주 경로). 여기 refresh 는 보조
-	FloorBuilt = {
-		function(payload)
-			call(FeedbackController, "FeedbackController", "play", "floor", payload)
-		end,
-		function()
-			call(PadController, "PadController", "refresh")
-		end,
-		function()
-			call(HudController, "HudController", "refresh")
-		end,
-		function(payload)
-			call(TowerRenderController, "TowerRenderController", "refresh", payload.plot)
-		end,
-	},
-	-- 엘리베이터 순간이동(본인에게만 온다). 흰 페이드 + 소리
-	ElevatorRide = {
-		function(payload)
-			call(FeedbackController, "FeedbackController", "play", "elevator", payload)
 		end,
 	},
 	Deny = {

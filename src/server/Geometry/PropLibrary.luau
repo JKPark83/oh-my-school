@@ -3,7 +3,7 @@
 	소품 라이브러리. 개선계획 §3.1 #6~#10.
 
 	메시 id(PropAssets)가 있으면 MeshPart 하나로, 없거나 불러오기가 실패하면 파트로 짓는다.
-	  PropLibrary.tree(parent, cframe, seed)      나무. 메시 1파트, 폴백은 Tree.build(파트 3~5)에 그대로 맡긴다
+	  PropLibrary.tree(parent, cframe, seed)      나무. 메시 2파트(줄기·잎, 원래 텍스처), 폴백은 Tree.build(파트 3~5)에 그대로 맡긴다
 	  PropLibrary.flowerbed(parent, cframe, seed) 화단. 메시 1파트, 폴백은 흙판 1 + 꽃 뭉치 3 = 파트 4
 	  PropLibrary.storeModel(parent, entry, cframe) Creator Store 모델(광장 전용·비핵심). 실패하면 nil
 	cframe 은 소품 밑면 중심(땅 윗면)의 자리다. 같은 시드면 같은 모양이다.
@@ -59,8 +59,7 @@ end
 	그 뒤엔 요청이 끝나지 않았어도 nil(파트 폴백)이다 → 에셋 서버가 느려도 부팅(PlotService.Start)이 그만큼만 밀린다.
 	같은 id 를 여러 곳에서 동시에 불러도 요청은 한 번이다.
 ]]
-local function cloneMesh(asset: PropAssets.MeshAsset): MeshPart?
-	local id = asset.id
+local function cloneMesh(id: number): MeshPart?
 	if id == 0 then
 		return nil
 	end
@@ -103,22 +102,42 @@ local function placeMesh(
 	return model
 end
 
+--- 파트 하나라도 못 불러오면 나무 전체를 Tree.build 로 짓는다(줄기만 있거나 잎만 뜬 나무가 없게)
 function PropLibrary.tree(parent: Instance, cframe: CFrame, seed: number): Model
-	local asset = PropAssets.MESHES.tree
-	local mesh = cloneMesh(asset)
-	if not mesh then
-		return Tree.build(parent, cframe, seed)
+	local meshes: { MeshPart } = {}
+	for _, piece in PropAssets.TREE.pieces do
+		local mesh = cloneMesh(piece.id)
+		if not mesh then
+			for _, made in meshes do
+				made:Destroy()
+			end
+			return Tree.build(parent, cframe, seed)
+		end
+		table.insert(meshes, mesh)
 	end
 	local rng = Random.new(seed)
 	local scale = rng:NextNumber(SCALE_MIN, SCALE_MAX)
-	local yaw = rng:NextNumber(0, math.pi * 2)
-	local color = WorldPalette.leaf[rng:NextInteger(1, #WorldPalette.leaf)]
-	return placeMesh(mesh, "Tree", asset.size * scale, cframe * CFrame.Angles(0, yaw, 0), color, parent)
+	local base = cframe * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+	local model = Instance.new("Model")
+	model.Name = "Tree"
+	for i, piece in PropAssets.TREE.pieces do
+		local mesh = meshes[i]
+		mesh.Name = piece.name
+		mesh.Size = piece.size * scale
+		mesh.CFrame = base * CFrame.new(piece.offset * scale)
+		mesh.TextureID = if piece.texture ~= 0 then `rbxassetid://{piece.texture}` else ""
+		mesh.Anchored = true
+		mesh.CanCollide = false -- 상자 충돌이라 잎까지 막는다. 지나갈 수 있게 둔다
+		mesh.CastShadow = true
+		mesh.Parent = model
+	end
+	model.Parent = parent
+	return model
 end
 
 function PropLibrary.flowerbed(parent: Instance, cframe: CFrame, seed: number): Model
 	local asset = PropAssets.MESHES.flowerbed
-	local mesh = cloneMesh(asset)
+	local mesh = cloneMesh(asset.id)
 	if mesh then
 		return placeMesh(mesh, "Flowerbed", asset.size, cframe, WorldPalette.blossom, parent)
 	end

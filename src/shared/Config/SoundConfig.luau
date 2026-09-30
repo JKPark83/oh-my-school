@@ -37,7 +37,7 @@ local DEFS: { [string]: SoundDef } = {
 	tick = { id = "rbxassetid://9113774550", volume = 0.35, speed = 1.3, looped = false },
 	-- 코인 팝(수동 수확·보너스). 옛 success 음원을 높게
 	goldPop = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.6, speed = 1.6, looped = false },
-	-- 패드 밟음. 옛 bell 음원
+	-- 패드 밟음(발판이 눌리는 순간)·완공 뒤 다음 패드 안내. 옛 bell 음원
 	pad = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.4, speed = 1.4, looped = false },
 	-- 전학생 도착
 	arrive = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.7, speed = 1.45, looped = false },
@@ -45,12 +45,10 @@ local DEFS: { [string]: SoundDef } = {
 	bell = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.7, speed = 0.7, looped = false },
 	-- 꾸미기가 겹쳐 옆 칸으로 밀림·놓을 수 없는 칸(부정 소리 대신 작고 가벼운 톡). 짧은 핑을 빠르게(≤0.3초)
 	nudge = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.3, speed = 1.8, looped = false },
-	-- 엘리베이터 도착 「띵」(개선계획 §3.6 #7, ≤0.5초·볼륨 ≤0.5). 짧은 핑을 조금 높게
-	elevator = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.4, speed = 1.2, looped = false },
 	-- 복도 웅성거림 배경음(루프). 항상 아주 작게 깔린다
 	hallway = { id = "rbxassetid://9112811182", volume = 0.08, speed = 1, looped = true },
 
-	-- 이하 신규 11종
+	-- 이하 신규 10종
 	-- 시설 완공·도장. PSE "Date Stamp Big Office Impact Good Squeak 2" 0.74초
 	build = { id = "rbxassetid://9114026047", volume = 0.7, speed = 1, looped = false },
 	-- 전교1등 등급. APM "Correct Answer 1"(상승하는 신스) 5.4초
@@ -63,13 +61,12 @@ local DEFS: { [string]: SoundDef } = {
 	combo = { id = "rbxassetid://9126073064", volume = 0.5, speed = 1, looped = false },
 	-- 선물 받음(선물판 40칸·미션 완료). APM "Correct Answer 2"(윤기 있는 신스) 4.6초
 	reward = { id = "rbxassetid://1839997929", volume = 0.6, speed = 1, looped = false },
-	-- 스티커 획득. 콤보마다 호출 쪽 pitch 로 5음계를 올린다. PSE "Mouth Drips Cheek Pluck Water Liquid 10"(입 팝) 0.5초
-	sticker = { id = "rbxassetid://9117014265", volume = 0.55, speed = 1, looped = false },
+	-- 스티커 획득. 늘 같은 높이로 울린다(콤보 5음계는 「매번 소리가 바뀐다」로 들려 뺐다). PSE "Synth Sparkle Tone Burst 10" 0.7초.
+	-- 옛 입 팝(9117014265)은 PlaybackLoudness 최대 13 으로 다른 효과음(120~200)에 묻혀서 바꿨다(이 음원 195)
+	sticker = { id = "rbxassetid://9119834079", volume = 0.8, speed = 1, looped = false },
 	-- 스티커 찾기 표식. 3초마다 판에 붙어 거리로 줄어드는 잔잔한 반짝(개선계획 §3.2 #9, 볼륨 ≤0.2).
 	-- PSE "Synth Sparkle Tone High Pitch Tone Burst Ding 15" 0.8초
 	sparkle = { id = "rbxassetid://9126076118", volume = 0.15, speed = 1, looped = false, rollOff = 50 },
-	-- Roblox 공식 swoosh(12222200). 내장 rbxasset://sounds/swoosh.wav 는 로드가 막혀 있다
-	door_open = { id = "rbxassetid://12222200", volume = 0.5, speed = 0.8, looped = false },
 	-- 학생이 자리에 앉음. PSE "Wood Chair Creak 3"(앉기·무게 이동) 0.6초
 	sit = { id = "rbxassetid://9120806427", volume = 0.5, speed = 1, looped = false },
 	-- 살 수 있게 됐다는 알림. PSE "Gas Pump Bell Cu Metallic Dinging Muted 4" 1.4초

@@ -15,7 +15,8 @@ EconomyConfig.START_COINS = 10 -- 졸업 후 10 × 1.35^N
 EconomyConfig.PRICE_SCALE = FacilityConfig.PRICE_SCALE
 EconomyConfig.GRAD_STEP = 1.0 -- 졸업 1회당 배율 +1.0(안 A, sim-parts.py 와 같다)
 EconomyConfig.CONTRIB = StudentConfig.CONTRIB
-EconomyConfig.TICK = 1 -- 수입·패드 확인 주기(초)
+EconomyConfig.TICK = 1 -- 수입 주기(초)
+EconomyConfig.PAD_TICK = 0.1 -- 발판 확인 주기(초). 걷는 속도 16 이면 틱 사이 1.6 스터드라 반경 3.2 를 놓치지 않는다
 
 -- 칭찬스티커
 EconomyConfig.STICKER_MIN = 10 -- ×1.35^졸업

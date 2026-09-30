@@ -14,8 +14,8 @@
 	  손 들기(CharacterBuilder.setHandRaised)는 모델 피벗 기준으로 팔을 놓으므로
 	  부른 뒤 그 팔의 rel 만 다시 굽는다.
 
-	★ 전학 걷기(§9.2)는 내 부지·walk=true 일 때만. 시설 모델의 Door Attachment 에서 자리까지 3초 직선.
-	  다른 부지·재접속은 0.3초 페이드인.
+	★ 전학 등장(§9.2)은 내 부지·walk=true 일 때만. 제자리에서 "짠" — 작게 나타나 살짝 넘치게 커졌다 자리 잡는다.
+	  걸어 들어오기는 가구·벽을 뚫고 지나가 보여서 없앴다. 다른 부지·재접속은 0.3초 페이드인.
 ]]
 
 local Players = game:GetService("Players")
@@ -86,12 +86,12 @@ local MUSIC_RATE = 1.5
 local LIBRARY_PITCH = math.rad(15)
 local LEGEND_RATE = 2
 
--- §9.2 전학 걷기
-local WALK_SECONDS = 3.0
-local WALK_WOBBLE = math.rad(4)
-local WALK_WOBBLE_RATE = 6
-local WALK_GROW_SECONDS = 0.4
-local WALK_MIN_SCALE = 0.05
+-- §9.2 전학 등장("짠")
+local POP_SECONDS = 0.45
+local POP_MIN_SCALE = 0.05
+local POP_OVERSHOOT = 1.70158 -- Back 이징 기본값. 최고 약 1.1배까지 넘쳤다 돌아온다
+local POP_SPARKLES = 24
+local POP_SPARKLE_LIFE = 1.2
 local ARRIVE_HAND_DELAY = 0.5
 local FADE_SECONDS = 0.3
 
@@ -119,13 +119,10 @@ local player = Players.LocalPlayer
 
 local StudentRenderController = {}
 
-type Walk = {
-	model: Model,
-	from: Vector3,
-	to: Vector3,
+type Arrive = {
+	model: Model, -- 커지는 동안만 쓰는 임시 모델. 끝나면 attachSeated 로 바꾼다
 	t0: number,
 	scale: number, -- build 가 정한 최종 스케일(전설은 1.05)
-	grown: boolean,
 }
 
 type Person = {
@@ -156,7 +153,7 @@ type Person = {
 	handRaised: boolean,
 	yaw: number,
 	fadeT0: number?,
-	walk: Walk?,
+	arrive: Arrive?,
 }
 
 type Plot = {
@@ -369,7 +366,7 @@ local dirty: { [number]: boolean } = {}
 local flushScheduled = false
 local flushing = false
 local flushAgain = false
-local pendingWalk: { [string]: boolean } = {} -- 내 부지에서 걷기로 들어올 학생(모델보다 이벤트가 먼저 온 경우)
+local pendingArrive: { [string]: boolean } = {} -- 내 부지에서 "짠" 하고 나타날 학생(모델보다 이벤트가 먼저 온 경우)
 
 local renderRoot: Folder? = nil
 local plotsFolder: Instance? = nil
@@ -386,7 +383,7 @@ local idleAccum = 0
 local lodAccum = 0
 local moveCursor = 0
 local animated: { Person } = {}
-local walking: { Person } = {}
+local arriving: { Person } = {}
 local fading: { Person } = {}
 
 -- 매 틱 재사용하는 BulkMoveTo 버퍼
@@ -517,11 +514,6 @@ end
 local function seatCFrame(model: Model, index: number): CFrame?
 	local seats = model:FindFirstChild(Keys.SEATS_FOLDER)
 	local att = if seats then seats:FindFirstChild(Seats.attachmentName(index)) else nil
-	return if att and att:IsA("Attachment") then att.WorldCFrame else nil
-end
-
-local function doorCFrame(model: Model): CFrame?
-	local att = model:FindFirstChild(Keys.DOOR)
 	return if att and att:IsA("Attachment") then att.WorldCFrame else nil
 end
 
@@ -687,14 +679,14 @@ local function destroyModel(person: Person)
 	person.fadeT0 = nil
 end
 
-local function destroyWalk(person: Person)
-	local walk = person.walk
-	if walk then
-		walk.model:Destroy()
-		person.walk = nil
-		local i = table.find(walking, person)
+local function destroyArrive(person: Person)
+	local arrive = person.arrive
+	if arrive then
+		arrive.model:Destroy()
+		person.arrive = nil
+		local i = table.find(arriving, person)
 		if i then
-			table.remove(walking, i)
+			table.remove(arriving, i)
 		end
 	end
 end
@@ -776,67 +768,89 @@ local function newPerson(plotId: number, studentId: string, facilityId: string, 
 		handRaised = false,
 		yaw = 0,
 		fadeT0 = nil,
-		walk = nil,
+		arrive = nil,
 	}
 end
 
 local function removePerson(plot: Plot, person: Person)
-	destroyWalk(person)
+	destroyArrive(person)
 	destroyModel(person)
 	plot.persons[person.studentId] = nil
 end
 
 -------------------------------------------------------------------------------
--- 전학 걷기(§9.2)
+-- 전학 등장(§9.2)
 -------------------------------------------------------------------------------
 
-local function beginWalk(plot: Plot, person: Person)
-	local facility = facilityModel(plot, person.facilityId)
-	local door = if facility then doorCFrame(facility) else nil
-	if not door then
-		warn(
-			`[StudentRender] {person.facilityId} 에 {Keys.DOOR} Attachment 가 없어 페이드인으로 대신한다`
-		)
-		if not person.model then
-			attachSeated(plot, person, true)
-		end
-		return
-	end
+--- Back 이징(ease-out). 0→1 로 가다 1 을 살짝 넘긴 뒤 1 에 선다
+local function easeOutBack(t: number): number
+	local u = t - 1
+	return 1 + (POP_OVERSHOOT + 1) * u * u * u + POP_OVERSHOOT * u * u
+end
 
-	local config = CharacterBuilder.studentConfig(person.studentId)
-	config.sitting = false
-	local model = CharacterBuilder.build(person.studentId, door, config)
+--- 자리 위 반짝이 한 번. 파티클이 다 사라지면 지운다
+local function sparkleBurst(plot: Plot, at: Vector3)
+	local anchor = Instance.new("Part")
+	anchor.Name = "ArriveSparkle"
+	anchor.Size = Vector3.one
+	anchor.Transparency = 1
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.CastShadow = false
+	anchor.CFrame = CFrame.new(at)
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	emitter.Color = ColorSequence.new(COLOR_GOLD, COLOR_PINK)
+	emitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.6),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	emitter.Transparency = NumberSequence.new(0, 1)
+	emitter.Lifetime = NumberRange.new(0.6, POP_SPARKLE_LIFE)
+	emitter.Speed = NumberRange.new(4, 8)
+	emitter.SpreadAngle = Vector2.new(180, 180)
+	emitter.Acceleration = Vector3.new(0, -6, 0)
+	emitter.LightEmission = 0.8
+	emitter.Enabled = false
+	emitter.Parent = anchor
+	anchor.Parent = renderFolder(plot)
+	emitter:Emit(POP_SPARKLES)
+	task.delay(POP_SPARKLE_LIFE + 0.2, function()
+		anchor:Destroy()
+	end)
+end
+
+local function beginArrive(plot: Plot, person: Person)
+	local model =
+		CharacterBuilder.build(person.studentId, person.seat, CharacterBuilder.studentConfig(person.studentId))
 	if not model then
-		warn(`[StudentRender] {person.studentId} 걷기 모델을 만들 수 없다`)
+		warn(`[StudentRender] {person.studentId} 등장 모델을 만들 수 없다`)
 		if not person.model then
 			attachSeated(plot, person, true)
 		end
 		return
 	end
 	destroyModel(person)
-	destroyWalk(person)
-	local emitter = decorate(model, StudentConfig.BY_ID[person.studentId])
-	if emitter then
-		emitter.Enabled = true
-	end
+	destroyArrive(person)
+	decorate(model, StudentConfig.BY_ID[person.studentId])
 	silenceParts(model)
 	local scale = model:GetScale()
-	model:ScaleTo(scale * WALK_MIN_SCALE)
+	model:ScaleTo(scale * POP_MIN_SCALE)
 	model.Parent = renderFolder(plot)
-	person.walk = {
+	person.arrive = {
 		model = model,
-		from = door.Position,
-		to = person.seat.Position,
 		t0 = os.clock(),
 		scale = scale,
-		grown = false,
 	}
-	table.insert(walking, person)
-	SoundController.play("door_open")
+	table.insert(arriving, person)
+	sparkleBurst(plot, (person.seat * CFrame.new(0, CharacterBuilder.SIT_HIP + 1.5, 0)).Position)
+	SoundController.play("arrive")
 end
 
-local function finishWalk(plot: Plot, person: Person)
-	destroyWalk(person)
+local function finishArrive(plot: Plot, person: Person)
+	destroyArrive(person)
 	attachSeated(plot, person, false)
 	SoundController.play("sit")
 	local now = os.clock()
@@ -845,33 +859,21 @@ local function finishWalk(plot: Plot, person: Person)
 	lodAccum = LOD_INTERVAL -- 바로 움직임 등급을 매겨 손을 들게 한다
 end
 
-local function updateWalk(person: Person, now: number)
-	local walk = person.walk
-	if not walk then
+--- ScaleTo 는 모델 피벗(발 아래)을 축으로 줄였다 늘린다. 자리에서 솟아나듯 커진다
+local function updateArrive(person: Person, now: number)
+	local arrive = person.arrive
+	if not arrive then
 		return
 	end
-	local elapsed = now - walk.t0
-	local alpha = math.clamp(elapsed / WALK_SECONDS, 0, 1)
-	local pos = walk.from:Lerp(walk.to, alpha)
-	local dir = walk.to - walk.from
-	local flat = Vector3.new(dir.X, 0, dir.Z)
-	local look = if flat.Magnitude > 0.01 then CFrame.lookAt(pos, pos + flat) else person.seat.Rotation + pos
-	local wobble = CFrame.Angles(0, 0, math.sin(elapsed * WALK_WOBBLE_RATE) * WALK_WOBBLE)
-
-	if elapsed < WALK_GROW_SECONDS then
-		walk.model:ScaleTo(walk.scale * math.max(WALK_MIN_SCALE, elapsed / WALK_GROW_SECONDS))
-	elseif not walk.grown then
-		walk.model:ScaleTo(walk.scale)
-		walk.grown = true
-	end
-	walk.model:PivotTo(look * wobble)
+	local alpha = math.clamp((now - arrive.t0) / POP_SECONDS, 0, 1)
+	arrive.model:ScaleTo(arrive.scale * math.max(POP_MIN_SCALE, easeOutBack(alpha)))
 
 	if alpha >= 1 then
 		local plot = plots[person.plotId]
 		if plot and plot.persons[person.studentId] == person then
-			finishWalk(plot, person)
+			finishArrive(plot, person)
 		else
-			destroyWalk(person)
+			destroyArrive(person)
 		end
 	end
 end
@@ -1004,10 +1006,10 @@ local function reconcile(plot: Plot)
 				warn(`[StudentRender] {want.facilityId} 에 {Seats.attachmentName(want.index)} 자리가 없다`)
 			end
 		end
-		if person and not person.model and not person.walk then
-			if mine and pendingWalk[studentId] then
-				pendingWalk[studentId] = nil
-				beginWalk(plot, person)
+		if person and not person.model and not person.arrive then
+			if mine and pendingArrive[studentId] then
+				pendingArrive[studentId] = nil
+				beginArrive(plot, person)
 			else
 				person.distance = (person.seat.Position - camPos).Magnitude
 				if person.distance <= MID_DIST then
@@ -1089,7 +1091,7 @@ local function lodTick(now: number)
 	for _, plot in order do
 		if plot.rendered then
 			for _, person in plot.persons do
-				if not person.walk then
+				if not person.arrive then
 					person.distance = (person.seat.Position - camPos).Magnitude
 					table.insert(list, person)
 				end
@@ -1222,8 +1224,8 @@ local function idleTick(dt: number)
 	local now = os.clock()
 	local playerPos = playerPosition()
 
-	for i = #walking, 1, -1 do
-		updateWalk(walking[i], now)
+	for i = #arriving, 1, -1 do
+		updateArrive(arriving[i], now)
 	end
 
 	table.clear(moveParts)
@@ -1305,7 +1307,7 @@ function StudentRenderController.isLowSpec(): boolean
 	return lowSpec
 end
 
---- GameEvent StudentJoined { plot, studentId, walk }. 내 부지·walk 면 문에서 걸어 들어온다
+--- GameEvent StudentJoined { plot, studentId, walk }. 내 부지·walk 면 제자리에서 "짠" 하고 나타난다
 function StudentRenderController.onStudentJoined(payload: { plot: number, studentId: string, walk: boolean? })
 	local plotId = payload.plot
 	local studentId = payload.studentId
@@ -1316,9 +1318,9 @@ function StudentRenderController.onStudentJoined(payload: { plot: number, studen
 	if payload.walk and myPlot() == plotId then
 		local person = plot.persons[studentId]
 		if person then
-			beginWalk(plot, person)
+			beginArrive(plot, person)
 		else
-			pendingWalk[studentId] = true
+			pendingArrive[studentId] = true
 		end
 	end
 	markDirty(plotId)
@@ -1337,7 +1339,7 @@ function StudentRenderController.ceremony(plotId: number, active: boolean)
 	end
 
 	for _, person in plot.persons do
-		if person.walk then
+		if person.arrive then
 			continue
 		end
 		if active then

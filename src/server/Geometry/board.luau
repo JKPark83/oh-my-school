@@ -13,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 
 local board = {}
 
@@ -106,7 +107,7 @@ function board.build(plotCFrame: CFrame): Model
 
 	-- 부품 3. 시계: Cylinder 축이 X 라 Y 로 90° 돌려 면이 방(+Z)을 보게 한다
 	partIndex = 3
-	put(
+	local clock = put(
 		model,
 		"Clock",
 		Vector3.new(0.2, CLOCK_D, CLOCK_D),
@@ -118,6 +119,7 @@ function board.build(plotCFrame: CFrame): Model
 			collide = false,
 		}
 	)
+	BuildKit.decal(clock, Enum.NormalId.Left, PropAssets.INTERIOR.CLOCK, "Face") -- 축 −X 끝면이 돌린 뒤 방(+Z)을 본다
 
 	-- 급훈 액자: 칠판 위 가운데
 	local motto = put(

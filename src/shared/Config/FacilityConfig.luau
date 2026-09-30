@@ -19,7 +19,8 @@ export type Facility = {
 	student: Types.StudentId?, -- 지으면 전학 오는 학생
 	center: Vector3, -- 부지 로컬
 	size: Vector3, -- 방이면 벽 바깥 치수, 가구면 대략 바운딩박스
-	pad: Vector3, -- 구매 패드 중심(바닥)
+	pad: Vector3, -- 구매 패드 중심(바닥). 부품 1 자리(시설 입구)
+	partPads: { Vector3 }, -- 부품 2..n 패드 자리(바닥). 길이 = 부품 수 - 1. 산 부품·다른 패드·스티커 자리와 겹치지 않는 빈 바닥
 	door: string?, -- "S" | "N" | "W" (방 기준 문 방향). nil = 문 없음
 	seats: number, -- Seats/S01… 개수
 	spawns: number, -- 이 시설이 여는 칭찬스티커 스폰 수
@@ -42,6 +43,7 @@ local LIST: { Facility } = {
 		center = V(-60, 0, -50),
 		size = V(18, 3, 10),
 		pad = V(-60, 0, -37.5),
+		partPads = { V(-66, 0, -49), V(-54, 0, -45) },
 		door = nil,
 		seats = 6,
 		spawns = 3,
@@ -56,6 +58,7 @@ local LIST: { Facility } = {
 		center = V(-60, 0, -61.5),
 		size = V(12, 4, 0.6),
 		pad = V(-70, 0, -57.5),
+		partPads = { V(-66, 0, -51.5), V(-54, 0, -51.5) },
 		door = nil,
 		seats = 0,
 		spawns = 0,
@@ -70,6 +73,7 @@ local LIST: { Facility } = {
 		center = V(-46, 0, -47.5),
 		size = V(1.6, 6, 12),
 		pad = V(-50, 0, -57.5),
+		partPads = { V(-51, 0, -47.5), V(-51, 0, -40.5) },
 		door = nil,
 		seats = 0,
 		spawns = 0,
@@ -84,6 +88,7 @@ local LIST: { Facility } = {
 		center = V(0, 0, -25),
 		size = V(150, 18, 15),
 		pad = V(0, 0, -13.75),
+		partPads = { V(0, 0, -23), V(4.5, 0, -28.5) },
 		door = nil,
 		seats = 0,
 		spawns = 2,
@@ -98,6 +103,7 @@ local LIST: { Facility } = {
 		center = V(-20, 0, -47.5),
 		size = V(30, 18, 30),
 		pad = V(-20, 0, -28.75),
+		partPads = { V(-20, 0, -38), V(-26, 0, -46.5) },
 		door = "S",
 		seats = 6,
 		spawns = 0,
@@ -112,6 +118,7 @@ local LIST: { Facility } = {
 		center = V(20, 0, -47.5),
 		size = V(30, 18, 30),
 		pad = V(20, 0, -28.75),
+		partPads = { V(20, 0, -40.5), V(20, 0, -48.5) },
 		door = "S",
 		seats = 4,
 		spawns = 0,
@@ -126,6 +133,7 @@ local LIST: { Facility } = {
 		center = V(60, 0, -47.5),
 		size = V(30, 18, 30),
 		pad = V(60, 0, -28.75),
+		partPads = { V(60, 0, -40), V(63.5, 0, -57), V(51, 0, -44) },
 		door = "S",
 		seats = 3,
 		spawns = 0,
@@ -140,6 +148,7 @@ local LIST: { Facility } = {
 		center = V(-60, 0, -5),
 		size = V(30, 18, 25),
 		pad = V(-60, 0, -21.25),
+		partPads = { V(-60, 0, -9), V(-67, 0, -10), V(-55.5, 0, -3.5) },
 		door = "N",
 		seats = 1,
 		spawns = 0,
@@ -154,6 +163,7 @@ local LIST: { Facility } = {
 		center = V(-30, 0, -5),
 		size = V(30, 18, 25),
 		pad = V(-30, 0, -21.25),
+		partPads = { V(-30, 0, -11.5), V(-30, 0, -2.5), V(-35.5, 0, 2) },
 		door = "N",
 		seats = 2,
 		spawns = 0,
@@ -168,6 +178,7 @@ local LIST: { Facility } = {
 		center = V(30, 0, -5),
 		size = V(30, 18, 25),
 		pad = V(30, 0, -21.25),
+		partPads = { V(30, 0, -11), V(25, 0, -1), V(33, 0, -2) },
 		door = "N",
 		seats = 2,
 		spawns = 0,
@@ -182,6 +193,7 @@ local LIST: { Facility } = {
 		center = V(60, 0, 37.5),
 		size = V(30, 20, 45),
 		pad = V(41.25, 0, 37.5),
+		partPads = { V(56.5, 0, 37.5), V(62.5, 0, 33.5), V(63.5, 0, 41.5) },
 		door = "W",
 		seats = 0,
 		spawns = 0,
@@ -196,6 +208,7 @@ local LIST: { Facility } = {
 		center = V(-45, 0, 37.5),
 		size = V(60, 1, 45),
 		pad = V(-11.25, 0, 37.5),
+		partPads = { V(-45, 0, 37.5), V(-71, 0, 37.5), V(-26, 0, 37.5) },
 		door = nil,
 		seats = 0,
 		spawns = 3,
@@ -210,6 +223,7 @@ local LIST: { Facility } = {
 		center = V(60, 0, -5),
 		size = V(30, 18, 25),
 		pad = V(60, 0, -21.25),
+		partPads = { V(55.5, 0, -11), V(57.5, 0, -1), V(64.5, 0, -11) },
 		door = "N",
 		seats = 1,
 		spawns = 0,
@@ -224,6 +238,7 @@ local LIST: { Facility } = {
 		center = V(0, 18, -17.5),
 		size = V(50, 18, 35),
 		pad = V(0, 18, -13.75),
+		partPads = { V(0, 18, -6.5), V(-3.5, 18, -20.5), V(3, 18, -23.5) },
 		door = "S",
 		seats = 25,
 		spawns = 0,
@@ -274,6 +289,10 @@ do
 			math.abs(row.center.Y - base) < band,
 			`{row.id}: center.Y {row.center.Y} 가 {row.floor}층 높이 띠 밖이다`
 		)
+		assert(#row.partPads == #row.parts - 1, `{row.id}: partPads 는 부품 수 - 1 개여야 한다`)
+		for k, spot in row.partPads do
+			assert(math.abs(spot.Y - row.pad.Y) < 1e-3, `{row.id}: partPads[{k}] 높이가 pad 와 다르다`)
+		end
 	end
 end
 
@@ -308,6 +327,14 @@ function FacilityConfig.partCount(id: Types.FacilityId): number
 	local row = BY_ID[id]
 	assert(row, `모르는 시설: {id}`)
 	return #row.parts
+end
+
+--- 부품 k 를 사는 패드 자리(부지 로컬 바닥). 1 은 입구 pad, 2 부터 partPads.
+--- 한 번 밟아 부품이 서면 패드가 다음 자리로 옮겨 간다(같은 곳을 계속 밟지 않게)
+function FacilityConfig.padOf(id: Types.FacilityId, k: number): Vector3
+	local row = BY_ID[id]
+	assert(row, `모르는 시설: {id}`)
+	return if k <= 1 then row.pad else row.partPads[k - 1] or row.pad
 end
 
 --- 졸업 횟수를 반영한 부품 k 가격

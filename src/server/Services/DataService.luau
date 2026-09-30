@@ -20,13 +20,12 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Types = require(ReplicatedStorage.Shared.Types)
 local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
-local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local Migrations = require(script.Parent.Parent.Migrations)
 
 local DataService = {}
 
 local STORE_NAME = "PrincipalProfile"
-local SCHEMA_VERSION = 2
+local SCHEMA_VERSION = 3
 local SYNC_INTERVAL = 1
 
 -- 색 바꾸기 필드 두 개를 지우며 버전을 올리지 않았다. 실 데이터가 없고 Reconcile 은 남는 키를 건드리지 않는다
@@ -47,7 +46,6 @@ local TEMPLATE: Types.Profile = {
 	decorPlaced = {},
 	decorPaid = {},
 	decorStarter = false, -- load 가 false 면 튜토리얼 화분을 넣고 true 로 바꾼다
-	towerFloors = 0,
 }
 
 -- [이전 버전] = 그 버전의 데이터를 다음 버전으로 바꾸는 함수. version 증가는 루프가 한다. 규칙은 Migrations.luau 머리말
@@ -122,12 +120,6 @@ function DataService.load(player: Player): Types.Profile?
 	profile:AddUserId(player.UserId)
 	profile:Reconcile()
 	migrate(profile.Data)
-	-- 탑 층 수는 0..MAX-2 로 자른다. MAX 는 잠정값이라 낮아질 수 있고, 손상된 값(음수·소수)이 탑 파트·엘리베이터·꾸미기 층 범위를 넓히지 않게
-	profile.Data.towerFloors = math.clamp(
-		math.floor(tonumber(profile.Data.towerFloors) or 0),
-		0,
-		TowerConfig.MAX - TowerConfig.FIRST_FLOOR + 1
-	)
 	-- 튜토리얼 ⑤ 화분(새 프로필·옛 프로필 한 번씩). 산 값이 없으니 돌려줘도 0
 	local data = profile.Data
 	if not data.decorStarter then

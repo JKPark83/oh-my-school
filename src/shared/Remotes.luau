@@ -19,8 +19,8 @@ local NAMES = {
 	"SetSetting", -- (key: "shake"|"sfx"|"haptic", value: boolean)
 	"GoHome", -- ()
 	"BuyDecor", -- (itemId: string)
-	"PlaceDecor", -- (itemId: string, cx, cz, rot, f)
-	"MoveDecor", -- (slot, cx, cz, rot, f)
+	"PlaceDecor", -- (itemId: string, cx, cz, rot)
+	"MoveDecor", -- (slot, cx, cz, rot)
 	"StoreDecor", -- (slot)
 	"ReturnDecor", -- (itemId: string). 보관함 1개를 산 값으로 돌려받는다(무료로 받은 것은 0)
 	"UiMark", -- (key: "decorTap"). W9 지표용 UI 표시. Metrics 가 받는다

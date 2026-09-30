@@ -29,13 +29,13 @@ export PATH="$HOME/.rokit/bin:$PATH" && stylua src && rojo sourcemap default.pro
 
 - Studio 에서 스크립트를 고치지 않는다. 파일이 기준이다.
 - Studio 는 `PrincipalProfile_Dev` + Mock 이다. 실제 DataStore 는 ServerScriptService 어트리뷰트 `UseLiveDataStore = true`.
-- `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveCoins:Invoke(player, n)`, `GiveDecor:Invoke(player, itemId, n)`, `GiveFloors:Invoke(player, n)`(탑 층 수, 강당이 있어야 보인다), `RideElevator:Invoke(player, prompt)`(엘리베이터 서버 판정만), `MetricsNow:Invoke(player)`(세션을 끝내지 않고 `[Metrics]` 지금까지 요약 줄).
+- `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveCoins:Invoke(player, n)`, `GiveDecor:Invoke(player, itemId, n)`, `MetricsNow:Invoke(player)`(세션을 끝내지 않고 `[Metrics]` 지금까지 요약 줄).
 
 ## 구조
 
 - `src/server/Services/` 서비스 8개(Data·Plot·Economy·Student·Decor·Mission·Graduation·Leaderboard). 부팅 순서는 `init.server.luau`.
-- `src/server/Geometry/` 시설·부지·광장·탑(`Tower.luau`, 층 올리기)을 파트로 짓는 모듈. 나무·화단·광장 Creator Store 모델은 `PropLibrary.luau`(메시 id 가 없거나 실패하면 파트 폴백). 공용 헬퍼는 `src/server/BuildKit.luau`(Geometry 밖).
-- `src/client/Controllers/` 컨트롤러 11개(W7 `TowerRenderController` = 탑 벽 클라 렌더). 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
+- `src/server/Geometry/` 시설·부지·광장을 파트로 짓는 모듈. 나무·화단·광장 Creator Store 모델은 `PropLibrary.luau`(메시 id 가 없거나 실패하면 파트 폴백). 공용 헬퍼는 `src/server/BuildKit.luau`(Geometry 밖).
+- `src/client/Controllers/` 컨트롤러 11개(`InteriorRenderController` = 방 안 소품). 층 올리기(3층 이상·엘리베이터)는 2026-10-01 폐기했다. 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
 - `src/shared/Config/` 수치의 단일 소스. 가격·확률·시간·문구는 여기서만 바꾼다.
 - `src/shared/Remotes.luau`(프로토콜은 기획서 §11.5), `Types.luau`, `Seats.luau`, `CharacterBuilder.luau`, 꾸미기 공용 `DecorGrid`·`DecorCodec`·`DecorBuilder`(수치는 `Config/DecorConfig.luau`). `src/first/` 로딩 화면.
 
@@ -48,3 +48,14 @@ export PATH="$HOME/.rokit/bin:$PATH" && stylua src && rojo sourcemap default.pro
 - 메시·텍스처 업로드는 허용한다(에셋 품질 우선). id 는 `CharacterAssets`(학생)·`PropAssets`(창 텍스처·소품 메시·Creator Store 모델 출처 표)에만 적고, id 0 이거나 불러오기에 실패하면 파트 폴백이 반드시 동작해야 한다. Creator Store 모델은 광장 비핵심 소품 ≤ 3개, 안의 스크립트는 전부 지운다.
 - `CharacterAssets`·`PropAssets` 의 메시·텍스처 ID 는 게임 소유자 계정에 업로드된 것이다. 다른 계정·그룹 게임으로 옮기면 가장 먼저 깨진다.
 - `.claude/skills/` 에 로블록스 스킬 29개가 있다. 일반 로블록스 규칙은 거기서 찾는다.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- ⚠️ graphify 0.9.72 원본은 `.luau` 를 plain-Lua 문법기로 읽어서 Luau 구문(타입·`::`·`+=`·`if` 표현식·보간 문자열)에서 조용히 끊긴다(upstream #2520). 이 맥의 설치본은 `tree-sitter-luau` 로 바꾸는 로컬 패치가 들어가 있어 src 함수 97% 가 잡힌다. **`uv tool upgrade graphifyy` 를 하면 패치가 사라진다** — 업그레이드 후 `graphify update .` 결과에서 "syntax errors" 경고가 다시 나오면 패치를 다시 적용해야 한다(`tools/graphify-luau.patch`, 설치본 `graphify/` 폴더에서 `patch -p0` 대신 파일별로 적용 + `uv pip install --python $(uv tool dir)/graphifyy/bin/python tree-sitter-luau`). 그래프에 없다고 코드가 없는 것은 아니다.

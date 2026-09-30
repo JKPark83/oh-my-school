@@ -13,11 +13,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 
 local locker = {}
 
 local COLOR_PRIMARY = Color3.fromRGB(150, 150, 155)
-local COLOR_SECONDARY = Color3.fromRGB(100, 100, 105)
 local MATERIAL = Enum.Material.Metal
 
 local FACILITY_ID = script.Name
@@ -28,6 +28,14 @@ local PANEL_GAP = 0.2
 local TRIM_T = 0.3
 
 local COLOR_TRIM = Color3.fromRGB(70, 72, 76)
+-- 문짝 색은 열마다 다르다(파스텔). 문 그림(PropAssets.INTERIOR.LOCKER_DOOR)이 투명 덧그림이라 이 색이 비친다.
+-- 그림 id 가 0 이면 색 판만 남는다
+local DOOR_COLORS = {
+	Color3.fromRGB(128, 178, 222),
+	Color3.fromRGB(138, 204, 150),
+	Color3.fromRGB(240, 208, 112),
+	Color3.fromRGB(236, 158, 176),
+}
 
 --- 부지 로컬 위치(+회전) → 월드 CFrame
 local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFrame?): CFrame
@@ -73,17 +81,18 @@ function locker.build(plotCFrame: CFrame): Model
 			partIndex = r + 1 -- 아랫단은 부품 2, 윗단은 부품 3
 			local z = cz - length / 2 + (c - 0.5) * (length / COLS)
 			local y = floorY + (r - 0.5) * (height / ROWS)
-			put(
+			local door = put(
 				model,
 				string.format("Door%02d", (c - 1) * ROWS + r),
 				Vector3.new(PANEL_T, panelH, panelW),
 				at(plotCFrame, faceX, y, z),
 				{
-					color = COLOR_SECONDARY,
-					material = MATERIAL,
+					color = DOOR_COLORS[c],
+					material = Enum.Material.SmoothPlastic,
 					collide = false,
 				}
 			)
+			BuildKit.decal(door, Enum.NormalId.Left, PropAssets.INTERIOR.LOCKER_DOOR) -- 로컬 −X = 방 쪽
 		end
 	end
 

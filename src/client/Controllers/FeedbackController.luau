@@ -28,8 +28,6 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local MissionConfig = require(ReplicatedStorage.Shared.Config.MissionConfig)
 local Seats = require(ReplicatedStorage.Shared.Seats)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
-local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
-local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local Types = require(ReplicatedStorage.Shared.Types)
 
 -- 계획 §3.4 계약(형제 컨트롤러). 형태만 선언하고 any 로 받는다
@@ -46,7 +44,6 @@ type CameraApi = {
 	orbit: (center: Vector3, radius: number, pitchDeg: number, seconds: number) -> (),
 	cutTo: (cframe: CFrame) -> (),
 	restore: () -> (),
-	panTo: (worldPos: Vector3, seconds: number) -> (),
 }
 type TransitionApi = {
 	fadeTo: (alpha: number, seconds: number) -> (),
@@ -76,7 +73,6 @@ local FeedbackController = {}
 local SOUND_TICK = "tick"
 local SOUND_GOLD = "goldPop"
 local SOUND_PAD = "pad"
-local SOUND_ARRIVE = "arrive"
 local SOUND_BELL = "bell"
 local SOUND_BUILD = "build" -- 도장 소리도 이걸 쓴다
 local SOUND_FANFARE = "fanfare"
@@ -84,9 +80,6 @@ local SOUND_LEGEND = "legend"
 local SOUND_GRADUATION = "graduation"
 local SOUND_COMBO = "combo"
 local SOUND_REWARD = "reward"
-local SOUND_DOOR = "door_open"
-local SOUND_SIT = "sit"
-local SOUND_ELEVATOR = "elevator"
 
 -- 등급(Types.Tier)
 local TIER_NORMAL: Types.Tier = "평범"
@@ -113,6 +106,9 @@ local TRAUMA_GOLD = 0.15
 local TRAUMA_PURCHASE = 0.30
 local TRAUMA_GRADUATION = 0.60
 local HITSTOP_SECONDS = 0.15
+-- 전학 「짠」(StudentRender POP_SECONDS 0.45)이 끝나 자리 잡는 때와 도감 카드가 뜨는 때
+local ARRIVE_SETTLE_SECONDS = 0.45
+local ARRIVE_CARD_SECONDS = 0.9
 local FLASH_ALPHA = 0.7
 local FLASH_SECONDS = 0.08
 local FLASH_INTERVAL = 1
@@ -137,12 +133,6 @@ local CLASSROOM_CAMERA = Vector3.new(0, 17.5, 27.5) -- 교실1 을 내려다보�
 -- 부품 하나(PartBuilt): 부품 번호 1..4 → build 음정. 한 시설 안에서 올라가다 마지막에 완공 연출로 끝난다
 local PART_PITCH = { 1.0, 1.12, 1.26, 1.41 }
 local PART_DUST = 6
--- 탑(W6)
-local FLOOR_PAN_SECONDS = 0.3 -- 새 층으로 카메라 팬(CameraController 가 PAN_HOLD 뒤 복귀)
-local FLOOR_CARD_HOLD = 1.2 -- 「N층!」 큰 숫자 카드
-local FLOOR_CARD_STROKE = 4
-local FLOOR_DUST = 12
-local ELEVATOR_FADE_SECONDS = 0.3 -- 흰 화면 0 → 1 → 0 합
 -- 완공 지붕 아이콘(W8)
 local ROOF_ICON_GLYPH = "★"
 local ROOF_ICON_SECONDS = 2 -- 떠올랐다 사라지는 전체 시간
@@ -210,8 +200,6 @@ local hapticEnabled = true
 local ceremonyActive = false
 local screenGui: ScreenGui? = nil
 local flashFrame: Frame? = nil
-local elevatorFade: Frame? = nil
-local elevatorToken = 0
 local popupFolder: Folder? = nil -- PlayerGui 아래, 「+N」 빌보드
 local fxFolder: Folder? = nil -- Workspace 아래, 파티클 임시 파트
 local lastFlash = -math.huge
@@ -705,30 +693,35 @@ handlers.star = function(payload: any)
 	end)
 end
 
+--- 바닥에서 납작한 네온 링이 퍼지며 사라진다(스티커·금 스티커)
+local function spreadRing(position: Vector3, color: Color3, diameter: number)
+	local ring = Instance.new("Part")
+	ring.Name = "PickupRing"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.2, 1, 1)
+	ring.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.pi / 2)
+	ring.Color = color
+	ring.Material = Enum.Material.Neon
+	ring.Transparency = 0.3
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.CastShadow = false
+	ring.Parent = fxFolder
+	local spread = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(ring, spread, { Size = Vector3.new(0.2, diameter, diameter), Transparency = 1 }):Play()
+	task.delay(0.5, function()
+		ring:Destroy()
+	end)
+end
+
 -- 금 스티커: 1 → 1.8 → 0(PadController 가 예측 때 팝), 파티클 12 + 퍼지는 링, goldPop, 트라우마 0.15, 「×5!」
 handlers.gold = function(payload: any)
 	local position = PadController.stickerPosition(payload.stickerId) or rootPosition()
 	if position then
 		burst(position, PRESET_GOLD, 12)
-		local ring = Instance.new("Part")
-		ring.Name = "GoldRing"
-		ring.Shape = Enum.PartType.Cylinder
-		ring.Size = Vector3.new(0.2, 1, 1)
-		ring.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.pi / 2)
-		ring.Color = COLOR_GOLD
-		ring.Material = Enum.Material.Neon
-		ring.Transparency = 0.3
-		ring.Anchored = true
-		ring.CanCollide = false
-		ring.CanQuery = false
-		ring.CanTouch = false
-		ring.CastShadow = false
-		ring.Parent = fxFolder
-		local spread = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		TweenService:Create(ring, spread, { Size = Vector3.new(0.2, 10, 10), Transparency = 1 }):Play()
-		task.delay(0.5, function()
-			ring:Destroy()
-		end)
+		spreadRing(position, COLOR_GOLD, 10)
 	end
 	sound(SOUND_GOLD)
 	shake(TRAUMA_GOLD)
@@ -738,7 +731,8 @@ handlers.gold = function(payload: any)
 	afterSticker(payload)
 end
 
--- 스티커: 팝·소리(PadController 예측 시점), 별 파티클 8, 「+N」, 햅틱 소
+-- 스티커: 팝·소리(PadController 예측 시점), 별 파티클 12 + 노란 링, 「+N」, 햅틱 소.
+-- 선물판 칩 펀치는 HudController 가 stickerBoard 가 오를 때 한다
 handlers.sticker = function(payload: any)
 	if payload.gold == true then
 		handlers.gold(payload)
@@ -751,7 +745,8 @@ handlers.sticker = function(payload: any)
 	end
 	local position = PadController.stickerPosition(payload.stickerId) or rootPosition()
 	if position then
-		burst(position, PRESET_STAR, 8)
+		burst(position, PRESET_STAR, 12)
+		spreadRing(position, COLOR_YELLOW, 6)
 	end
 	local value = if type(payload.value) == "number" then payload.value else 0
 	popup(`+{Format.coins(value)}`, COLOR_YELLOW)
@@ -770,49 +765,6 @@ end
 handlers.gift = function(_payload: any)
 	sound(SOUND_REWARD)
 	haptic("small")
-end
-
--- 탑 층 완공(FloorBuilt, 주인에게만 온다): build 소리 → 새 층으로 0.3초 팬 → 「N층!」 큰 숫자 카드 1.2초
-handlers.floor = function(payload: any)
-	local plotId = if type(payload.plot) == "number" then payload.plot else nil
-	local floor = if type(payload.floor) == "number" then payload.floor else nil
-	if plotId == nil or plotId ~= PadController.myPlot() or floor == nil then
-		return -- 방문객 화면은 아무것도 없음(§7.5)
-	end
-	sound(SOUND_BUILD)
-	haptic("medium")
-	local plot = PadController.plotModel(plotId)
-	if plot then
-		local foot = PlotLayout.TOWER_FOOTPRINT
-		local center = Vector3.new((foot.x0 + foot.x1) / 2, TowerConfig.floorY(floor), (foot.z0 + foot.z1) / 2)
-		local position = plot:GetPivot():PointToWorldSpace(center)
-		if not ceremonyActive then
-			CameraController.panTo(position, FLOOR_PAN_SECONDS)
-		end
-		task.delay(0.05, function()
-			burst(position, PRESET_DUST, FLOOR_DUST)
-		end)
-	end
-	card(`{floor}층!`, "", TowerConfig.colorOf(floor), FLOOR_CARD_STROKE, FLOOR_CARD_HOLD)
-end
-
--- 엘리베이터(ElevatorRide, 탄 사람에게만 온다): 0.3초 흰 화면(0 → 1 → 0) + elevator 소리
-handlers.elevator = function(_payload: any)
-	sound(SOUND_ELEVATOR)
-	local frame = elevatorFade
-	if not frame then
-		return
-	end
-	elevatorToken += 1
-	local mine = elevatorToken
-	local half = TweenInfo.new(ELEVATOR_FADE_SECONDS / 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-	local fadeIn = TweenService:Create(frame, half, { BackgroundTransparency = 0 })
-	fadeIn.Completed:Once(function()
-		if mine == elevatorToken then
-			TweenService:Create(frame, half, { BackgroundTransparency = 1 }):Play()
-		end
-	end)
-	fadeIn:Play()
 end
 
 -- 구매: 패드 가라앉음(PadController), build, FOV 65→59→65, 트라우마 0.30, 햅틱 중, 50ms 먼지 12, 1200ms 다음 패드 소리
@@ -878,7 +830,7 @@ handlers.part = function(payload: any)
 	end)
 end
 
--- 전학생: door_open → 3.0초 걷기(StudentRender) → 착석 먼지 4 + sit → 3.5초 arrive + 도감 카드 + 등급 추가 연출
+-- 전학생: 제자리 「짠」(StudentRender 0.45초, arrive·sit 소리도 거기서) → 착석 먼지 4 → 0.9초 도감 카드 + 등급 추가 연출
 handlers.student = function(payload: any)
 	if payload.walk ~= true then
 		return -- 남의 부지·복원 착석은 연출 없음
@@ -892,16 +844,13 @@ handlers.student = function(payload: any)
 	if not plotId or not row then
 		return
 	end
-	sound(SOUND_DOOR)
-	task.delay(3.0, function()
+	task.delay(ARRIVE_SETTLE_SECONDS, function()
 		local at = seatPosition(plotId, studentId)
 		if at then
 			burst(at, PRESET_DUST, 4)
 		end
-		sound(SOUND_SIT)
 	end)
-	task.delay(3.5, function()
-		sound(SOUND_ARRIVE)
+	task.delay(ARRIVE_CARD_SECONDS, function()
 		local style = tierStyle(row.tier)
 		card(row.name, `{row.tier} 전학생`, style.color, style.stroke, CARD_HOLD, studentId)
 		haptic("medium")
@@ -1074,17 +1023,6 @@ function FeedbackController.Start()
 	frame.ZIndex = 10
 	frame.Parent = gui
 	flashFrame = frame
-
-	-- 엘리베이터 흰 화면. 플래시(α ≤ 0.7, 0.08초)와 트윈이 겹치지 않게 따로 둔다
-	local fade = Instance.new("Frame")
-	fade.Name = "ElevatorFade"
-	fade.Size = UDim2.fromScale(1, 1)
-	fade.BackgroundColor3 = COLOR_WHITE
-	fade.BackgroundTransparency = 1
-	fade.BorderSizePixel = 0
-	fade.ZIndex = 11
-	fade.Parent = gui
-	elevatorFade = fade
 
 	local popups = Instance.new("Folder")
 	popups.Name = "FeedbackPopups"

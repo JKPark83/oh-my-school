@@ -4,8 +4,8 @@
 	  build(item, cframe, options?) → Model
 	    cframe = 아이템 발자국(w×d 칸) 가운데, 바닥 윗면 높이, 회전까지 들어간 월드 CFrame.
 	    파트마다 cframe * CFrame.new(part.offset). offset 은 DecorConfig 계약대로 「칸 중심·바닥 y0 기준」.
-	  ★ 서버는 꾸미기 파트를 모른다. 전부 Anchored, CanCollide·CanTouch false(10a: 통과 가능).
-	    CanQuery 도 false 로 만든다. 탭으로 고를 내 부지 배치 모델만 DecorController 가 켠다.
+	  ★ 서버는 꾸미기 파트를 모른다. 전부 Anchored, CanCollide·CanTouch·CanQuery false 로 만든다.
+	    놓인 모델의 충돌(캐릭터와 겹치면 빠져나간 뒤)과 탭으로 고를 내 부지 모델의 CanQuery 는 DecorController 가 켠다.
 	  ★ ghost 면 반투명 0.5, 그림자 없음.
 	  ★ cylinder 는 세워서 만든다. size 는 (지름, 높이, 지름)으로 읽고 로블록스 원기둥(축 = X)을 Z 로 90° 눕혀
 	    세운다. DecorConfig 에 회전 필드가 없어 눕힌 원기둥은 쓰지 않는다.

@@ -4,7 +4,6 @@
 
 	서버가 만든 부지 인스턴스(Workspace.Plots.PlotNN)를 읽고 로컬 연출만 얹는다. 상태의 출처는 언제나 어트리뷰트다.
 	- 구매 패드: PadState 로 보이기·색을 정하고, 내 부지의 활성 패드 위에 빌보드(이름·가격·진행 링)를 띄운다.
-	  탑 폴더(Tower)의 TowerPad(FacilityId "tower")도 같은 패드로 본다. 가격은 다음 층 TowerConfig.priceOf
 	- 칭찬스티커: 서버 파트는 보이지 않는 히트박스(3.4×3×3.4)다. 내 부지면 그 바닥에 3×0.1×3 표시판(별·하트·꽃·스마일)과
 	  세로 빛·반짝 소리를 로컬로 붙인다(개선계획 §3.2 #2·#3·#9). 금 스티커엔 빛기둥. 수평 2.2·높이 4 안이면 먼저 숨기는
 	  클라 예측(0.5초 안에 확정이 없으면 되돌림)
@@ -33,7 +32,6 @@ local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
-local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
@@ -57,8 +55,6 @@ local PadController = {}
 local PAD_ACTIVE = "active"
 local PAD_NEXT = "next"
 local PAD_BUILT = "built"
--- 탑 층 구매 패드의 FacilityId(서버 Tower.refresh)
-local TOWER_FACILITY_ID = "tower"
 
 -- 패널 이름(계획 §3.4 PanelController.open)
 local PANEL_GRADUATE = "graduate"
@@ -85,6 +81,13 @@ local TAP_SIZE = 56 -- px (§8.1 터치 최소)
 local NEXT_PAD_ALPHA = 0.6
 local PAD_SINK = 0.5 -- 스터드
 local PAD_SINK_SECONDS = 0.2
+-- 밟으면 눌렸다가 내려서면 튀어 오른다(활성 패드, 내 부지만). 판정은 서버가 따로 한다 — 이건 보이기만
+local PAD_PRESS = 0.2 -- 스터드(패드 두께 0.4 의 절반)
+local PAD_PRESS_SECONDS = 0.08
+local PAD_RELEASE_SECONDS = 0.3
+local PAD_PRESS_MARGIN = 0.5 -- 스터드. 발이 가장자리에 걸쳐도 눌린 것으로
+local PAD_PRESS_DY = 6 -- 스터드. 패드 윗면과 캐릭터 루트의 높이 차 상한
+local PAD_PRESS_TINT = 0.35 -- 눌린 동안 초록을 흰색 쪽으로 섞는 비율
 local PICKUP_RADIUS = 2.2 -- 스터드, 수평(§3.2 #6)
 local PICKUP_DY = 4 -- 스터드, 히트박스 중심과 캐릭터 루트의 높이 차
 local PICKUP_REVERT = 0.5 -- 초
@@ -147,6 +150,8 @@ type PadEntry = {
 	baseColor: Color3,
 	state: string,
 	ring: Ring?,
+	pressed: boolean,
+	pressTween: Tween?,
 	conns: { RBXScriptConnection },
 }
 
@@ -205,9 +210,6 @@ local plotConns: { [Model]: { RBXScriptConnection } } = {}
 local pads: { [BasePart]: PadEntry } = {}
 local stickers: { [BasePart]: StickerEntry } = {}
 local stars: { [BasePart]: StarEntry } = {}
--- 스티커 콤보 5음계(예측 단계 = 마지막 서버 combo + 1)
-local STICKER_PITCH = { 1.0, 1.122, 1.26, 1.498, 1.682, 2.0 }
-local lastStickerCombo = 0
 local facilities: { [Model]: FacilityEntry } = {}
 local ringClock = 0
 local lastHint = 0
@@ -391,16 +393,8 @@ local function updateRing(entry: PadEntry)
 	local profile = HudController.profile()
 	local graduations = if profile then profile.graduations else 0
 	local coins = if profile then profile.coins else 0
-	local price: number
-	if entry.facilityId == TOWER_FACILITY_ID then
-		-- 다음 층 가격. 층을 사면 towerFloors 가 바뀌어 다음 층 가격으로 넘어가고 링은 0 근처부터 다시 찬다
-		local floor = TowerConfig.nextFloor(if profile then profile.towerFloors else 0)
-		price = if floor then TowerConfig.priceOf(floor, graduations) else 0
-		ring.name.Text = if floor then `{floor}층` else ""
-	else
-		local nextIndex = if profile then profile.buildParts + 1 else 1
-		price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex, graduations)
-	end
+	local nextIndex = if profile then profile.buildParts + 1 else 1
+	local price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex, graduations)
 	local ratio = if price > 0 then math.clamp(coins / price, 0, 1) else 1
 	ring.price.Text = Format.coins(price)
 	local lit = math.floor(ratio * RING_DOTS + 1e-6)
@@ -424,8 +418,39 @@ local function updateRing(entry: PadEntry)
 	end
 end
 
+local function stopPress(entry: PadEntry)
+	entry.pressed = false
+	if entry.pressTween then
+		entry.pressTween:Cancel()
+		entry.pressTween = nil
+	end
+end
+
+--- 밟음/내려섬. 눌리면 살짝 가라앉고 밝아지며 `pad` 소리, 내려서면 Back Out 으로 튀어 오른다
+local function setPressed(entry: PadEntry, on: boolean)
+	if entry.pressed == on then
+		return
+	end
+	stopPress(entry)
+	entry.pressed = on
+	local info = if on
+		then TweenInfo.new(PAD_PRESS_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		else TweenInfo.new(PAD_RELEASE_SECONDS, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local goal = {
+		CFrame = if on then entry.base - Vector3.new(0, PAD_PRESS, 0) else entry.base,
+		Color = if on then COLOR_GREEN:Lerp(COLOR_WHITE, PAD_PRESS_TINT) else COLOR_GREEN,
+	}
+	local tween = TweenService:Create(entry.part, info, goal)
+	entry.pressTween = tween
+	tween:Play()
+	if on then
+		SoundController.play("pad")
+	end
+end
+
 --- 활성 → 건설: 0.2초 가라앉은 뒤 숨기고 원래 자리로
 local function sinkPad(entry: PadEntry)
+	stopPress(entry)
 	local part = entry.part
 	local info = TweenInfo.new(PAD_SINK_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	local tween = TweenService:Create(part, info, { CFrame = entry.base - Vector3.new(0, PAD_SINK, 0) })
@@ -459,6 +484,11 @@ local function applyPad(entry: PadEntry)
 	end
 
 	destroyRing(entry)
+	if previous == PAD_ACTIVE and state ~= PAD_BUILT then
+		-- 눌린 채 비활성이 되면(졸업 철거 등) 원래 자리로 돌려 둔다
+		stopPress(entry)
+		part.CFrame = entry.base
+	end
 	if state == PAD_NEXT then
 		part.Transparency = NEXT_PAD_ALPHA
 		part.Color = COLOR_GRAY
@@ -481,6 +511,31 @@ local function unwatchPad(part: Instance)
 	pads[part :: any] = nil
 end
 
+--- 서버가 준 패드 자리. 시설 패드는 부품마다 옮겨 가서(PadBase) 눌림·가라앉음 연출의 기준을 여기서 읽는다
+local function padBase(part: BasePart): CFrame
+	local raw = part:GetAttribute(Keys.ATTR_PAD_BASE)
+	return if typeof(raw) == "CFrame" then raw else part.CFrame
+end
+
+--- 다음 부품 자리로 옮겨 감: 눌림을 풀고 새 자리에서 살짝 솟아오른다. 활성이 아니면 기준만 바꾼다
+local function movePad(entry: PadEntry)
+	local base = padBase(entry.part)
+	if base == entry.base then
+		return
+	end
+	entry.base = base
+	if entry.state ~= PAD_ACTIVE then
+		return
+	end
+	stopPress(entry)
+	local part = entry.part
+	part.CFrame = base - Vector3.new(0, PAD_SINK, 0)
+	local info = TweenInfo.new(PAD_RELEASE_SECONDS, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(part, info, { CFrame = base })
+	entry.pressTween = tween
+	tween:Play()
+end
+
 local function watchPad(part: Instance, plotId: number)
 	if not part:IsA("BasePart") or pads[part] then
 		return
@@ -490,10 +545,12 @@ local function watchPad(part: Instance, plotId: number)
 		part = part,
 		plotId = plotId,
 		facilityId = if type(facilityId) == "string" then facilityId else part.Name,
-		base = part.CFrame,
+		base = padBase(part),
 		baseColor = part.Color,
 		state = "",
 		ring = nil,
+		pressed = false,
+		pressTween = nil,
 		conns = {},
 	}
 	pads[part] = entry
@@ -501,6 +558,12 @@ local function watchPad(part: Instance, plotId: number)
 		entry.conns,
 		part:GetAttributeChangedSignal(Keys.ATTR_PAD_STATE):Connect(function()
 			applyPad(entry)
+		end)
+	)
+	table.insert(
+		entry.conns,
+		part:GetAttributeChangedSignal(Keys.ATTR_PAD_BASE):Connect(function()
+			movePad(entry)
 		end)
 	)
 	applyPad(entry)
@@ -742,7 +805,8 @@ local function predictPickup(entry: StickerEntry, rootPos: Vector3)
 	entry.pendingAt = os.clock()
 	flyAway(entry, rootPos)
 	applySticker(entry)
-	SoundController.play("sticker", STICKER_PITCH[math.clamp(lastStickerCombo + 1, 1, #STICKER_PITCH)])
+	-- 음높이는 늘 같다. 콤보마다 올리던 5음계는 「줍는 소리가 매번 바뀐다」로 들려서 뺐다
+	SoundController.play("sticker")
 end
 
 local function unwatchSticker(part: Instance)
@@ -1187,27 +1251,9 @@ local function watchFolder(folder: Instance, plotId: number, add: (Instance, num
 	end
 end
 
---- 탑 폴더에서는 TowerPad 만 패드로 본다(바닥판·앵커는 서버가 그린 그대로 둔다)
-local function watchTowerChild(child: Instance, plotId: number)
-	if child.Name == Keys.TOWER_PAD then
-		watchPad(child, plotId)
-	end
-end
-
---- 탑 폴더가 통째로 빠지면(다시 짓기) 월드 밖으로 나간 패드를 정리한다
-local function sweepDetachedPads()
-	for part in pads do
-		if not part:IsDescendantOf(Workspace) then
-			unwatchPad(part)
-		end
-	end
-end
-
 local function onPlotChildAdded(child: Instance, plotId: number, animate: boolean)
 	if child.Name == Keys.PADS_FOLDER then
 		watchFolder(child, plotId, watchPad, unwatchPad)
-	elseif child.Name == Keys.TOWER_FOLDER then
-		watchFolder(child, plotId, watchTowerChild, unwatchPad)
 	elseif child.Name == Keys.STICKERS_FOLDER then
 		watchFolder(child, plotId, watchSticker, unwatchSticker)
 	elseif child.Name == Keys.STARS_FOLDER then
@@ -1270,9 +1316,7 @@ local function watchPlot(model: Instance, animate: boolean)
 	table.insert(
 		conns,
 		model.ChildRemoved:Connect(function(child)
-			if child.Name == Keys.TOWER_FOLDER then
-				sweepDetachedPads()
-			elseif child:IsA("Model") then
+			if child:IsA("Model") then
 				unwatchFacility(child)
 			end
 		end)
@@ -1389,6 +1433,23 @@ local function onHeartbeat(dt: number)
 		gui.Enabled = entry.part.LocalTransparencyModifier < 1
 	end
 
+	-- 발판 눌림. 패드는 부지에 3개 이하라 매 프레임 돌려도 싸다
+	for _, entry in pads do
+		local standing = false
+		if rootPos and entry.plotId == myPlotId and entry.state == PAD_ACTIVE then
+			local size = entry.part.Size
+			local offset = entry.base:PointToObjectSpace(rootPos)
+			local top = size.Y / 2
+			standing = math.abs(offset.X) <= size.X / 2 + PAD_PRESS_MARGIN
+				and math.abs(offset.Z) <= size.Z / 2 + PAD_PRESS_MARGIN
+				and offset.Y > top
+				and offset.Y - top <= PAD_PRESS_DY
+		end
+		if standing ~= entry.pressed then
+			setPressed(entry, standing)
+		end
+	end
+
 	ringClock += dt
 	if ringClock >= RING_REFRESH then
 		ringClock = 0
@@ -1452,11 +1513,7 @@ function PadController.refresh()
 end
 
 --- StickerCollected: 예측한 스티커를 확정한다(Collected 가 올 때까지 숨긴 채 둔다)
--- 서버 combo 로 다음 예측 음정을 맞춘다(끊기면 1 로 돌아와 낮은 음부터)
-function PadController.confirmSticker(payload: { stickerId: any, combo: number? })
-	if type(payload.combo) == "number" then
-		lastStickerCombo = payload.combo
-	end
+function PadController.confirmSticker(payload: { stickerId: any })
 	local id = tostring(payload.stickerId)
 	for _, entry in stickers do
 		if entry.plotId == myPlotId and (entry.id == id or entry.part.Name == id) then

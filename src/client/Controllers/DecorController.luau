@@ -6,8 +6,7 @@
 	  서버는 꾸미기 파트를 만들지 않는다. ReplicatedStorage.PlotState.PlotNN 의 Decor 어트리뷰트(DecorCodec 문자열)를
 	  읽어 Workspace.DecorFx/PlotNN 아래 로컬 모델로 그린다. 부지 로컬 → 월드는 Plots.PlotNN 의 피벗(PlotShell 이
 	  부지 CFrame 으로 둔다. 스트리밍과 무관하게 복제됨)으로 옮긴다. 모델 어트리뷰트 "Slot" = decorPlaced 순번.
-	  1층 높이는 바닥 윗면 y0(운동장·복도가 지어졌으면 그 바닥 위), 3층부터는 TOWER_BASE_Y + (f-3) × FLOOR_STEP 이고
-	  강당이 지어진 부지에서만 그린다.
+	  높이는 1층 바닥 윗면 y0(운동장·복도가 지어졌으면 그 바닥 위)이다.
 	  LOD: 내 부지 + 캐릭터에서 가까운 부지 3개만 그린다(1초마다 다시 잰다). 나머지는 모델을 지운다.
 
 	조작(주인만. W6 꾸미기 시트가 부른다)
@@ -24,6 +23,10 @@
 	  흐린 ✓ 를 누르면 「뿅」(nudge) + 가장 가까운 놓을 수 있는 칸으로 0.2초 스르르 옮긴다(없으면 소리만).
 
 	방문객: 남의 부지 꾸미기는 렌더만 한다. 탭·고스트는 내 부지 모델만 다룬다.
+
+	충돌: 놓인 물건은 캐릭터를 막는다(로컬 파트라 내 캐릭터만 막고, 다른 사람은 자기 화면의 사본이 막는다).
+	  그릴 때 내 캐릭터가 물건 상자 안(둘레 PHASE_MARGIN)에 있으면 그 물건만 충돌을 끈 채 두고,
+	  캐릭터가 빠져나가면 켠다(갇히거나 튕겨 나가지 않게). 터치는 계속 끈다.
 ]]
 
 local Players = game:GetService("Players")
@@ -41,15 +44,11 @@ local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
-local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 
 type DecorPlacement = Types.DecorPlacement
 
 -- 형제 컨트롤러는 형태만 선언하고 any 로 받는다(PadController 와 같은 방식)
-type HudApi = {
-	profile: () -> Types.Profile?,
-}
 type CameraApi = {
 	lockPitch: (deg: number, seconds: number) -> (),
 	unlockPitch: (seconds: number) -> (),
@@ -57,7 +56,6 @@ type CameraApi = {
 type SoundApi = {
 	play: (key: string, pitch: number?) -> (),
 }
-local HudController = (require(script.Parent.HudController) :: any) :: HudApi
 local CameraController = (require(script.Parent.CameraController) :: any) :: CameraApi
 local SoundController = (require(script.Parent.SoundController) :: any) :: SoundApi
 
@@ -124,13 +122,12 @@ type Mode = {
 	rot: number,
 	cx: number,
 	cz: number,
-	f: number,
 	ok: boolean,
 	reason: string,
 	ghost: Model,
 	parts: { GhostPart },
 	outline: Highlight,
-	evalKey: string?, -- 마지막으로 판정한 (칸·회전·층·배치 버전)
+	evalKey: string?, -- 마지막으로 판정한 (칸·회전·배치 버전)
 	pinned: { cx: number, cz: number, from: string }?, -- 뿅 이동한 칸. 따라갈 칸이 from 에서 바뀌면 푼다
 	anim: { from: CFrame, to: CFrame, t0: number }?,
 	pending: boolean,
@@ -145,6 +142,8 @@ local stateRoot: Instance? = nil
 local myPlotId: number? = nil
 
 local rendered: { [number]: PlotRender } = {}
+local phased: { [Model]: boolean } = {} -- 캐릭터와 겹쳐서 충돌을 잠시 끈 모델
+local phaseClock = 0
 local near: { [number]: boolean } = {}
 local placedCache: { [number]: { DecorPlacement } } = {}
 local pivots: { [number]: CFrame } = {}
@@ -219,12 +218,6 @@ local function builtOf(plotId: number): { [string]: boolean }
 	return if type(csv) == "string" then FacilityConfig.fromCsv(csv) :: any else {}
 end
 
-local function towerFloors(): number
-	local profile = HudController.profile()
-	local floors = if profile then profile.towerFloors else nil
-	return if type(floors) == "number" then floors else 0
-end
-
 -- ── 좌표 ─────────────────────────────────────────────────────────
 
 --- 회전을 반영한 발자국 칸 수
@@ -242,11 +235,8 @@ local function footCenter(item: DecorConfig.Item, cx: number, cz: number, rot: n
 	return PlotLayout.cellCenter(cx, cz) + Vector2.new((w - 1) * cell / 2, (d - 1) * cell / 2)
 end
 
---- 층 바닥 윗면(부지 로컬 y). 1층은 운동장·복도처럼 바닥 위에 깐 시설이 있으면 그 바닥 위
-local function floorY(built: { [string]: boolean }, f: number, at: Vector2): number
-	if f >= 3 then
-		return PlotLayout.TOWER_BASE_Y + (f - 3) * PlotLayout.FLOOR_STEP
-	end
+--- 바닥 윗면(부지 로컬 y). 운동장·복도처럼 바닥 위에 깐 시설이 있으면 그 바닥 위
+local function floorY(built: { [string]: boolean }, at: Vector2): number
 	for _, zone in PlotLayout.STICKER_ZONES do
 		local id = zone.facilityId
 		local row = if id and built[id] then (FacilityConfig.BY_ID :: any)[id] else nil
@@ -266,11 +256,10 @@ local function worldCFrame(
 	item: DecorConfig.Item,
 	cx: number,
 	cz: number,
-	rot: number,
-	f: number
+	rot: number
 ): CFrame
 	local center = footCenter(item, cx, cz, rot)
-	local y = floorY(built, f, center)
+	local y = floorY(built, center)
 	return pivot * CFrame.new(center.X, y, center.Y) * CFrame.Angles(0, rot * math.pi / 2, 0)
 end
 
@@ -286,6 +275,9 @@ local function unrenderPlot(plotId: number)
 			blockerLights[model].tween:Cancel()
 			blockerLights[model] = nil
 		end
+	end
+	for _, model in entry.models do
+		phased[model] = nil
 	end
 	entry.folder:Destroy()
 	rendered[plotId] = nil
@@ -303,6 +295,54 @@ local function applyHidden()
 	end
 end
 
+local PHASE_MARGIN = Vector3.new(1.5, 3, 1.5) -- 캐릭터 몸 반 폭·반 키 정도
+local PHASE_CHECK_SECONDS = 0.2
+
+--- 내 캐릭터가 이 모델 상자 안(둘레 PHASE_MARGIN)에 있는가
+local function overlapsCharacter(model: Model): boolean
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if not hrp or not hrp:IsA("BasePart") then
+		return false
+	end
+	local cf, size = model:GetBoundingBox()
+	local p = cf:PointToObjectSpace(hrp.Position)
+	local half = size / 2 + PHASE_MARGIN
+	return math.abs(p.X) < half.X and math.abs(p.Y) < half.Y and math.abs(p.Z) < half.Z
+end
+
+local function setCollide(model: Model, on: boolean)
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.CanCollide = on
+		end
+	end
+end
+
+--- 새로 그린 모델: 캐릭터와 겹치면 충돌을 미루고, 아니면 바로 켠다
+local function armCollision(model: Model)
+	if overlapsCharacter(model) then
+		phased[model] = true
+	else
+		setCollide(model, true)
+	end
+end
+
+--- 미뤄 둔 모델 중 캐릭터가 빠져나간 것의 충돌을 켠다
+local function settleCollision(dt: number)
+	phaseClock += dt
+	if phaseClock < PHASE_CHECK_SECONDS then
+		return
+	end
+	phaseClock = 0
+	for model in phased do
+		if not overlapsCharacter(model) then
+			setCollide(model, true)
+			phased[model] = nil
+		end
+	end
+end
+
 local function renderPlot(plotId: number)
 	unrenderPlot(plotId)
 	local rootFolder = fxRoot
@@ -317,22 +357,21 @@ local function renderPlot(plotId: number)
 	folder.Name = Keys.plotName(plotId)
 	local entry: PlotRender = { folder = folder, models = {} }
 	local built = builtOf(plotId)
-	local hasTower = built.auditorium == true
 	local mine = plotId == myPlotId
 	for slot, p in readPlaced(plotId) do
 		local item = DecorConfig.byId(p.item)
-		local f = p.f or 1
-		if item and (f < 3 or hasTower) then
-			local model = DecorBuilder.build(item, worldCFrame(pivot, built, item, p.cx, p.cz, p.rot, f))
+		if item then
+			local model = DecorBuilder.build(item, worldCFrame(pivot, built, item, p.cx, p.cz, p.rot))
 			model:SetAttribute("Slot", slot)
 			if mine then
-				-- 탭으로 고르려면 레이캐스트에 잡혀야 한다. 충돌·터치는 계속 끔(§3.5 #10a)
+				-- 탭으로 고르려면 레이캐스트에 잡혀야 한다. 터치는 계속 끈다
 				for _, part in model:GetDescendants() do
 					if part:IsA("BasePart") then
 						part.CanQuery = true
 					end
 				end
 			end
+			armCollision(model)
 			model.Parent = folder
 			entry.models[slot] = model
 		end
@@ -344,7 +383,7 @@ local function renderPlot(plotId: number)
 	end
 end
 
---- 내 부지 + 가까운 다른 부지로 채워 모두 TowerConfig.NEAR_COUNT 개(TowerRenderController 와 같은 값·같은 규칙).
+--- 내 부지 + 가까운 다른 부지로 채워 모두 DecorConfig.NEAR_COUNT 개.
 --- 지금 그리는 부지는 NEAR_HYSTERESIS 만큼 가깝게 쳐서 경계에서 매초 바뀌지 않는다
 local function updateNear()
 	local character = player.Character
@@ -357,7 +396,7 @@ local function updateNear()
 		local pivot = plotPivot(plotId)
 		if pivot and from and plotId ~= myPlotId then
 			local dist = (pivot.Position - from).Magnitude
-			local score = if near[plotId] then dist - TowerConfig.NEAR_HYSTERESIS else dist
+			local score = if near[plotId] then dist - DecorConfig.NEAR_HYSTERESIS else dist
 			table.insert(order, { id = plotId, score = score })
 		end
 	end
@@ -366,7 +405,7 @@ local function updateNear()
 	end)
 
 	local want: { [number]: boolean } = {}
-	local slots = TowerConfig.NEAR_COUNT
+	local slots = DecorConfig.NEAR_COUNT
 	if myPlotId then
 		want[myPlotId] = true
 		slots -= 1
@@ -576,13 +615,13 @@ local function paintGhost(current: Mode)
 end
 
 --- 캐릭터 앞 GHOST_AHEAD 스터드를 발자국 가운데로 삼는 원점 칸. 부지 밖이면 inside = false
-local function followCell(current: Mode, item: DecorConfig.Item): (number, number, number, boolean)
+local function followCell(current: Mode, item: DecorConfig.Item): (number, number, boolean)
 	local plotId = myPlotId
 	local pivot = if plotId then plotPivot(plotId) else nil
 	local character = player.Character
 	local hrp = if character then character:FindFirstChild("HumanoidRootPart") else nil
 	if not pivot or not hrp or not hrp:IsA("BasePart") then
-		return current.cx, current.cz, current.f, false
+		return current.cx, current.cz, false
 	end
 	local look = hrp.CFrame.LookVector
 	local flat = Vector3.new(look.X, 0, look.Z)
@@ -595,7 +634,7 @@ local function followCell(current: Mode, item: DecorConfig.Item): (number, numbe
 	cz = math.min(cz, PlotLayout.GRID - d)
 	local half = PlotLayout.PLOT_HALF
 	local inside = math.abs(p.X) <= half and math.abs(p.Z) <= half
-	return cx, cz, PlotLayout.floorOf(p.Y), inside
+	return cx, cz, inside
 end
 
 --- 지금 칸에서 서버와 같은 판정을 하고 고스트·✓·윤곽선·막대에 반영한다
@@ -605,16 +644,7 @@ local function evaluate(current: Mode, inside: boolean)
 		return
 	end
 	local placed = readPlaced(plotId)
-	local ok, reason = DecorGrid.canPlace(
-		placed,
-		towerFloors(),
-		current.item,
-		current.cx,
-		current.cz,
-		current.rot,
-		current.f,
-		current.slot
-	)
+	local ok, reason = DecorGrid.canPlace(placed, current.item, current.cx, current.cz, current.rot, current.slot)
 	if not inside then
 		ok, reason = false, "cell"
 	end
@@ -626,9 +656,7 @@ local function evaluate(current: Mode, inside: boolean)
 	if ok or not inside then
 		setBlockers({})
 	else
-		setBlockers(
-			DecorGrid.blockers(placed, current.f, current.cx, current.cz, current.rot, current.item, current.slot)
-		)
+		setBlockers(DecorGrid.blockers(placed, current.cx, current.cz, current.rot, current.item, current.slot))
 	end
 	setBarBlink(reason == "limit")
 end
@@ -639,7 +667,7 @@ local function placeGhost(current: Mode, item: DecorConfig.Item)
 	if not plotId or not pivot then
 		return
 	end
-	local cf = worldCFrame(pivot, builtOf(plotId), item, current.cx, current.cz, current.rot, current.f)
+	local cf = worldCFrame(pivot, builtOf(plotId), item, current.cx, current.cz, current.rot)
 	local anim = current.anim
 	if anim then
 		anim.to = cf
@@ -657,8 +685,8 @@ local function onHeartbeat()
 	if not item then
 		return
 	end
-	local cx, cz, f, inside = followCell(current, item)
-	local followKey = `{cx},{cz},{f},{current.rot}`
+	local cx, cz, inside = followCell(current, item)
+	local followKey = `{cx},{cz},{current.rot}`
 	local pinned = current.pinned
 	if pinned then
 		if pinned.from == followKey then
@@ -667,10 +695,10 @@ local function onHeartbeat()
 			current.pinned = nil
 		end
 	end
-	local key = `{cx},{cz},{f},{current.rot},{placedVersion},{towerFloors()},{inside}`
+	local key = `{cx},{cz},{current.rot},{placedVersion},{inside}`
 	if key ~= current.evalKey then
 		current.evalKey = key
-		current.cx, current.cz, current.f = cx, cz, f
+		current.cx, current.cz = cx, cz
 		evaluate(current, inside)
 		placeGhost(current, item)
 	end
@@ -725,7 +753,6 @@ local function enter(kind: "place" | "move", itemId: string, slot: number?, rot:
 		rot = rot,
 		cx = 0,
 		cz = 0,
-		f = 1,
 		ok = false,
 		reason = "cell",
 		ghost = ghost,
@@ -752,20 +779,12 @@ local function nudge(current: Mode)
 	if not plotId or current.reason == "limit" then
 		return
 	end
-	local nx, nz = DecorGrid.nearestFree(
-		readPlaced(plotId),
-		towerFloors(),
-		current.item,
-		current.cx,
-		current.cz,
-		current.rot,
-		current.f,
-		current.slot
-	)
+	local nx, nz =
+		DecorGrid.nearestFree(readPlaced(plotId), current.item, current.cx, current.cz, current.rot, current.slot)
 	if not nx or not nz then
 		return
 	end
-	current.pinned = { cx = nx, cz = nz, from = `{current.cx},{current.cz},{current.f},{current.rot}` }
+	current.pinned = { cx = nx, cz = nz, from = `{current.cx},{current.cz},{current.rot}` }
 	current.anim = { from = current.ghost:GetPivot(), to = current.ghost:GetPivot(), t0 = os.clock() }
 	current.evalKey = nil
 	onHeartbeat()
@@ -796,9 +815,9 @@ local function onConfirm()
 		return
 	end
 	if current.kind == "place" then
-		fire("PlaceDecor", current.item, current.cx, current.cz, current.rot, current.f)
+		fire("PlaceDecor", current.item, current.cx, current.cz, current.rot)
 	else
-		fire("MoveDecor", current.slot, current.cx, current.cz, current.rot, current.f)
+		fire("MoveDecor", current.slot, current.cx, current.cz, current.rot)
 	end
 	setPending(current)
 end
@@ -854,7 +873,7 @@ local function tapAt(position: Vector2)
 		return
 	end
 	local ray = cam:ScreenPointToRay(position.X, position.Y)
-	-- Include 라 내 DecorFx 폴더만 맞는다. TowerFx 탑 벽(가림 페이드용 CanQuery true)은 레이를 막지 않는다
+	-- Include 라 내 DecorFx 폴더만 맞는다
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = { mine.folder }
@@ -1087,6 +1106,7 @@ function DecorController.Start()
 	end)
 
 	RunService.Heartbeat:Connect(onHeartbeat)
+	RunService.Heartbeat:Connect(settleCollision)
 
 	UserInputService.TouchTap:Connect(function(positions: { Vector2 }, processed: boolean)
 		if processed or #positions == 0 then

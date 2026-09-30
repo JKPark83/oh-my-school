@@ -16,7 +16,7 @@ local PlotService = require(script.Parent.PlotService)
 
 local StudentService = {}
 
---- 학생 1명 지급. walk 는 주인 화면에서 걸어 들어오는 연출 여부
+--- 학생 1명 지급. walk 는 주인 화면에서 「짠」 등장 연출을 할지 여부(필드 이름은 프로토콜 §11.5 그대로)
 function StudentService.grant(player: Player, studentId: string, walk: boolean)
 	local profile: Types.Profile? = DataService.get(player)
 	local row = StudentConfig.BY_ID[studentId]

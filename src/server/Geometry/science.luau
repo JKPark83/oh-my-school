@@ -17,11 +17,13 @@ local BuildKit = require(script.Parent.Parent.BuildKit)
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 
 local science = {}
 
 local COLOR_PRIMARY = Color3.fromRGB(120, 125, 130)
-local COLOR_SECONDARY = Color3.fromRGB(80, 85, 90)
+-- 실험대 수납장. 수납장 그림(PropAssets.INTERIOR.CABINET)이 투명 덧그림이라 이 색이 문짝 색이 된다
+local COLOR_SECONDARY = Color3.fromRGB(200, 214, 222)
 local MATERIAL = Enum.Material.Metal
 
 local WALL_T = 1
@@ -42,6 +44,7 @@ local COLOR_GLASS = Color3.fromRGB(210, 230, 240)
 local COLOR_LIQUID = Color3.fromRGB(80, 200, 120)
 local COLOR_PAPER = Color3.fromRGB(250, 248, 236)
 local COLOR_WOOD = Color3.fromRGB(150, 110, 70)
+local COLOR_WAINSCOT = Color3.fromRGB(150, 190, 170) -- 벽 아래 띠(연두 회색)
 
 local function at(plotCFrame: CFrame, x: number, y: number, z: number, rot: CFrame?): CFrame
 	local cf = plotCFrame * CFrame.new(x, y, z)
@@ -94,14 +97,15 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 		at(plotCFrame, cx, row.center.Y + FLOOR_T / 2, cz),
 		{ color = COLOR_FLOOR }
 	)
-	part(
+	BuildKit.floorTile(floor)
+	local wallNW = part(
 		model,
 		"WallNW",
 		Vector3.new(segW, h, WALL_T),
 		at(plotCFrame, cx - (DOOR_W + segW) / 2, wallY, northZ),
 		wallOpts()
 	)
-	part(
+	local wallNE = part(
 		model,
 		"WallNE",
 		Vector3.new(segW, h, WALL_T),
@@ -110,14 +114,14 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	)
 	local wallS =
 		part(model, "WallS", Vector3.new(w, h, WALL_T), at(plotCFrame, cx, wallY, cz + d / 2 - WALL_T / 2), wallOpts())
-	part(
+	local wallE = part(
 		model,
 		"WallE",
 		Vector3.new(WALL_T, h, d - 2 * WALL_T),
 		at(plotCFrame, cx + w / 2 - WALL_T / 2, wallY, cz),
 		wallOpts()
 	)
-	part(
+	local wallW = part(
 		model,
 		"WallW",
 		Vector3.new(WALL_T, h, d - 2 * WALL_T),
@@ -126,6 +130,12 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	)
 	-- 문 없는 바깥 벽 면에 창(§3.1 #8). id 0 이면 안 붙는다 — 동쪽은 현관, 서쪽은 보건실 벽과 맞닿아 남쪽만(맞닿은 면은 가려져 Texture 만 늘고, 페이드 때 벽 속에 비친다)
 	BuildKit.window(wallS, Enum.NormalId.Back)
+	-- 벽 안쪽 면 아래 띠. 북벽 −Z 는 문 쪽이라 안쪽 면이 Back
+	BuildKit.wainscot(wallNW, Enum.NormalId.Back, COLOR_WAINSCOT)
+	BuildKit.wainscot(wallNE, Enum.NormalId.Back, COLOR_WAINSCOT)
+	BuildKit.wainscot(wallS, Enum.NormalId.Front, COLOR_WAINSCOT)
+	BuildKit.wainscot(wallE, Enum.NormalId.Left, COLOR_WAINSCOT)
+	BuildKit.wainscot(wallW, Enum.NormalId.Right, COLOR_WAINSCOT)
 	partIndex = 2 -- 상인방 + 지붕
 	local lintel = part(
 		model,
@@ -158,13 +168,15 @@ local function buildBench(
 		color = COLOR_PRIMARY,
 		material = MATERIAL,
 	})
-	part(
+	local base = part(
 		model,
 		"BenchBase" .. suffix,
 		Vector3.new(7.4, SIT_DESK - 0.5, 2.6),
 		at(plotCFrame, x, floorTop + (SIT_DESK - 0.5) / 2, z),
-		{ color = COLOR_SECONDARY, material = MATERIAL }
+		{ color = COLOR_SECONDARY, material = Enum.Material.SmoothPlastic }
 	)
+	BuildKit.decal(base, Enum.NormalId.Front, PropAssets.INTERIOR.CABINET)
+	BuildKit.decal(base, Enum.NormalId.Back, PropAssets.INTERIOR.CABINET)
 
 	-- 스툴: 실험대 남쪽, 북쪽(-Z)을 보고 앉는다
 	local sz = z + 2.9
@@ -248,20 +260,24 @@ function science.build(plotCFrame: CFrame): Model
 	})
 
 	-- 시약 선반: 서쪽 벽. 주기율표 포스터: 남쪽 벽
-	part(
+	local shelf = part(
 		model,
 		"Shelf",
 		Vector3.new(0.6, 5, 6),
 		at(plotCFrame, westX + 0.3, floorTop + 5, cz),
 		{ color = COLOR_WOOD, material = Enum.Material.Wood }
 	)
+	BuildKit.decal(shelf, Enum.NormalId.Right, PropAssets.INTERIOR.REAGENT_SHELF) -- 로컬 +X = 방 쪽
 	local poster =
 		part(model, "Poster", Vector3.new(8, 5, 0.1), at(plotCFrame, cx - 5, floorTop + 6.5, southZ - 0.05), {
 			color = COLOR_PAPER,
 			collide = false,
 			cast = false,
 		})
-	BuildKit.surfaceText(poster, Enum.NormalId.Front, "원소 주기율표", COLOR_LABEL, 1.2)
+	-- 그림에 제목이 들어 있다. id 0 이면 글자만
+	if not BuildKit.decal(poster, Enum.NormalId.Front, PropAssets.INTERIOR.POSTER_PERIODIC) then
+		BuildKit.surfaceText(poster, Enum.NormalId.Front, "원소 주기율표", COLOR_LABEL, 1.2)
+	end
 
 	-- 문
 	attachment(model, Keys.DOOR, at(plotCFrame, cx, floorTop, northZ, CFrame.Angles(0, math.pi, 0)))

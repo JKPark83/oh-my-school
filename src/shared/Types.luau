@@ -31,13 +31,12 @@ export type Stats = {
 	playSeconds: number,
 }
 
--- 꾸미기 배치 1개. cx·cz 는 그리드 칸, rot 는 회전 단계, f 는 층(nil = 1층)
+-- 꾸미기 배치 1개. cx·cz 는 그리드 칸, rot 는 회전 단계
 export type DecorPlacement = {
 	item: string,
 	cx: number,
 	cz: number,
 	rot: number,
-	f: number?,
 }
 
 export type Profile = {
@@ -56,7 +55,6 @@ export type Profile = {
 	decorPlaced: { DecorPlacement },
 	decorPaid: { [string]: { number } }, -- 아이템 id → 산 값 스택(돌려주기는 맨 뒤 값). 비면 키 없음. 무료로 받은 것은 없다
 	decorStarter: boolean, -- 튜토리얼 화분을 받았는지(한 번만 준다)
-	towerFloors: number,
 }
 
 export type Seat = {
@@ -77,8 +75,6 @@ export type GameEventKind =
 	| "DecorStored"
 	| "DecorBought"
 	| "DecorReturned"
-	| "FloorBuilt"
-	| "ElevatorRide"
 
 -- 선물판 40칸이 차서 선물 1개를 받음. 본인에게만
 export type GiftOpened = {
@@ -96,7 +92,6 @@ export type DecorPlaced = {
 	cx: number,
 	cz: number,
 	rot: number,
-	f: number,
 	moved: boolean, -- true = MoveDecor(자리 옮김), false = PlaceDecor(보관함에서 꺼냄)
 }
 
@@ -114,19 +109,6 @@ export type DecorBought = {
 export type DecorReturned = {
 	item: string,
 	coins: number, -- 돌려받은 코인
-}
-
--- 층 올리기(W6). 주인에게만. floor = 방금 산 층 번호, coins = 낸 코인
-export type FloorBuilt = {
-	plot: number,
-	floor: number,
-	coins: number,
-}
-
--- 엘리베이터를 탄 사람에게만. floor = 도착 층
-export type ElevatorRide = {
-	plot: number,
-	floor: number,
 }
 
 export type DenyReason = "coins" | "cooldown" | "owner" | "cell" | "limit" | "owned" | "locked"

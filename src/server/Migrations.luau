@@ -14,6 +14,11 @@
 	  - stickerBoard 는 그대로 둔다. 옛 판(60칸)이 40칸 이상이면 다음 스티커 때 GiftBoard 가 선물로 바꾼다.
 	  - giftIndex 0 · decorOwned {} · decorPlaced {} · towerFloors 0 (Reconcile 이 이미 채웠으면 그대로).
 	    튜토리얼 화분은 여기서 주지 않는다. DataService.load 가 decorStarter 로 한 번만 준다.
+
+	v2 → v3 (층 올리기 폐기)
+	  - towerFloors 를 지운다. 3층 이상은 더 없다.
+	  - decorPlaced 중 f ≥ 3(탑 층)에 놓인 것은 빼서 decorOwned 로 돌려놓는다. 개수·산 값(decorPaid)은 그대로다.
+	  - 남은 배치의 f 를 지운다(1층만 남는다).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -58,6 +63,29 @@ Migrations[1] = function(data: any)
 	if data.towerFloors == nil then
 		data.towerFloors = 0
 	end
+end
+
+Migrations[2] = function(data: any)
+	data.towerFloors = nil
+	if type(data.decorPlaced) ~= "table" then
+		return
+	end
+	if type(data.decorOwned) ~= "table" then
+		data.decorOwned = {}
+	end
+	local kept = {}
+	for _, p in data.decorPlaced do
+		if type(p) ~= "table" then
+			continue
+		end
+		if type(p.f) == "number" and p.f >= 3 then
+			data.decorOwned[p.item] = (data.decorOwned[p.item] or 0) + 1
+		else
+			p.f = nil
+			table.insert(kept, p)
+		end
+	end
+	data.decorPlaced = kept
 end
 
 return Migrations

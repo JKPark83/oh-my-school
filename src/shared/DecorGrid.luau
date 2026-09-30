@@ -11,19 +11,17 @@
 	  - 구매 패드 4×4 와 그 둘레 한 칸, 스폰 8×8
 	  - 스티커 후보·홈 자리·별 자리 판(3.4×3.4)
 	  - PlotLayout.DECOR_STATIC(교문 줄·길·팻말·국기봉·접수대·나무·현관·교실1) + 교실1 남문 앞
-	3층부터(탑 층): TOWER_FOOTPRINT 안만. 엘리베이터 칸과 그 앞(+z) 칸, 기본 가구 칸(발자국 x0·z0 모서리)은 막는다.
 ]]
 
 local DecorConfig = require(script.Parent.Config.DecorConfig)
 local FacilityConfig = require(script.Parent.Config.FacilityConfig)
 local PlotLayout = require(script.Parent.PlotLayout)
-local TowerConfig = require(script.Parent.Config.TowerConfig) -- TowerConfig 는 DecorGrid 를 require 하지 않는다(순환 없음)
 
 local DecorGrid = {}
 
-type Placement = { item: string, cx: number, cz: number, rot: number, f: number? }
+type Placement = { item: string, cx: number, cz: number, rot: number }
 type Rect = { x0: number, x1: number, z0: number, z1: number }
-export type Reason = "ok" | "item" | "cell" | "floor" | "blocked" | "overlap" | "limit"
+export type Reason = "ok" | "item" | "cell" | "blocked" | "overlap" | "limit"
 
 local GRID = PlotLayout.GRID
 local CELL = PlotLayout.CELL
@@ -115,8 +113,11 @@ do
 					blockRect(front)
 				end
 			end
-			-- 패드와 둘레 한 칸
+			-- 패드 자리(입구 + 방 안 부품 자리 전부)와 둘레 한 칸. 패드가 부품마다 옮겨 가니 전 자리를 비워 둔다
 			blockRect(around(fac.pad.X, fac.pad.Z, PAD_SIZE / 2 + CELL, PAD_SIZE / 2 + CELL))
+			for _, spot in fac.partPads do
+				blockRect(around(spot.X, spot.Z, PAD_SIZE / 2 + CELL, PAD_SIZE / 2 + CELL))
+			end
 		end
 	end
 
@@ -147,14 +148,7 @@ do
 	blockRect(doorFront(class1, PlotLayout.CLASS1.X, PlotLayout.CLASS1.Z, "S") :: Rect)
 end
 
--- ── 탑 층 마스크 ─────────────────────────────────────────────────
-local foot = PlotLayout.TOWER_FOOTPRINT
-local towerX0, towerZ0 = PlotLayout.cellOf(foot.x0 + CELL / 2, foot.z0 + CELL / 2)
-local towerX1, towerZ1 = PlotLayout.cellOf(foot.x1 - CELL / 2, foot.z1 - CELL / 2)
-local elevatorX, elevatorZ = PlotLayout.cellOf(PlotLayout.ELEVATOR.X, PlotLayout.ELEVATOR.Y)
-local furnitureX, furnitureZ = TowerConfig.furnitureCell() -- 층 기본 가구 칸(단일 소스)
-
---- 1층 정적 장애물 칸인가. 격자 밖이면 true
+--- 정적 장애물 칸인가. 격자 밖이면 true
 function DecorGrid.isStaticBlocked(cx: number, cz: number): boolean
 	local column = staticBlocked[cx]
 	if not column then
@@ -162,24 +156,6 @@ function DecorGrid.isStaticBlocked(cx: number, cz: number): boolean
 	end
 	local v = column[cz]
 	return v == nil or v
-end
-
---- f 층(1 또는 3 이상)에서 막힌 칸인가. 2층(강당)은 전부 막힌다
-function DecorGrid.isFloorBlocked(f: number, cx: number, cz: number): boolean
-	if f == 1 then
-		return DecorGrid.isStaticBlocked(cx, cz)
-	end
-	if f < 3 then
-		return true
-	end
-	if cx < towerX0 or cx > towerX1 or cz < towerZ0 or cz > towerZ1 then
-		return true
-	end
-	if cx == elevatorX and (cz == elevatorZ or cz == elevatorZ + 1) then
-		return true
-	end
-	-- 층 기본 가구(발자국 x0·z0 모서리 칸, TowerConfig.furnitureCell)
-	return cx == furnitureX and cz == furnitureZ
 end
 
 --- 발자국 크기(x 칸, z 칸). 아이템이 없으면 nil
@@ -216,20 +192,15 @@ local function isInt(v: number): boolean
 	return v == math.floor(v)
 end
 
-local function floorOf(p: Placement): number
-	return p.f or 1
-end
-
 -- 두 발자국 사각형이 겹치나(칸 단위)
 local function hits(p: Placement, cx: number, cz: number, sx: number, sz: number): boolean
 	local px, pz = DecorGrid.size(p.item, p.rot)
 	return p.cx < cx + sx and cx < p.cx + px and p.cz < cz + sz and cz < p.cz + pz
 end
 
---- 겹치는 배치 순번 목록(같은 층, ignoreSlot 제외). 인자 순서가 canPlace 와 다르다
+--- 겹치는 배치 순번 목록(ignoreSlot 제외). 인자 순서가 canPlace 와 다르다
 function DecorGrid.blockers(
 	placed: { Placement },
-	f: number,
 	cx: number,
 	cz: number,
 	rot: number,
@@ -239,7 +210,7 @@ function DecorGrid.blockers(
 	local sx, sz = DecorGrid.size(itemId, rot)
 	local slots = {}
 	for slot, p in placed do
-		if slot ~= ignoreSlot and floorOf(p) == f and hits(p, cx, cz, sx, sz) then
+		if slot ~= ignoreSlot and hits(p, cx, cz, sx, sz) then
 			table.insert(slots, slot)
 		end
 	end
@@ -247,17 +218,15 @@ function DecorGrid.blockers(
 end
 
 --[[
-	놓을 수 있나. 검사 순서: item → cell → floor → blocked → overlap → limit.
+	놓을 수 있나. 검사 순서: item → cell → blocked → overlap → limit.
 	ignoreSlot 은 옮기는 중인 배치 순번(자기 자신과 겹침 무시, 개수 상한 무시).
 ]]
 function DecorGrid.canPlace(
 	placed: { Placement },
-	towerFloors: number,
 	itemId: string,
 	cx: number,
 	cz: number,
 	rot: number,
-	f: number,
 	ignoreSlot: number?
 ): (boolean, Reason)
 	if not DecorConfig.byId(itemId) then
@@ -270,17 +239,14 @@ function DecorGrid.canPlace(
 	if not (isInt(cx) and isInt(cz) and cx >= 0 and cz >= 0 and cx + sx <= GRID and cz + sz <= GRID) then
 		return false, "cell"
 	end
-	if not (f == 1 or (isInt(f) and f >= 3 and f <= 2 + towerFloors)) then
-		return false, "floor"
-	end
 	for dx = 0, sx - 1 do
 		for dz = 0, sz - 1 do
-			if DecorGrid.isFloorBlocked(f, cx + dx, cz + dz) then
+			if DecorGrid.isStaticBlocked(cx + dx, cz + dz) then
 				return false, "blocked"
 			end
 		end
 	end
-	if #DecorGrid.blockers(placed, f, cx, cz, rot, itemId, ignoreSlot) > 0 then
+	if #DecorGrid.blockers(placed, cx, cz, rot, itemId, ignoreSlot) > 0 then
 		return false, "overlap"
 	end
 	if ignoreSlot == nil and #placed >= DecorConfig.MAX_PLACED then
@@ -292,12 +258,10 @@ end
 --- (cx, cz) 에서 맨해튼 거리 SEARCH 안의 가장 가까운 빈 자리. 없으면 nil
 function DecorGrid.nearestFree(
 	placed: { Placement },
-	towerFloors: number,
 	itemId: string,
 	cx: number,
 	cz: number,
 	rot: number,
-	f: number,
 	ignoreSlot: number?
 ): (number?, number?)
 	for r = 0, SEARCH do
@@ -305,10 +269,10 @@ function DecorGrid.nearestFree(
 			local rest = r - math.abs(dx)
 			local dzs: { number } = if rest == 0 then { 0 } else { -rest, rest }
 			for _, dz in dzs do
-				local ok, reason = DecorGrid.canPlace(placed, towerFloors, itemId, cx + dx, cz + dz, rot, f, ignoreSlot)
+				local ok, reason = DecorGrid.canPlace(placed, itemId, cx + dx, cz + dz, rot, ignoreSlot)
 				if ok then
 					return cx + dx, cz + dz
-				elseif reason == "item" or reason == "floor" or reason == "limit" then
+				elseif reason == "item" or reason == "limit" then
 					return nil, nil -- 자리를 옮겨도 안 풀린다
 				end
 			end

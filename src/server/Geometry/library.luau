@@ -4,7 +4,8 @@
 	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 8. 북벽 책장 3 + 책 3 = 6. 동벽 책장 1 + 책 1 = 2.
 	  열람 탁자(상판+받침) = 2. 의자 3(좌판 블록+등받이) = 6. 사서 카운터 1.
-	  책은 책장 앞면에 얹은 색 판 하나로 상징한다(파트 예산).
+	  책은 책장 앞면에 얹은 판 하나다(파트 예산). 판 앞면에 책등 그림 Texture(BuildKit.bookshelf, 파트 아님)를 붙이고,
+	  id 0 이거나 못 불러오면 색 판으로 보인다. 사서 카운터 앞면에 「대출·반납」 글자(SurfaceGui).
 	  바닥판은 Shell 바닥 위에 얹는 얇은 판이라 방 바닥 높이 = center.Y + FLOOR_T 이고 자리 Attachment 는 그 높이.
 	  Seats/S01~S03 = 탁자 남쪽에 나란히, 탁자(−Z)를 본다. S03 은 규약대로 예비 자리(학생 수 2).
 	  Door = 남문 중심 바닥(Shell 바닥 높이), LookVector 가 방 안쪽(−Z).
@@ -56,6 +57,7 @@ local C = {
 	roof = Color3.fromRGB(70, 72, 76),
 	floor = Color3.fromRGB(196, 178, 150),
 	counter = Color3.fromRGB(120, 84, 52),
+	label = Color3.fromRGB(252, 240, 210),
 	books = { Color3.fromRGB(190, 70, 60), Color3.fromRGB(70, 110, 170), Color3.fromRGB(200, 160, 60) },
 }
 
@@ -170,7 +172,7 @@ function library.build(plotCFrame: CFrame): Model
 			at(plotCFrame, x, shelfY, shelfZ),
 			{ color = COLOR_PRIMARY, material = MATERIAL }
 		)
-		put(
+		local books = put(
 			model,
 			string.format("Books%02d", i),
 			booksSize,
@@ -181,6 +183,7 @@ function library.build(plotCFrame: CFrame): Model
 				collide = false,
 			}
 		)
+		BuildKit.bookshelf(books, Enum.NormalId.Back) -- +Z = 방 안쪽
 	end
 
 	-- 동벽 책장 1: 앞면이 −X. 책장을 Y 로 90° 돌려 같은 치수를 쓴다
@@ -190,7 +193,7 @@ function library.build(plotCFrame: CFrame): Model
 		color = COLOR_PRIMARY,
 		material = MATERIAL,
 	})
-	put(
+	local booksE = put(
 		model,
 		"BooksE",
 		Vector3.new(EAST_SHELF_LEN - BOOKS_PAD, booksSize.Y, BOOKS_T),
@@ -201,6 +204,7 @@ function library.build(plotCFrame: CFrame): Model
 			collide = false,
 		}
 	)
+	BuildKit.bookshelf(booksE, Enum.NormalId.Front) -- Y 90° 회전이라 −Z 가 월드 −X = 방 안쪽
 
 	-- 부품 4. 열람 탁자 + 의자 3(남쪽에 나란히, 탁자를 본다) + 사서 카운터
 	partIndex = 4
@@ -243,10 +247,12 @@ function library.build(plotCFrame: CFrame): Model
 	assert(seatIndex == row.seats, `{FACILITY_ID}: 자리 {seatIndex} ≠ FacilityConfig.seats {row.seats}`)
 
 	-- 사서 카운터: 문 서쪽
-	put(model, "Counter", COUNTER, at(plotCFrame, cx + COUNTER_DX, floorY + COUNTER.Y / 2, cz + COUNTER_DZ), {
-		color = C.counter,
-		material = Enum.Material.Wood,
-	})
+	local counter =
+		put(model, "Counter", COUNTER, at(plotCFrame, cx + COUNTER_DX, floorY + COUNTER.Y / 2, cz + COUNTER_DZ), {
+			color = C.counter,
+			material = Enum.Material.Wood,
+		})
+	BuildKit.surfaceText(counter, Enum.NormalId.Front, "<b>대출 · 반납</b>", C.label, 1.2) -- −Z = 방 안쪽
 
 	local doorZ = cz + hz
 	attach(model, Keys.DOOR, at(plotCFrame, cx, row.center.Y, doorZ))

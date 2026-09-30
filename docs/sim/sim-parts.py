@@ -2,7 +2,6 @@
 """「교장이 되어보자!」 안 A(부품 50개) 경제 시뮬레이션 — 개선계획 2026-09-29 §3.4 · §3.6 #4 의 근거
 
 실행: python3 docs/sim/sim-parts.py            > docs/sim/sim-parts-output.md
-      python3 docs/sim/sim-parts.py --tower    (기본 출력 뒤에 층 가격 표를 덧붙인다)
 
 ■ 규칙(개선계획 §3.4 안 A)
   - 시설 14개를 부품 50개로 쪼갠다. 앞 6개 시설(책상·칠판·사물함·복도·교실2·급식실)은 3개씩,
@@ -56,7 +55,6 @@
   3·6·9초에 줍는다고 둔다. 그 뒤 회수율 0%.
 """
 import math
-import sys
 
 START_COINS = 10
 STICKER_MIN = 10
@@ -138,15 +136,6 @@ for fi, (_, _, _, _, n) in enumerate(FACILITIES):
     for j in range(1, n + 1):
         PARTS.append((len(PARTS) + 1, fi, j, j == n))
 assert len(PARTS) == 50
-
-# 층(§3.6 #4). completedIncome = 14 시설 income 원시 합
-TOWER_GAP_SECONDS = 60
-TOWER_COMPLETED_INCOME = sum(f[2] for f in FACILITIES)
-TOWER_FIRST_FLOOR = 3
-TOWER_TOP_FLOOR = 20     # 잠정 상한. 층 번호 20(바닥 y 360.2)까지
-TOWER_STEPS = (1.5, 1.3, 1.2, 1.1, 1.0)
-TOWER_STEP = 1.5         # TowerConfig.STEP(잠정). check-config.py 가 대조한다. 표는 TOWER_STEPS 로 그린다
-TOWER_IDLE_SECONDS = 30 * 60
 
 
 def gap(k):
@@ -453,9 +442,6 @@ def main():
     print_decor_ref(da, di)
     print_decor_prices()
 
-    if "--tower" in sys.argv:
-        print_tower(active)
-
 
 def print_decor_ref(da, di):
     print("\n## 참고: 수입 20% 를 꾸미기에 쓴다(게이트 아님)\n")
@@ -490,49 +476,6 @@ def print_decor_prices():
     fr = sum(DECOR_PRICES[i[0]] for i in DECOR_ITEMS if i[2] == "friend")
     print(f"\n합계: 일반 12개 {gen:,} · 친구 9개 {fr:,} · 전부 1회 구매 {gen + fr:,}(1회차 기준)")
     print("\nConfig 옮김용: `" + ", ".join(f"{i[0]} = {DECOR_PRICES[i[0]]}" for i in DECOR_ITEMS) + "`")
-
-
-def tower_price(n, grads, completed_income, step):
-    """TowerConfig.priceOf 와 같은 식: round(GAP_SECONDS × completedIncome × STEP^(n-3) × PRICE_SCALE^graduations)."""
-    return int(math.floor(TOWER_GAP_SECONDS * completed_income * step ** (n - 3) * PRICE_SCALE ** grads + 0.5))
-
-
-def print_tower(active):
-    """1회차 활동형으로 강당을 끝낸 직후 남은 용돈에서 시작해, 방치(시설 수입만, 스티커 0) 30분 동안 층을 산다.
-    졸업하지 않고 머문다고 본다. 1초 틱에 1층, 층 수입 0."""
-    start = active["coins"]
-    inc = TOWER_COMPLETED_INCOME
-    print(f"\n## --tower: 층 가격(§3.6 #4)\n")
-    print(f"priceOf(n, 졸업, completedIncome) = round({TOWER_GAP_SECONDS} × completedIncome × STEP^(n−3) × 1.35^졸업), "
-          f"completedIncome = {inc:,}(14 시설 income 원시 합). 1회차(졸업 0) 강당 완공 직후 남은 용돈 {fmt(start)} 에서 시작, "
-          f"방치 = 초당 {inc:,}(스티커 0), 30분. 층 번호는 3층부터, 상한 {TOWER_TOP_FLOOR}층.\n")
-    print("| STEP | 3층 | 4층 | 5층 | 10층 | 20층 | 30분 안 마지막 층 | 산 층 수 | 마지막 층 산 시각 | 다음 층까지 남은 시간(30분 시점) |")
-    print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
-    for step in TOWER_STEPS:
-        coins = start
-        n = TOWER_FIRST_FLOOR
-        last_t = None
-        t = 0
-        while t < TOWER_IDLE_SECONDS and n <= TOWER_TOP_FLOOR:
-            t += 1
-            coins += inc
-            p = tower_price(n, 0, inc, step)
-            if coins >= p:
-                coins -= p
-                last_t = t
-                n += 1
-        floors = n - TOWER_FIRST_FLOOR
-        top = n - 1 if floors else "—"
-        if n <= TOWER_TOP_FLOOR:
-            remain = max(0, math.ceil((tower_price(n, 0, inc, step) - coins) / inc))
-            rtxt = f"{remain // 60}분 {remain % 60}초"
-        else:
-            rtxt = "상한 도달"
-        print(f"| {step} | {fmt(tower_price(3, 0, inc, step))} | {fmt(tower_price(4, 0, inc, step))} | "
-              f"{fmt(tower_price(5, 0, inc, step))} | {fmt(tower_price(10, 0, inc, step))} | {fmt(tower_price(20, 0, inc, step))} | "
-              f"{top}층 | {floors} | {clock(last_t)} | {rtxt} |")
-    print("\n층 n 을 사는 데 드는 방치 시간 = 60 × STEP^(n−3) 초(수입 = completedIncome 이므로). 졸업 N회 뒤에는 가격 ×1.35^N, "
-          "수입 ×(1+N) 이라 층당 시간은 ×1.35^N/(1+N) 로 줄어든다.")
 
 
 if __name__ == "__main__":

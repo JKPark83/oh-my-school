@@ -33,7 +33,9 @@ export type Opts = {
 -- 그림자를 끄는 것은 저사양 폰 때문이다 — 부지당 13개(교실1·현관 3 + 시설 10)가 켜진다.
 local LIGHT_COLOR = Color3.fromRGB(255, 244, 226)
 local LIGHT_BRIGHTNESS = 1.2
-local LIGHT_RANGE = 16 -- 지붕 아랫면에서 바닥까지 12~14
+-- 지붕 아랫면에서 바닥까지 17(체육관 20). 16 이던 때는 바닥이 범위 밖이라 벽 위만 밝고 바닥은 새카맸다.
+-- 26 도 모자랐다: 사방이 막힌 방(교실1·2·급식실)은 바닥 가장자리만 밝았고, 밝아 보이던 방은 벽 틈으로 든 하늘빛이었다
+local LIGHT_RANGE = 40
 
 -- 박공지붕 처마가 벽 바깥으로 나오는 길이
 BuildKit.EAVE = 0.5
@@ -118,7 +120,7 @@ end
 --[[
 	바깥벽 창(개선계획 §3.1 #8). PropAssets.WINDOW_TEXTURE.id 가 0 이면 아무것도 안 붙이고 nil.
 	Texture 는 파트가 아니라 파트 예산에 들지 않는다. face 는 벽의 바깥 면(옆면 4개 중 하나).
-	칸 폭·세로 위치는 PropAssets.windowTile 이 정한다(탑 클라 렌더와 같은 식): 창 아랫변이 벽 아랫면 + sill.
+	칸 폭·세로 위치는 PropAssets.windowTile 이 정한다: 창 아랫변이 벽 아랫면 + sill.
 ]]
 function BuildKit.window(part: BasePart, face: Enum.NormalId): Texture?
 	local spec = PropAssets.WINDOW_TEXTURE
@@ -139,6 +141,73 @@ function BuildKit.window(part: BasePart, face: Enum.NormalId): Texture?
 	t.OffsetStudsV = offsetV
 	t.Transparency = 0
 	t.Parent = part
+	return t
+end
+
+--[[
+	도서관 책 판 앞면의 책등 그림. PropAssets.BOOKSHELF_TEXTURE.id 가 0 이면 nil(색 판 폴백).
+	가로는 면 폭을 칸으로 딱 나눠 양 끝에서 책이 잘리지 않게, 세로는 면 높이 한 칸.
+]]
+local BOOKSHELF_BACK = Color3.fromRGB(74, 48, 28) -- bookshelf.png 뒤판 색
+
+function BuildKit.bookshelf(part: BasePart, face: Enum.NormalId): Texture?
+	local spec = PropAssets.BOOKSHELF_TEXTURE
+	if spec.id == 0 then
+		return nil
+	end
+	assert(face ~= Enum.NormalId.Top and face ~= Enum.NormalId.Bottom, "BuildKit.bookshelf: 옆면에만 붙인다")
+	local width = if face == Enum.NormalId.Front or face == Enum.NormalId.Back then part.Size.X else part.Size.Z
+
+	local t = Instance.new("Texture")
+	t.Name = "Books"
+	t.Face = face
+	t.Texture = "rbxassetid://" .. spec.id
+	t.StudsPerTileU = width / math.max(1, math.round(width / spec.studsPerTileU))
+	t.StudsPerTileV = part.Size.Y
+	t.Parent = part
+	part.Color = BOOKSHELF_BACK -- 옆면에 폴백 색 띠가 비치지 않게 그림 뒤판 색으로
+	return t
+end
+
+--[[
+	방 안 디테일 그림(PropAssets.INTERIOR). 그림 한 장을 면 전체에 늘려 붙인다. id 0 이면 nil(장식만 빠진다).
+	투명 덧그림(사물함 문·수납장)은 파트 색이 비쳐서 같은 그림으로 색을 바꿔 쓸 수 있다.
+	Decal 은 파트가 아니라 파트 예산에 들지 않는다.
+]]
+function BuildKit.decal(part: BasePart, face: Enum.NormalId, id: number, name: string?): Decal?
+	if id == 0 then
+		return nil
+	end
+	local d = Instance.new("Decal")
+	d.Name = name or "Detail"
+	d.Face = face
+	d.Texture = "rbxassetid://" .. id
+	d.Parent = part
+	return d
+end
+
+--- 벽 안쪽 아래 걸레받이 띠(wainscot.png 아래 22%). 흰 그림을 color 로 물들인다. 벽 높이가 달라도 띠 비율은 같다
+function BuildKit.wainscot(wall: BasePart, face: Enum.NormalId, color: Color3): Decal?
+	local d = BuildKit.decal(wall, face, PropAssets.INTERIOR.WAINSCOT, "Wainscot")
+	if d then
+		d.Color3 = color
+	end
+	return d
+end
+
+--- 바닥 윗면 타일(한 장 = PropAssets.FLOOR_TILE_STUDS). 줄눈 색이 밝은 회색이라 파트 색은 타일 색이 된다
+function BuildKit.floorTile(floor: BasePart): Texture?
+	local id = PropAssets.INTERIOR.FLOOR_TILE
+	if id == 0 then
+		return nil
+	end
+	local t = Instance.new("Texture")
+	t.Name = "Tile"
+	t.Face = Enum.NormalId.Top
+	t.Texture = "rbxassetid://" .. id
+	t.StudsPerTileU = PropAssets.FLOOR_TILE_STUDS
+	t.StudsPerTileV = PropAssets.FLOOR_TILE_STUDS
+	t.Parent = floor
 	return t
 end
 

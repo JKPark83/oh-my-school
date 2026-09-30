@@ -12,7 +12,7 @@
 	미션·선물은 이번 세션에서 센 값, 부품·시설 수는 그 순간의 프로필 값이다.
 	다른 서비스는 O(1) 함수만 부른다. 1Hz 경제 틱 안에서는 카운터만 바꾼다.
 Metrics 는 DataService·PlotService·Config(+ UiMark 를 받으려고 Remotes·RemoteGuard)만 require 한다.
-PlotService 는 Metrics 를 모른다(순환). 엘리베이터는 PlotService.ElevatorRode 시그널로 받는다.
+PlotService 는 Metrics 를 모른다(순환).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,8 +20,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
-local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
-local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local RemoteGuard = require(script.Parent.RemoteGuard)
 local DataService = require(script.Parent.Services.DataService)
@@ -39,7 +37,6 @@ local FIVE_DECOR = 1 -- 첫 5분 꾸미기 배치 수(기획서 §2.4·개선계
 local SHORT_STAY = 3 -- 초. 이보다 짧게 서 있다 내려오면 센다(§13.3)
 local PAD_POLL = 0.25 -- 초. 패드 근처에 있는 동안만 도는 확인 주기
 local PAD_GRACE = 1 -- 초. Touched 뒤 이 안에 패드 위로 안 올라오면 스친 것으로 본다
-local FLOOR_POLL = 1 -- 초. 층 체류 표본 주기(Heartbeat 가 아닌 task.wait)
 local UI_MARK_COOLDOWN = 1 -- 초. UiMark 리모트
 local UI_MARK_DECOR_TAP = "decorTap" -- UiMark 가 받는 유일한 key
 
@@ -68,10 +65,6 @@ type Session = {
 	firstDecorTapAt: number?, -- 꾸미기 버튼 첫 탭. 세션 시작부터 초
 	stickerSince: { [BasePart]: number }, -- 켜진(다시 뜬) os.clock
 	stickerWaits: { number }, -- 리스폰→줍기(초)
-	floorsBought: number,
-	firstFloorAt: number?, -- 세션 시작부터 초
-	elevatorRides: number,
-	floorSeconds: { [number]: number }, -- 층 → 자기 부지 안 체류 초
 }
 
 local sessions: { [Player]: Session } = {}
@@ -125,23 +118,6 @@ local function stickerWaitText(session: Session): string
 	return `리스폰→줍기 중앙값 {median}초({#session.stickerWaits}회)`
 end
 
-local function floorStayText(session: Session): string
-	local upper = 0
-	local longest: number? = nil
-	for f, seconds in session.floorSeconds do
-		if f >= 3 then
-			upper += seconds
-		end
-		if not longest or seconds > session.floorSeconds[longest] then
-			longest = f
-		end
-	end
-	local one = clock(session.floorSeconds[1] or 0)
-	local two = clock(session.floorSeconds[2] or 0)
-	local top = if longest then `{longest}층` else "-"
-	return `층 체류 1층 {one} · 2층 {two} · 3층+ {clock(upper)}(가장 오래 {top})`
-end
-
 --- 켜져 있고 안 주운 스티커 중 기록이 없는 것을 now 로 적는다(세션 시작 때)
 local function trackActiveStickers(player: Player, session: Session, now: number)
 	local plotId = PlotService.plotOf(player)
@@ -163,7 +139,7 @@ local function setSpawns(session: Session, count: number)
 	session.spawnSince = now
 end
 
---- 다음 부품(14개 완공 뒤면 다음 층) 값이 지금 용돈으로 되나
+--- 다음 부품 값이 지금 용돈으로 되나. 14개 완공 뒤면 살 것이 없어 false
 local function canAfford(player: Player): boolean
 	local profile = DataService.get(player)
 	if not profile then
@@ -171,8 +147,7 @@ local function canAfford(player: Player): boolean
 	end
 	local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
 	if nextPart == nil then
-		local n = if profile.facilities.auditorium then TowerConfig.nextFloor(profile.towerFloors) else nil
-		return n ~= nil and profile.coins >= TowerConfig.priceOf(n, profile.graduations)
+		return false
 	end
 	return profile.coins >= FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index, profile.graduations)
 end
@@ -286,10 +261,6 @@ function Metrics.begin(player: Player)
 		firstDecorTapAt = nil,
 		stickerSince = {},
 		stickerWaits = {},
-		floorsBought = 0,
-		firstFloorAt = nil,
-		elevatorRides = 0,
-		floorSeconds = {},
 	}
 	sessions[player] = session
 	-- 세션 시작 때 이미 켜진 스폰은 지금 뜬 것으로 본다
@@ -318,8 +289,6 @@ local function summaryText(session: Session): string
 	local length = `세션 {clock(now - session.startedAt)}`
 	local decor =
 		`꾸미기 첫 배치 {clockOr(session.firstDecorAt)} · 버튼 첫 탭 {clockOr(session.firstDecorTapAt)}`
-	local floors =
-		`층 구매 {session.floorsBought}회(첫 {clockOr(session.firstFloorAt)}) · 엘리베이터 {session.elevatorRides}회`
 	return table.concat({
 		kind(session),
 		length,
@@ -330,8 +299,6 @@ local function summaryText(session: Session): string
 		partGapText(session),
 		stickerWaitText(session),
 		decor,
-		floors,
-		floorStayText(session),
 	}, " · ")
 end
 
@@ -451,27 +418,6 @@ function Metrics.decorPlaced(player: Player)
 	end
 end
 
---- 탑 층 1개 구매(EconomyService.buyFloor)
-function Metrics.floorBuilt(player: Player, _n: number)
-	local session = sessions[player]
-	if not session then
-		return
-	end
-	session.padBought = true
-	session.floorsBought += 1
-	if not session.firstFloorAt then
-		session.firstFloorAt = os.clock() - session.startedAt
-	end
-end
-
---- PlotService.ElevatorRode: 엘리베이터로 옮겨짐(탄 사람 기준, 방문객도)
-local function onElevatorRode(player: Player)
-	local session = sessions[player]
-	if session then
-		session.elevatorRides += 1
-	end
-end
-
 --- UiMark(key). "decorTap" 만 받고 세션당 첫 값만 적는다. 나머지 key 는 조용히 무시
 local function onUiMark(player: Player, key: string)
 	local session = sessions[player]
@@ -481,45 +427,10 @@ local function onUiMark(player: Player, key: string)
 	session.firstDecorTapAt = os.clock() - session.startedAt
 end
 
---- 1초 표본 1회. 자기 부지 안에 있을 때만 루트 층에 +1초
-local function sampleFloors()
-	for player, session in sessions do
-		local plotId = PlotService.plotOf(player)
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if not plotId or not root or not root:IsA("BasePart") then
-			continue
-		end
-		local p = PlotService.cframe(plotId):PointToObjectSpace(root.Position)
-		local half = PlotLayout.PLOT_HALF
-		if math.abs(p.X) <= half and math.abs(p.Z) <= half then
-			local f = PlotLayout.floorOf(p.Y)
-			-- 2층은 탑 발자국 안(강당)만. 밖의 지붕·담장 위는 1층으로 센다(CameraController 와 같은 판정)
-			local foot = PlotLayout.TOWER_FOOTPRINT
-			if f == 2 and not (p.X >= foot.x0 and p.X <= foot.x1 and p.Z >= foot.z0 and p.Z <= foot.z1) then
-				f = 1
-			end
-			session.floorSeconds[f] = (session.floorSeconds[f] or 0) + FLOOR_POLL
-		end
-	end
-end
-
 function Metrics.Start()
 	PlotService.PadTouched:Connect(onPadTouched)
-	PlotService.ElevatorRode:Connect(onElevatorRode)
 	-- UiMark 는 소유 서비스가 없어 여기서 받는다(RemoteGuard 의 SetSetting 과 같은 이유)
 	RemoteGuard.wrap(Remotes.UiMark, { cooldown = UI_MARK_COOLDOWN, args = { "string" } }, onUiMark)
-	task.spawn(function()
-		while true do
-			task.wait(FLOOR_POLL)
-			local ok, err = pcall(function()
-				sampleFloors()
-			end)
-			if not ok then
-				warn(`[Metrics] 층 체류 표본 실패: {err}`)
-			end
-		end
-	end)
 	-- Studio 정지·서버 종료 때는 PlayerRemoving 보다 먼저 닫힐 수 있어 남은 세션도 요약을 찍는다
 	game:BindToClose(function()
 		for player in sessions do

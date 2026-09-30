@@ -2,7 +2,6 @@
 --[[
 	용돈·구매·스티커·별. 기획서 §2.2·§3.2·§5·§7.5·§9.1·§11.5, 계획서 §3.2.
 	  1Hz 틱   수입 지급 → 활성 패드 위에 서 있고 돈이 되면 다음 부품 1개 자동 구매(개선계획 §3.4) → ProfileSync
-	           14개 완공 뒤에는 TOWER_PAD 위에서 다음 층 1개 자동 구매(§3.6 #8, 틱당 1층)
 	  스티커   PlotService.StickerTouched → 검증(주인·간격·속도·거리) → 가치·콤보·판 → 15초 뒤 리스폰(금 판단)
 	  별       PlotService.StarTouched → 방문자 판 +1 (부지·60초당 2개)
 	  GoHome   PlotService.goHome (5초 쿨다운)
@@ -17,7 +16,6 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
-local TowerConfig = require(ReplicatedStorage.Shared.Config.TowerConfig)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local StudentService = require(script.Parent.StudentService)
@@ -90,32 +88,19 @@ local function buy(player: Player, profile: Types.Profile, nextPart: FacilityCon
 	Metrics.facilityBuilt(player)
 	Remotes.event(nil, "FacilityBuilt", { plot = plotId, facilityId = row.id })
 
-	-- 이미 데리고 있던 학생 중 이 시설에 자리가 있는 아이들이 걸어 들어온다
+	-- 이미 데리고 있던 학생 중 이 시설에 자리가 있는 아이들이 제자리에 "짠" 하고 나타난다
 	for studentId, count in profile.students do
 		local student = StudentConfig.BY_ID[studentId]
 		if count > 0 and student and student.seat.facilityId == row.id and plotId then
 			Remotes.event(nil, "StudentJoined", { plot = plotId, studentId = studentId, walk = true })
 		end
 	end
-	-- 이미 데리고 있는 학생(2회차 이후)은 위에서 걸어 들어왔다. 다시 주면 도감에 중복(×2)으로 잡힌다
+	-- 이미 데리고 있는 학생(2회차 이후)은 위에서 나타났다. 다시 주면 도감에 중복(×2)으로 잡힌다
 	if row.student and (profile.students[row.student] or 0) == 0 then
 		StudentService.grant(player, row.student, true)
 	end
 	MissionService.onBuilt(player)
 	DataService.syncNow(player)
-	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
-end
-
---- 다음 층 1개 구매(§3.6 #8). 돈·강당·패드·층 번호는 호출자가 확인했다
-local function buyFloor(player: Player, profile: Types.Profile, n: number, price: number)
-	profile.coins -= price
-	profile.towerFloors += 1
-	PlotService.refreshWorld(player)
-	Metrics.floorBuilt(player, n)
-	DataService.markDirty(player)
-	-- 프로필을 먼저 보내야 FloorBuilt 가 부르는 클라 PadController·HudController 새로고침이 새 층 수·용돈을 본다
-	DataService.syncNow(player)
-	Remotes.event(player, "FloorBuilt", { plot = PlotService.plotOf(player), floor = n, coins = price })
 	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
 end
 
@@ -132,26 +117,26 @@ local function tick()
 		local income = EconomyConfig.incomePerSecond(profile) * EconomyConfig.TICK
 		if income > 0 then
 			addCoins(profile, income)
+			DataService.markDirty(player)
 		end
-		-- 틱당 부품 1개. nil 이면 14개 완공이라 다음 층 1개(개선계획 §3.6 #8)
+	end
+end
+
+--- 발판 확인. 수입 틱(1초)과 떼어 PAD_TICK 마다 돈다. 1초면 올라선 뒤 최대 1초를 기다리고, 그 사이 내려서면 놓친다
+local function padTick()
+	for _, player in Players:GetPlayers() do
+		local profile: Types.Profile? = DataService.get(player)
+		if not profile or PlotService.isLocked(player) or not PlotService.plotOf(player) then
+			continue
+		end
+		-- 틱당 부품 1개. nil 이면 14개 완공이라 살 것이 없다
 		local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
-		if nextPart and PlotService.plotOf(player) then
+		if nextPart then
 			local id = nextPart.facility.id
 			local price = FacilityConfig.partPriceOf(id, nextPart.index, profile.graduations)
 			if profile.coins >= price and PlotService.occupants(player)[id] then
 				buy(player, profile, nextPart)
-				continue
 			end
-		elseif not nextPart and profile.facilities.auditorium and PlotService.plotOf(player) then
-			local n = TowerConfig.nextFloor(profile.towerFloors)
-			local price = n and TowerConfig.priceOf(n, profile.graduations)
-			if n and profile.coins >= price and PlotService.onTowerPad(player) then
-				buyFloor(player, profile, n, price)
-				continue
-			end
-		end
-		if income > 0 then
-			DataService.markDirty(player)
 		end
 	end
 end
@@ -328,6 +313,15 @@ function EconomyService.Start()
 			local ok, err = pcall(tick)
 			if not ok then
 				warn(`[EconomyService] tick: {err}`)
+			end
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(EconomyConfig.PAD_TICK)
+			local ok, err = pcall(padTick)
+			if not ok then
+				warn(`[EconomyService] padTick: {err}`)
 			end
 		end
 	end)

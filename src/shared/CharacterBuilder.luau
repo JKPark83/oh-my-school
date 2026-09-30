@@ -31,6 +31,7 @@ export type PersonConfig = {
 	collide: boolean, -- 클라이언트 전용 모델은 반드시 false
 	shadow: boolean,
 	tint: Color3?, -- 몸 전체 색조. fallback 원형으로 그릴 때만 입힌다. nil 이면 원본 텍스처
+	headScale: number, -- 머리(+머리에 붙은 조각) 배율. 목(몸통 윗면)을 축으로 줄인다. 1 이면 그대로
 }
 
 -- 앉은 자세의 엉덩이 높이(= 의자 앉는 면). 시설 가구가 이 값에 맞춰 만들어진다.
@@ -40,6 +41,8 @@ CharacterBuilder.SIT_DESK = 2.875
 CharacterBuilder.HEAD_MESH = "HeadMesh"
 CharacterBuilder.ARM_RIGHT = "ArmRight"
 CharacterBuilder.LEGEND_SCALE = 1.05
+-- 학생 머리 배율. 생성 메시는 머리가 몸통보다 훨씬 커서 둔하고 부담스러워 보였다.
+CharacterBuilder.STUDENT_HEAD_SCALE = 0.75
 
 local PROTOTYPE_FOLDER = Keys.PROTOTYPES
 local HEAD_MESH = CharacterBuilder.HEAD_MESH
@@ -50,6 +53,9 @@ local REST_ATTRIBUTE = "RestOffset"
 -- ★ 머리가 큰 체형이라 곧게(π) 올리면 정면에서 머리에 가려진다. 앞·위 2.6 + 바깥 0.5 가 얼굴 옆으로 나온다.
 local RAISE_ANGLE = 2.6
 local RAISE_TILT = 0.5
+
+-- 몸 파트. 이 넷이 아닌 파트(Head·Braid 등)는 머리에 붙은 것으로 보고 같이 줄인다
+local BODY_PARTS = { Torso = true, ArmLeft = true, ArmRight = true, Legs = true }
 
 local DOWNLOAD_RETRIES = 3
 local FOLDER_WAIT = 30
@@ -192,6 +198,25 @@ function CharacterBuilder.resolveVariant(variant: string, fallback: string?): st
 end
 
 --[[
+	머리를 목을 축으로 줄인다. 축은 머리 중심 바로 아래, 몸통 윗면 높이다.
+	파트는 Y 회전만 있으므로 Size.Y 가 곧 높이다. 모델 피벗이 원점(회전 0)일 때 부른다.
+]]
+local function shrinkHead(model: Model, factor: number)
+	local head = model:FindFirstChild(HEAD_MESH) :: BasePart?
+	local torso = model:FindFirstChild("Torso") :: BasePart?
+	if factor == 1 or not head or not torso then
+		return
+	end
+	local neck = Vector3.new(head.Position.X, torso.Position.Y + torso.Size.Y / 2, head.Position.Z)
+	for _, part in model:GetChildren() do
+		if part:IsA("BasePart") and not BODY_PARTS[part.Name] then
+			part.Size *= factor
+			part.CFrame = part.CFrame.Rotation + neck + (part.Position - neck) * factor
+		end
+	end
+end
+
+--[[
 	@param name 모델 이름
 	@param base 발 아래 바닥 중심의 CFrame. -Z 가 얼굴 방향
 	@return 모델. 원형이 하나도 없으면 nil (호출자가 warn 하고 건너뛴다)
@@ -211,6 +236,7 @@ function CharacterBuilder.build(name: string, base: CFrame, config: PersonConfig
 	local target = if config.sitting then CharacterAssets.SIT_HEIGHT else CharacterAssets.STAND_HEIGHT
 	local k = target * config.scale / variant.height
 	model:ScaleTo(k)
+	shrinkHead(model, config.headScale)
 
 	-- 앉으면 엉덩이가 의자 면(SIT_HIP)에 오도록 모델 바닥을 그만큼 내린다.
 	local bottom = if config.sitting then CharacterBuilder.SIT_HIP * config.scale - variant.hip * k else 0
@@ -280,6 +306,7 @@ function CharacterBuilder.studentConfig(studentId: string): PersonConfig
 		collide = false,
 		shadow = false, -- 24명 × 4부지 그림자는 모바일에서 그대로 프레임이 된다
 		tint = row.tint,
+		headScale = CharacterBuilder.STUDENT_HEAD_SCALE,
 	}
 end
 
@@ -294,6 +321,7 @@ function CharacterBuilder.teacherConfig(seed: number?): PersonConfig
 		collide = false,
 		shadow = false, -- §12.1 NPC CastShadow false
 		tint = nil,
+		headScale = 1,
 	}
 end
 

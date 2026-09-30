@@ -24,9 +24,7 @@ local EconomyConfig = require(Shared.Config.EconomyConfig)
 local FacilityConfig = require(Shared.Config.FacilityConfig)
 local MissionConfig = require(Shared.Config.MissionConfig)
 local StudentConfig = require(Shared.Config.StudentConfig)
-local TowerConfig = require(Shared.Config.TowerConfig)
 local Format = require(Shared.Format)
-local PlotLayout = require(Shared.PlotLayout)
 local Remotes = require(Shared.Remotes)
 local Types = require(Shared.Types)
 
@@ -88,7 +86,6 @@ local SOUND_AFFORD = "afford_ding"
 
 -- 사용자에게 보이는 문구(≤12자)
 local TEXT_NEXT_CAPTION = "다음 시설"
-local TEXT_NEXT_FLOOR = "다음 층"
 local TEXT_AFFORD = "살 수 있어요!"
 local TEXT_NO_INCOME = "스티커를 줍자!"
 local TEXT_GRADUATE = "졸업식을 열자!"
@@ -110,9 +107,6 @@ local GLYPH_BY_KIND: { [string]: string } = {
 	friend = "🙂",
 	gift = "🎈",
 }
-
--- 강당(마지막 시설). 강당을 지어야 탑 층을 살 수 있다(§3.6 #8)
-local AUDITORIUM_ID = "auditorium"
 
 local player = Players.LocalPlayer
 
@@ -170,6 +164,7 @@ local cardStroke: UIStroke
 local boardChip: Frame
 local boardLabel: TextLabel
 local boardFill: Frame
+local boardScale: UIScale
 local multChip: Frame
 local multLabel: TextLabel
 local multScale: UIScale
@@ -430,20 +425,6 @@ local function partPosition(plotId: number, partName: string): Vector3?
 	return if part and part:IsA("BasePart") then part.Position else nil
 end
 
---- 탑 TowerPad 위치. 파트가 스트리밍 밖이면 부지 피벗 + PlotLayout.TOWER_PAD 로 계산한다
-local function towerPadPosition(plotId: number): Vector3?
-	local plot = plotModel(plotId)
-	if not plot then
-		return nil
-	end
-	local tower = plot:FindFirstChild(Keys.TOWER_FOLDER)
-	local pad = if tower then tower:FindFirstChild(Keys.TOWER_PAD) else nil
-	if pad and pad:IsA("BasePart") then
-		return pad.Position
-	end
-	return plot:GetPivot():PointToWorldSpace(PlotLayout.TOWER_PAD)
-end
-
 local function panTo(position: Vector3?)
 	if position and Camera and Camera.panTo then
 		pcall(Camera.panTo, position, PAN_SECONDS)
@@ -477,14 +458,6 @@ local function missionsDone(profile: Profile): number
 		end
 	end
 	return n
-end
-
---- 강당까지 지었을 때 다음에 살 탑 층 번호. 강당 전이거나 꼭대기면 nil
-local function nextTowerFloor(profile: Profile): number?
-	if not profile.facilities[AUDITORIUM_ID] then
-		return nil
-	end
-	return TowerConfig.nextFloor(profile.towerFloors)
 end
 
 --- prev 에 없고 now 에 있는 시설 하나. 없으면 nil
@@ -557,8 +530,12 @@ local function renderIncome(profile: Profile, prev: Profile?)
 end
 
 -- 판이 찬 순간은 GiftOpened 가 알려 준다(onGift)
-local function renderBoard(profile: Profile)
+local function renderBoard(profile: Profile, prev: Profile?)
 	boardChip.Visible = unlocked(profile)
+	-- 칸이 오르면(스티커 줍기·미션) 칩이 펀치해서 「판에 들어갔다」가 보인다. 판이 차서 0 으로 돌면 GiftOpened 가 맡는다
+	if prev and profile.stickerBoard > prev.stickerBoard then
+		punch(boardScale)
+	end
 	boardLabel.Text = `{profile.stickerBoard}/{EconomyConfig.BOARD_CELLS}`
 	boardFill.Size = UDim2.fromScale(math.clamp(profile.stickerBoard / EconomyConfig.BOARD_CELLS, 0, 1), 1)
 end
@@ -593,7 +570,7 @@ local function renderButtons(profile: Profile)
 	missionBadge.Text = `{missionsDone(profile)}/{#MissionConfig.LIST}`
 end
 
---- 값이 있는 카드(다음 부품·다음 층) 공통: 가격·예상 초·링·살 수 있음 펄스와 딩
+--- 값이 있는 카드(다음 부품) 공통: 가격·예상 초·링·살 수 있음 펄스와 딩
 local function showPrice(profile: Profile, caption: string, name: string, price: number)
 	local eta = EconomyConfig.etaSeconds(profile, price)
 	local affordable = eta <= 0
@@ -629,10 +606,6 @@ local function renderCard(profile: Profile)
 		cardSub.Text = TEXT_GO_HOME_SUB
 		cardBar.Visible = false
 		pulse(cardStroke, false)
-	elseif nextPart == nil and nextTowerFloor(profile) then
-		local floor = nextTowerFloor(profile) :: number
-		key = `floor{floor}`
-		showPrice(profile, TEXT_NEXT_FLOOR, `{floor}층`, TowerConfig.priceOf(floor, profile.graduations))
 	elseif nextPart == nil then
 		key = "graduate"
 		cardCaption.Text = `{facilityCount(profile)}/{FacilityConfig.COUNT}`
@@ -664,7 +637,7 @@ end
 local function render(profile: Profile, prev: Profile?)
 	renderCoins(profile, prev)
 	renderIncome(profile, prev)
-	renderBoard(profile)
+	renderBoard(profile, prev)
 	renderMultiplier(profile, prev)
 	renderButtons(profile)
 	renderCard(profile)
@@ -697,8 +670,6 @@ local function onCardTap()
 	local nextRow = FacilityConfig.nextOf(profile.facilities)
 	if nextRow then
 		panTo(padPosition(plotId, nextRow.id))
-	elseif nextTowerFloor(profile) then
-		panTo(towerPadPosition(plotId))
 	else
 		panTo(partPosition(plotId, Keys.GRADUATION_BELL))
 	end
@@ -881,6 +852,7 @@ local function buildGui()
 	boardLabel.Position = UDim2.fromOffset(6, 44)
 	boardLabel.Size = UDim2.fromOffset(84, 16)
 	boardFill = fill
+	boardScale = makeScale(boardChip)
 	boardChip.Visible = false
 
 	-- 배율 칩 (556, 84) 96×24
