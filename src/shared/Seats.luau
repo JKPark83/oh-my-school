@@ -45,12 +45,16 @@ end
 --[[
 	방 학생의 자리. 방 학생이 아니거나 그 방이 아직 없으면 nil.
 	floor = 그 방이 처음 지어진 층(옥상 방은 topFloor + 1), localPos = 방 로컬(RoomConfig.origin(floor) 기준).
-	floors·rooftop 은 RoomConfig.fromCsv 결과(어트리뷰트 Floors·Rooftop)
+	floors·rooftop 은 RoomConfig.fromCsv 결과(어트리뷰트 Floors·Rooftop).
+	towerRoom·towerParts(어트리뷰트 TowerRoom·TowerParts, 생략 가능): 층 방을 짓는 중(부품 ≥ 1)이면 옥상이
+	한 층 올라가므로 옥상 방 floor 도 +1(TowerRender layout 과 같은 규칙)
 ]]
 function Seats.roomSeat(
 	studentId: Types.StudentId,
 	floors: { string },
-	rooftop: { string }
+	rooftop: { string },
+	towerRoom: string?,
+	towerParts: number?
 ): (string?, number?, Vector3?)
 	local row = StudentConfig.BY_ID[studentId]
 	if not row or row.unlock.kind ~= "room" then
@@ -66,7 +70,9 @@ function Seats.roomSeat(
 		if not table.find(rooftop, roomId) then
 			return nil
 		end
-		floor = RoomConfig.topFloor(#floors) + 1
+		local building = towerRoom and RoomConfig.BY_ID[towerRoom]
+		local raised = building and building.kind == "floor" and (towerParts or 0) >= 1
+		floor = RoomConfig.topFloor(#floors) + (if raised then 2 else 1)
 	else
 		local i = table.find(floors, roomId)
 		if not i then

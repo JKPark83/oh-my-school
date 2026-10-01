@@ -13,10 +13,13 @@
 	  Roof   옥상: 엘리베이터 기둥(발자국 북동 모서리, 3층 바닥 ~ 옥상 위) 1 + 깃대 1 + 깃발 1(Rank 1 금·2 은·3 동·그 밖
 	         학교 색) + 난간 4(가까운 부지만, 보기만. 충돌 없음).
 	         옥상 높이 = topFloor+1, 층 방을 짓는 중(부품 ≥ 1)이면 그 위 한 층(서버 지붕과 같은 규칙).
-	  R{id}  옥상 방(정원·천문대): 받침 + 윗부분 2 파트, 완공이면 받침 남쪽 면 간판. 짓는 중 부품 0 = 실루엣.
-	  I{n}·IR  방 안(Rooms.get 레시피): 캐릭터가 서 있는 부지의 그 층 ±1 층만. 부품 2 = big, 3 = +props, 완공 = +finish.
-	         방 하나 ≤ 60 파트(assert). 바닥 큰 가구(opts.collide)만 충돌한다.
-	부지 하나 최악(30층 + 옥상) 가까움 5 × 28 + 7 + 옥상 방 4 + 방 안 3 × 30 ≈ 241, 먼 부지 28 + 3 + 4 = 35.
+	  R{id}  옥상 방(정원·천문대, 자기 옥상 구역 RoomConfig zone 안): 부품 0 = 구역 실루엣 1, 1 = 반투명 구역 상자 1.
+	         가까운 부지 부품 2~4 = Rooms 레시피 big/+props/+finish(≤ 45 파트, assert), 완공이면 "Sign" 파트에 이름 간판.
+	         먼 부지 부품 ≥ 2 = 구역 바닥판 1 + 완공이면 학생 의자 1(옥상 학생은 어디서나 보인다).
+	  I{n}   방 안(Rooms.get 레시피): 캐릭터가 서 있는 부지의 그 층 ±1 층만(옥상은 R{id} 가 그린다).
+	         부품 2 = big, 3 = +props, 완공 = +finish. 방 하나 ≤ 60 파트(assert). 바닥 큰 가구(opts.collide)만 충돌한다.
+	  레시피 파트에 opts.mesh 가 있으면 MeshPart(처음엔 파트로 짓고 메시가 준비되면 다시 짓는다. id 0·실패 = 파트).
+	부지 하나 최악(30층 + 옥상) 가까움 5 × 28 + 7 + 옥상 방 2 × 45 + 방 안 3 × 60 ≈ 417, 먼 부지 28 + 3 + 2 × 2 = 35.
 
 	가림 페이드(옛 "TowerFade" 그대로)
 	  RenderStep "TowerFade"(Camera + 3, CameraController "CameraFade" +2 뒤)에서 HumanoidRootPart → 카메라 쪽으로
@@ -31,6 +34,7 @@
 	  짧게 튀긴다), partCount(): number(TowerFx 안 BasePart 수).
 ]]
 
+local AssetService = game:GetService("AssetService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -74,25 +78,14 @@ local FADE_STEP = 0.01
 local POP_FROM = 0.85
 local POP_SECONDS = 0.35
 local MAX_ROOM_PARTS = 60
+local MAX_ROOF_PARTS = 45 -- 옥상 방 하나(가까운 부지는 늘 그리니 층 방보다 적게)
+local DECK_H = 0.3 -- 먼 부지 옥상 방 바닥판
 local SIGN_FORMAT = "%s %d층 %s" -- 「{icon} {n}층 {방이름}」
 local RANK_COLORS = {
 	Color3.fromRGB(255, 200, 40), -- 금
 	Color3.fromRGB(205, 215, 230), -- 은
 	Color3.fromRGB(205, 140, 80), -- 동
 }
--- 옥상 방 모양(방 로컬). 좌석 줄(z -8 ~ 2)·가구 금지 구역(x ≥ 12.5, z ≥ -2.5)을 비킨다
-local ROOF_SHAPES: { [string]: { at: Vector3, base: Vector3, top: Vector3, ball: boolean } } = {
-	garden = {
-		at = Vector3.new(-12, 0, -12),
-		base = Vector3.new(12, 2, 5),
-		top = Vector3.new(11, 1.2, 4),
-		ball = false,
-	},
-	observatory = { at = Vector3.new(7, 0, -11), base = Vector3.new(6, 4, 6), top = Vector3.new(6, 6, 6), ball = true },
-}
-local ROOF_DEFAULT =
-	{ at = Vector3.new(-4, 0, -12), base = Vector3.new(6, 3, 4), top = Vector3.new(5, 1, 3), ball = false }
-
 local FOOT = PlotLayout.TOWER_FOOTPRINT
 local FOOT_CENTER = Vector2.new((FOOT.x0 + FOOT.x1) / 2, (FOOT.z0 + FOOT.z1) / 2)
 local LONG_LEN = FOOT.x1 - FOOT.x0
@@ -122,6 +115,11 @@ local popPending: { [number]: string } = {} -- 부지 → 튀길 조각 key(이�
 local herePlot: number? = nil -- 캐릭터가 서 있는 탑 부지
 local hereFloor = 0
 local faded: { [BasePart]: true } = {}
+-- 레시피 메시(PutOpts.mesh). id → 원본 MeshPart | false(실패). 준비되면 meshVersion 이 올라 방 서명이 바뀐다
+local meshCache: { [number]: MeshPart | false } = {}
+local meshLoading: { [number]: boolean } = {}
+local meshVersion = 0
+local renderAll: () -> ()
 local fadeParams: RaycastParams? = nil
 
 -- ── 부지 읽기 ────────────────────────────────────────────────────
@@ -334,70 +332,74 @@ local function buildRoof(pivot: CFrame, roofN: number, rank: number, isNear: boo
 	return m
 end
 
---- 옥상 방 구조물. stage 0 실루엣, 완공이면 간판
-local function buildRoofRoom(pivot: CFrame, roofN: number, room: RoomConfig.Room, stage: number): Model
-	local m = newModel(pivot, roofN, "R" .. room.id)
-	local shape = ROOF_SHAPES[room.id] or ROOF_DEFAULT
-	local o = RoomConfig.origin(roofN) + shape.at
-	local base = part(m, "Base", pivot, o + Vector3.new(0, shape.base.Y / 2, 0), shape.base, room.wall)
-	local top = part(m, "Top", pivot, o + Vector3.new(0, shape.base.Y + shape.top.Y / 2, 0), shape.top, room.accent)
-	if shape.ball then
-		top.Shape = Enum.PartType.Ball
-	else
-		top.Material = Enum.Material.Grass
+--- 메시 원본. 아직이면 불러오기를 걸고 nil(그동안 파트). 클라 CreateMeshPartAsync 는 P5 가 Studio 에서 확인한다
+local function meshOf(id: number): MeshPart?
+	local cached = meshCache[id]
+	if cached ~= nil then
+		return if cached then cached :: MeshPart else nil
 	end
-	if stage == 0 then
-		for _, p in { base, top } do
-			p.Transparency = GHOST
-			p.Color = WorldPalette.ghost
-			p.CastShadow = false
-		end
-	elseif stage >= RoomConfig.PARTS then
-		addSign(base, `{room.icon} {room.name}`)
-		-- 옥상 학생은 어디서나 보이는데 방 안(의자)은 가까이서만 그린다. 허공에 앉지 않게 의자 하나는 늘 둔다.
-		-- 방 안 의자(Rooms)와 겹쳐 깜빡이지 않게 조금 작고 낮게
-		local row = room.student and StudentConfig.BY_ID[room.student]
-		local s = row and room.seats[row.seat.index]
-		if s then
-			local h = CharacterBuilder.SIT_HIP - 0.17
-			part(
-				m,
-				"Chair",
-				pivot,
-				RoomConfig.origin(roofN) + s + Vector3.new(0, h / 2, 0.2),
-				Vector3.new(1.9, h, 1.9),
-				WorldPalette.wood
-			)
-		end
+	if id > 0 and not meshLoading[id] then
+		meshLoading[id] = true
+		task.spawn(function()
+			local ok, result = pcall(function()
+				return AssetService:CreateMeshPartAsync(Content.fromAssetId(id), {
+					CollisionFidelity = Enum.CollisionFidelity.Box,
+					RenderFidelity = Enum.RenderFidelity.Automatic,
+				})
+			end)
+			meshCache[id] = if ok and result then result else false
+			if ok and result then
+				meshVersion += 1
+				renderAll()
+			else
+				warn(`[TowerRender] 메시 {id} 를 못 만들었다. 파트로 짓는다 ({result})`)
+			end
+		end)
 	end
-	return m
+	return nil
 end
 
---- 방 안. Rooms 레시피를 부품 단계까지(2 = big, 3 = +props, 4 = +finish)
-local function buildInterior(pivot: CFrame, key: string, n: number, room: RoomConfig.Room, stage: number): Model
-	local m = newModel(pivot, n, key)
-	local origin = pivot * CFrame.new(RoomConfig.origin(n))
+--- 레시피 put. origin = 방 로컬 원점(월드). 만든 파트 수는 두 번째 반환 함수로
+local function recipePut(m: Model, origin: CFrame): (Rooms.Put, () -> number)
 	local count = 0
-	local function put(name: string, size: Vector3, pos: Vector3, color: Color3, opts: Rooms.PutOpts?): Part
+	local function put(name: string, size: Vector3, pos: Vector3, color: Color3, opts: Rooms.PutOpts?): BasePart
 		count += 1
-		local p = Instance.new("Part")
+		local o: Rooms.PutOpts = opts or {}
+		local mesh = if o.mesh then meshOf(o.mesh.id) else nil
+		local p: BasePart
+		if mesh then
+			local mp = mesh:Clone()
+			mp.TextureID = ""
+			p = mp
+		else
+			local plain = Instance.new("Part")
+			plain.Shape = o.shape or Enum.PartType.Block
+			plain.TopSurface = Enum.SurfaceType.Smooth
+			plain.BottomSurface = Enum.SurfaceType.Smooth
+			p = plain
+		end
 		p.Name = name
-		p.Shape = if opts and opts.shape then opts.shape else Enum.PartType.Block
 		p.Size = size
-		p.CFrame = origin * CFrame.new(pos) * (if opts and opts.rot then opts.rot else CFrame.identity)
+		p.CFrame = origin * CFrame.new(pos) * (o.rot or CFrame.identity)
 		p.Color = color
-		p.Material = if opts and opts.material then opts.material else Enum.Material.SmoothPlastic
-		p.Transparency = if opts and opts.transparency then opts.transparency else 0
+		p.Material = o.material or Enum.Material.SmoothPlastic
+		p.Transparency = o.transparency or 0
 		p.Anchored = true
-		p.CanCollide = opts ~= nil and opts.collide == true
+		p.CanCollide = o.collide == true
 		p.CanQuery = false
 		p.CanTouch = false
 		p.CastShadow = false
-		p.TopSurface = Enum.SurfaceType.Smooth
-		p.BottomSurface = Enum.SurfaceType.Smooth
 		p.Parent = m
 		return p
 	end
+	return put, function()
+		return count
+	end
+end
+
+--- 레시피를 부품 단계까지(2 = big, 3 = +props, 4 = +finish). 만든 파트 수를 돌려준다
+local function runRecipe(m: Model, origin: CFrame, room: RoomConfig.Room, n: number, stage: number): number
+	local put, count = recipePut(m, origin)
 	local recipe = Rooms.get(room.id)
 	local ctx = { room = room, floor = n }
 	if stage >= 2 then
@@ -409,6 +411,57 @@ local function buildInterior(pivot: CFrame, key: string, n: number, room: RoomCo
 	if stage >= RoomConfig.PARTS then
 		recipe.finish(put, ctx)
 	end
+	return count()
+end
+
+--- 옥상 방(자기 구역 안). 머리말 R{id}
+local function buildRoofRoom(pivot: CFrame, roofN: number, room: RoomConfig.Room, stage: number, isNear: boolean): Model
+	local m = newModel(pivot, roofN, "R" .. room.id)
+	local o = RoomConfig.origin(roofN)
+	local z = Rooms.Kit.zone(room)
+	local zc = Vector3.new((z.x0 + z.x1) / 2, 0, (z.z0 + z.z1) / 2)
+	local zs = Vector3.new(z.x1 - z.x0, 0, z.z1 - z.z0)
+	local done = stage >= RoomConfig.PARTS
+	if stage <= 1 then
+		local h = Rooms.Kit.SIT_DESK
+		local box =
+			part(m, "Ghost", pivot, o + zc + Vector3.new(0, h / 2, 0), zs + Vector3.new(0, h, 0), WorldPalette.ghost)
+		box.Transparency = GHOST
+		box.CastShadow = false
+		if stage == 1 then
+			box.Color = room.wall
+		end
+	elseif isNear then
+		local count = runRecipe(m, pivot * CFrame.new(o), room, roofN, stage)
+		assert(count <= MAX_ROOF_PARTS, `TowerRender {room.id}: 옥상 방 {count}개 > {MAX_ROOF_PARTS}`)
+		local sign = m:FindFirstChild("Sign")
+		if done and sign and sign:IsA("BasePart") then
+			addSign(sign, `{room.icon} {room.name}`)
+		end
+	else
+		part(m, "Deck", pivot, o + zc + Vector3.new(0, DECK_H / 2, 0), zs + Vector3.new(0, DECK_H, 0), room.wall)
+		-- 옥상 학생은 어디서나 보인다. 먼 부지에서도 허공에 앉지 않게 의자 하나(바닥판 위)
+		local row = if done and room.student then StudentConfig.BY_ID[room.student] else nil
+		local s = if row then room.seats[row.seat.index] else nil
+		if s then
+			local h = CharacterBuilder.SIT_HIP - 0.15 - DECK_H
+			part(
+				m,
+				"Chair",
+				pivot,
+				o + s + Vector3.new(0, DECK_H + h / 2, 0.2),
+				Vector3.new(2, h, 2),
+				WorldPalette.wood
+			)
+		end
+	end
+	return m
+end
+
+--- 방 안. Rooms 레시피를 부품 단계까지(2 = big, 3 = +props, 4 = +finish)
+local function buildInterior(pivot: CFrame, key: string, n: number, room: RoomConfig.Room, stage: number): Model
+	local m = newModel(pivot, n, key)
+	local count = runRecipe(m, pivot * CFrame.new(RoomConfig.origin(n)), room, n, stage)
 	assert(count <= MAX_ROOM_PARTS, `TowerRender {room.id}: 방 안 {count}개 > {MAX_ROOM_PARTS}`)
 	return m
 end
@@ -509,32 +562,21 @@ local function renderPlot(plotId: number)
 	for id, stage in roofRooms do
 		local room = RoomConfig.BY_ID[id] :: RoomConfig.Room -- fromCsv·BY_ID 로 이미 거른 id
 		want["R" .. id] = {
-			sig = `{roofN}|{stage}`,
+			sig = `{roofN}|{stage}|{lod}|{meshVersion}`,
 			build = function()
-				return buildRoofRoom(pivot, roofN, room, stage)
+				return buildRoofRoom(pivot, roofN, room, stage, isNear)
 			end,
 		}
 	end
 
-	-- 방 안: 캐릭터가 선 부지의 그 층 ±1
+	-- 방 안: 캐릭터가 선 부지의 그 층 ±1(옥상은 R{id})
 	if plotId == herePlot then
-		for n = hereFloor - 1, hereFloor + 1 do
-			local room: RoomConfig.Room?, stage = nil, 0
-			if n == roofN then
-				-- 옥상 방이 둘이면 좌석이 같아 한 벌만 그린다(LIST 순서로 앞 방)
-				for _, r in RoomConfig.LIST do
-					if roofRooms[r.id] then
-						room, stage = r, roofRooms[r.id]
-						break
-					end
-				end
-			else
-				room, stage = floorRoom(n)
-			end
+		for n = hereFloor - 1, math.min(hereFloor + 1, roofN - 1) do
+			local room, stage = floorRoom(n)
 			if room and stage >= 2 then
 				local key = `I{n}`
 				want[key] = {
-					sig = `{room.id}|{stage}`,
+					sig = `{room.id}|{stage}|{meshVersion}`,
 					build = function()
 						return buildInterior(pivot, key, n, room, stage)
 					end,
@@ -580,7 +622,7 @@ local function renderPlot(plotId: number)
 	end
 end
 
-local function renderAll()
+function renderAll()
 	for plotId = 1, Keys.PLOT_COUNT do
 		renderPlot(plotId)
 	end

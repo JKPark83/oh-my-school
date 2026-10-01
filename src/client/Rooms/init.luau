@@ -2,92 +2,82 @@
 --[[
 	방 안 레시피. 개선계획 §5.3. TowerRenderController 가 부품 단계별로 부른다.
 	  big = 큰 가구(부품 2), props = 소품(부품 3), finish = 마무리 장식(완공).
-	좌표는 방 로컬(원점 = 발자국 중심·그 층 바닥 윗면, +Z 남쪽). put 이 부지·층 위치로 옮긴다.
-	가구 금지 구역(방 로컬 x ≥ 12.5 and z ≥ -2.5, 엘리베이터·패드 자리)은 비운다. 방 하나 ≤ 60 파트.
-	P2 는 모든 방이 같은 임시 레시피(좌석마다 의자·책상, 방 색)를 쓴다. 방별 레시피(Rooms/<id>.luau)는 P3.
+	Rooms.get(id) 는 이 폴더의 <id>.luau(Recipe 를 돌려준다)를 쓰고, 없으면 아래 공용 임시 레시피를 쓴다.
+	타입·치수·가구 도우미는 Kit.luau. 검사는 tools/check_rooms.luau.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
-local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
+local Kit = require(script.Kit)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
-export type PutOpts = {
-	material: Enum.Material?,
-	shape: Enum.PartType?,
-	rot: CFrame?,
-	transparency: number?,
-	collide: boolean?, -- 바닥에 놓인 큰 가구만 true
-}
-export type Put = (name: string, size: Vector3, pos: Vector3, color: Color3, opts: PutOpts?) -> Part
-export type Ctx = { room: RoomConfig.Room, floor: number }
-export type Builder = (put: Put, ctx: Ctx) -> ()
-export type Recipe = { big: Builder, props: Builder, finish: Builder }
+export type PutOpts = Kit.PutOpts
+export type Put = Kit.Put
+export type Ctx = Kit.Ctx
+export type Builder = Kit.Builder
+export type Recipe = Kit.Recipe
 
 local Rooms = {}
+Rooms.Kit = Kit
 
-local DESK_W, DESK_D, DESK_TOP = 3, 1.6, 0.25
-local NORTH_INNER = -14.4 -- 북쪽 벽 안쪽 면(발자국 z0 + 벽 두께 0.6, 방 로컬)
-
--- 학생은 좌석에서 −Z 를 보고 앉는다(CharacterBuilder). 의자는 좌석 아래, 책상은 그 앞(−Z)
+-- 공용 임시 레시피: 좌석마다 의자·책상, 방 색. 옥상 방은 벽 장식 없이 자기 구역 안에만
 local shared: Recipe = {
 	big = function(put, ctx)
-		local accent = ctx.room.accent
-		for i, s in ctx.room.seats do
-			local seatTop = CharacterBuilder.SIT_HIP - 0.15
-			put(`Chair{i}`, Vector3.new(2, seatTop, 2), s + Vector3.new(0, seatTop / 2, 0.2), WorldPalette.wood)
-			local deskZ = s.Z - 1.9
-			put(
-				`Desk{i}`,
-				Vector3.new(DESK_W, DESK_TOP, DESK_D),
-				Vector3.new(s.X, CharacterBuilder.SIT_DESK - DESK_TOP / 2, deskZ),
-				accent
-			)
-			local panelH = CharacterBuilder.SIT_DESK - DESK_TOP
-			put(
-				`DeskPanel{i}`,
-				Vector3.new(DESK_W, panelH, 0.25),
-				Vector3.new(s.X, panelH / 2, deskZ - DESK_D / 2 + 0.125),
-				accent,
-				{ collide = true }
-			)
+		local room = ctx.room
+		for i, s in room.seats do
+			Kit.seat(put, i, s, WorldPalette.wood, room.accent, room.seatYaw)
 		end
-		put("Board", Vector3.new(14, 6, 0.2), Vector3.new(-4, 8, NORTH_INNER + 0.1), WorldPalette.boardDark)
+		if room.kind == "floor" then
+			Kit.board(put, "Board", "N", -4, 8, 14, 6, WorldPalette.boardDark)
+		end
 	end,
 	props = function(put, ctx)
-		for i, s in ctx.room.seats do
+		local room = ctx.room
+		for i, s in room.seats do
 			put(
 				`Book{i}`,
 				Vector3.new(1, 0.2, 0.7),
-				Vector3.new(s.X, CharacterBuilder.SIT_DESK + 0.1, s.Z - 2),
-				ctx.room.wall
+				Kit.deskTop(s, room.seatYaw) + Vector3.new(0, 0.1, 0),
+				room.wall,
+				{ rot = CFrame.Angles(0, math.rad(room.seatYaw or 0), 0) }
 			)
 		end
-		put("Pot", Vector3.new(1.4, 1.4, 1.4), Vector3.new(-17, 0.7, -12.5), WorldPalette.trunk, {
-			shape = Enum.PartType.Cylinder,
-			rot = CFrame.Angles(0, 0, math.pi / 2),
-		})
-		put("Leaf", Vector3.one * 2.4, Vector3.new(-17, 2.4, -12.5), WorldPalette.hedge, {
-			shape = Enum.PartType.Ball,
-			material = Enum.Material.Grass,
-		})
+		-- 층 방은 북서 모서리, 옥상 방은 구역 남동 모서리(좌석·책상이 북쪽에 몰린다)
+		local z = Kit.zone(room)
+		local px, pz = if room.zone then z.x1 - 2 else z.x0 + 2, if room.zone then z.z1 - 2 else z.z0 + 2
+		Kit.plant(put, "Plant", px, pz, WorldPalette.trunk, WorldPalette.hedge)
 	end,
 	finish = function(put, ctx)
-		put("Rug", Vector3.new(18, 0.1, 14), Vector3.new(-4, 0.05, -2.5), ctx.room.wall, {
-			material = Enum.Material.Fabric,
-		})
-		put("Banner", Vector3.new(14, 1.2, 0.2), Vector3.new(-4, 11.8, NORTH_INNER + 0.1), ctx.room.accent)
-		put("Clock", Vector3.new(0.2, 2, 2), Vector3.new(8, 11, NORTH_INNER + 0.15), WorldPalette.clockFace, {
-			shape = Enum.PartType.Cylinder,
-			rot = CFrame.Angles(0, math.pi / 2, 0),
-		})
+		local room = ctx.room
+		if room.kind == "floor" then
+			Kit.rug(put, "Rug", -4, 0, 20, 10, room.wall)
+			Kit.board(put, "Banner", "N", -4, 11.8, 14, 1.2, room.accent)
+			put("Clock", Vector3.new(0.2, 2, 2), Vector3.new(8, 11, Kit.Z_N + 0.15), WorldPalette.clockFace, {
+				shape = Enum.PartType.Cylinder,
+				rot = CFrame.Angles(0, math.pi / 2, 0),
+			})
+		else
+			local z = Kit.zone(room)
+			local cx = (z.x0 + z.x1) / 2
+			Kit.rug(put, "Rug", cx, (z.z0 + z.z1) / 2, z.x1 - z.x0 - 2, z.z1 - z.z0 - 2, room.wall)
+			-- 이름 팻말(TowerRender 가 "Sign" 남쪽 면에 방 이름을 붙인다)
+			put("Sign", Vector3.new(6, 3, 0.3), Vector3.new(cx, 1.5, z.z1 - 0.5), room.accent)
+		end
 	end,
 }
 
---- 방 id 의 레시피. P2 는 전부 같은 임시 레시피
-function Rooms.get(_roomId: string): Recipe
-	return shared
+local cache: { [string]: Recipe } = {}
+
+--- 방 id 의 레시피. Rooms/<id>.luau 가 없으면 공용 임시 레시피
+function Rooms.get(roomId: string): Recipe
+	local known = cache[roomId]
+	if known then
+		return known
+	end
+	local module = script:FindFirstChild(roomId)
+	local recipe: Recipe = if module and module:IsA("ModuleScript") then require(module) :: any else shared
+	cache[roomId] = recipe
+	return recipe
 end
 
 return Rooms

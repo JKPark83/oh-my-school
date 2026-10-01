@@ -21,8 +21,11 @@ export type Room = {
 	wall: Color3, -- 외벽 색(빨강 계열 금지)
 	accent: Color3, -- 포인트 색
 	icon: string, -- 간판·카드 이모지 한 글자
-	seats: { Vector3 }, -- 방 로컬 좌표. [1] 이 그 방 학생 자리
+	seats: { Vector3 }, -- 방 로컬 좌표(바닥 높이 y 0). 학생 자리는 StudentConfig seat 번호
+	seatYaw: number?, -- 좌석 방향(도). 기본 0 = −Z(북쪽) 보고 앉는다
+	zone: Zone?, -- 옥상 방만: 이 방 가구를 놓는 옥상 구역(방 로컬). 층 방은 벽 안쪽 전체
 }
+export type Zone = { x0: number, x1: number, z0: number, z1: number }
 
 RoomConfig.FIRST_FLOOR = 3
 RoomConfig.MAX_FLOOR = 30 -- P2 실측으로 확정
@@ -34,19 +37,9 @@ local function C(r: number, g: number, b: number): Color3
 	return Color3.fromRGB(r, g, b)
 end
 
--- P2 공통 임시 좌석(가운데 서쪽 2줄 × 3). 방별 배치는 P3 레시피와 함께 고친다
-local SEATS = {
-	Vector3.new(-10, 0, -6),
-	Vector3.new(-4, 0, -6),
-	Vector3.new(2, 0, -6),
-	Vector3.new(-10, 0, 2),
-	Vector3.new(-4, 0, 2),
-	Vector3.new(2, 0, 2),
-}
--- 옥상 방 둘은 한 옥상을 같이 쓴다. 같은 책상 6개에서 학생 자리([1])만 옆자리로 비킨다
-local SEATS_ROOF2 = { SEATS[2], SEATS[1], SEATS[3], SEATS[4], SEATS[5], SEATS[6] }
-
--- 도감·패널 순서. 색은 색상환을 따라 서로 구분되는 밝은 파스텔
+-- 도감·패널 순서. 색은 색상환을 따라 서로 구분되는 밝은 파스텔.
+-- 방마다 seats 블록을 따로 둔다(방 레시피 담당이 자기 블록만 고친다). 규칙은 맨 아래 자기 검사·tools/check_rooms.luau.
+-- 층 방 공통 임시 배치: 서쪽 3열 × 2줄. 가운데(0, 0)와 엘리베이터 도착 → 가운데 통로를 비운다
 local LIST: { Room } = {
 	{
 		id = "art",
@@ -56,7 +49,14 @@ local LIST: { Room } = {
 		wall = C(255, 222, 180),
 		accent = C(240, 160, 80),
 		icon = "🎨",
-		seats = SEATS,
+		-- 1~3 = 이젤 앞 스툴(1 가운데 이젤), 4·5 = 작업 탁자 남쪽 스툴
+		seats = {
+			Vector3.new(-8, 0, -6),
+			Vector3.new(-14, 0, -6),
+			Vector3.new(-2, 0, -6),
+			Vector3.new(-13, 0, 8.6),
+			Vector3.new(-7, 0, 8.6),
+		},
 	},
 	{
 		id = "computer",
@@ -66,7 +66,15 @@ local LIST: { Room } = {
 		wall = C(185, 215, 250),
 		accent = C(70, 130, 220),
 		icon = "💻",
-		seats = SEATS,
+		-- 컴퓨터 책상 2줄 × 3(1 = 앞줄 가운데)
+		seats = {
+			Vector3.new(-9, 0, -6),
+			Vector3.new(-14, 0, -6),
+			Vector3.new(-4, 0, -6),
+			Vector3.new(-14, 0, 4),
+			Vector3.new(-9, 0, 4),
+			Vector3.new(-4, 0, 4),
+		},
 	},
 	{
 		id = "broadcast",
@@ -76,7 +84,15 @@ local LIST: { Room } = {
 		wall = C(225, 205, 250),
 		accent = C(140, 100, 210),
 		icon = "🎤",
-		seats = SEATS,
+		-- 남쪽(카메라)을 본다. 1·2 = 방송 데스크 앵커, 3 = 믹서 콘솔, 4·5 = 미리보기 모니터
+		seats = {
+			Vector3.new(-7, 0, -9),
+			Vector3.new(-3, 0, -9),
+			Vector3.new(-15, 0, 0),
+			Vector3.new(-9, 0, 6),
+			Vector3.new(-4, 0, 6),
+		},
+		seatYaw = 180,
 	},
 	{
 		id = "cooking",
@@ -86,7 +102,14 @@ local LIST: { Room } = {
 		wall = C(255, 240, 175),
 		accent = C(225, 185, 50),
 		icon = "🍳",
-		seats = SEATS,
+		seats = { -- [1]~[4] 조리대 남쪽 스툴, [5]·[6] 시식 탁자
+			Vector3.new(-13, 0, -6),
+			Vector3.new(-5, 0, -6),
+			Vector3.new(-13, 0, 6),
+			Vector3.new(-5, 0, 6),
+			Vector3.new(3.5, 0, -2.9),
+			Vector3.new(6.5, 0, -2.9),
+		},
 	},
 	{
 		id = "dance",
@@ -96,7 +119,13 @@ local LIST: { Room } = {
 		wall = C(245, 210, 250),
 		accent = C(200, 120, 220),
 		icon = "💃",
-		seats = SEATS,
+		seats = { -- 서쪽 벽 긴 벤치(학생 메시가 앉은 포즈뿐이라 서 있지 않는다)
+			Vector3.new(-16.5, 0, -6),
+			Vector3.new(-16.5, 0, -2),
+			Vector3.new(-16.5, 0, 2),
+			Vector3.new(-16.5, 0, 6),
+		},
+		seatYaw = 270, -- 동쪽(춤추는 마루)을 본다
 	},
 	{
 		id = "robot",
@@ -106,7 +135,13 @@ local LIST: { Room } = {
 		wall = C(190, 240, 225),
 		accent = C(50, 170, 150),
 		icon = "🤖",
-		seats = SEATS,
+		seats = { -- [1]·[2] 로봇 경기장 앞, [3]~[5] 노트북 책상
+			Vector3.new(-9, 0, 1.6),
+			Vector3.new(-5, 0, 1.6),
+			Vector3.new(-14, 0, 10),
+			Vector3.new(-8, 0, 10),
+			Vector3.new(-2, 0, 10),
+		},
 	},
 	{
 		id = "english",
@@ -116,7 +151,14 @@ local LIST: { Room } = {
 		wall = C(205, 210, 255),
 		accent = C(100, 110, 220),
 		icon = "🌍",
-		seats = SEATS,
+		-- 1 가게 계산대 뒤, 2 공항 체크인 데스크 뒤, 3~5 남쪽 책상(세계 지도를 본다)
+		seats = {
+			Vector3.new(-13, 0, -4.5),
+			Vector3.new(10, 0, -6),
+			Vector3.new(-15, 0, 8),
+			Vector3.new(-9, 0, 8),
+			Vector3.new(-3, 0, 8),
+		},
 	},
 	{
 		id = "care",
@@ -126,7 +168,14 @@ local LIST: { Room } = {
 		wall = C(210, 245, 195),
 		accent = C(100, 180, 80),
 		icon = "🧸",
-		seats = SEATS,
+		-- 1·2 낮은 원탁 방석, 3·4 책 읽는 빈백, 5 간식 탁자
+		seats = {
+			Vector3.new(-12, 0, -2),
+			Vector3.new(-8, 0, -2),
+			Vector3.new(-4.5, 0, 10),
+			Vector3.new(-0.5, 0, 10),
+			Vector3.new(8, 0, 11.5),
+		},
 	},
 	{
 		id = "staff",
@@ -136,7 +185,15 @@ local LIST: { Room } = {
 		wall = C(235, 228, 210),
 		accent = C(150, 125, 95),
 		icon = "📋",
-		seats = SEATS,
+		-- 1·6 회의 탁자(남쪽), 2~5 선생님 책상 2줄
+		seats = {
+			Vector3.new(-1.5, 0, 12),
+			Vector3.new(-15, 0, -5),
+			Vector3.new(-10, 0, -5),
+			Vector3.new(-15, 0, 3),
+			Vector3.new(-10, 0, 3),
+			Vector3.new(1.5, 0, 12),
+		},
 	},
 	{
 		id = "exhibit",
@@ -146,7 +203,14 @@ local LIST: { Room } = {
 		wall = C(185, 235, 245),
 		accent = C(40, 160, 195),
 		icon = "🦕",
-		seats = SEATS,
+		-- 공룡 앞 관람 벤치: 앞줄 3(1번 = 가운데) + 뒷줄 2
+		seats = {
+			Vector3.new(-9, 0, 1),
+			Vector3.new(-13, 0, 1),
+			Vector3.new(-5, 0, 1),
+			Vector3.new(-11, 0, 8),
+			Vector3.new(-7, 0, 8),
+		},
 	},
 	{
 		id = "garden",
@@ -156,7 +220,14 @@ local LIST: { Room } = {
 		wall = C(230, 250, 185),
 		accent = C(130, 195, 50),
 		icon = "🌻",
-		seats = SEATS,
+		zone = { x0 = -18.9, x1 = -2, z0 = -13.9, z1 = 13.9 }, -- 옥상 서쪽(난간 충돌 벽 안쪽 면 ±18.95·±13.95 안)
+		-- 1번 = 텃밭 앞 스툴, 2~4 = 남쪽 등받이 벤치
+		seats = {
+			Vector3.new(-11, 0, -5.5),
+			Vector3.new(-16, 0, 6),
+			Vector3.new(-13, 0, 6),
+			Vector3.new(-10, 0, 6),
+		},
 	},
 	{
 		id = "observatory",
@@ -166,7 +237,14 @@ local LIST: { Room } = {
 		wall = C(195, 195, 230),
 		accent = C(70, 75, 165),
 		icon = "🔭",
-		seats = SEATS_ROOF2,
+		zone = { x0 = 0, x1 = 11, z0 = -13.9, z1 = -3 }, -- 옥상 가운데~동쪽 북편(금지 구역·기둥·난간 비킴)
+		-- 1번 = 망원경 접안렌즈 뒤 스툴, 2·3 = 별자리 판 앞 벤치, 4 = 동쪽 스툴
+		seats = {
+			Vector3.new(7.5, 0, -6),
+			Vector3.new(1.8, 0, -5.5),
+			Vector3.new(4.4, 0, -5.5),
+			Vector3.new(10, 0, -8.8),
+		},
 	},
 }
 
@@ -379,8 +457,17 @@ do
 		)
 		assert(room.seats[row.seat.index], `RoomConfig: {room.id} 에 학생 좌석 {row.seat.index} 이 없다`)
 		assert(#room.seats >= 4 and #room.seats <= 6, `RoomConfig: {room.id} 좌석이 4~6개가 아니다`)
+		local zone = room.zone
+		assert(
+			(room.kind == "roof") == (zone ~= nil),
+			`RoomConfig: {room.id} zone 은 옥상 방에만(옥상 방은 꼭) 둔다`
+		)
 		for _, s in room.seats do
 			local x, z = s.X + o.X, s.Z + o.Z
+			assert(
+				not zone or (s.X > zone.x0 and s.X < zone.x1 and s.Z > zone.z0 and s.Z < zone.z1),
+				`RoomConfig: {room.id} 좌석이 옥상 구역 밖이다`
+			)
 			assert(
 				math.abs(s.X) <= hx and math.abs(s.Z) <= hz,
 				`RoomConfig: {room.id} 좌석이 벽에서 3 안쪽이 아니다`

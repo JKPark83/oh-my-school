@@ -925,24 +925,25 @@ end
 
 type Want = { facilityId: string, index: number, seat: CFrame } -- facilityId 는 방 학생이면 방 id
 
---- 방 학생 자리(부지 로컬 = RoomConfig.origin(층) + 방 로컬, −Z 를 본다). 방 학생이 아니거나 방이 없으면 nil.
---- 층 방을 짓는 중(부품 ≥ 1)이면 옥상이 한 층 올라가므로 옥상 방 학생도 따라 올린다(TowerRenderController 와 같은 규칙)
+--- 방 학생 자리(부지 로컬 = RoomConfig.origin(층) + 방 로컬, 방 seatYaw 방향. 기본 −Z). 방 학생이 아니거나 방이 없으면 nil.
+--- 옥상 방이 층 방 공사로 한 층 올라가는 보정은 Seats.roomSeat 가 한다
 local function roomSeatCFrame(plotId: number, state: Instance, studentId: string): (string?, CFrame?)
 	local floors = RoomConfig.fromCsv(attrString(state, Keys.ATTR_FLOORS))
 	local rooftop = RoomConfig.fromCsv(attrString(state, Keys.ATTR_ROOFTOP))
-	local roomId, floor, pos = Seats.roomSeat(studentId, floors, rooftop)
+	local parts = state:GetAttribute(Keys.ATTR_TOWER_PARTS)
+	local roomId, floor, pos = Seats.roomSeat(
+		studentId,
+		floors,
+		rooftop,
+		attrString(state, Keys.ATTR_TOWER_ROOM),
+		if type(parts) == "number" then parts else 0
+	)
 	local root = plotModel(plotId)
 	if not roomId or not floor or not pos or not root then
 		return nil, nil
 	end
-	if RoomConfig.BY_ID[roomId].kind == "roof" then
-		local building = RoomConfig.BY_ID[attrString(state, Keys.ATTR_TOWER_ROOM)]
-		local parts = state:GetAttribute(Keys.ATTR_TOWER_PARTS)
-		if building and building.kind == "floor" and type(parts) == "number" and parts >= 1 then
-			floor += 1
-		end
-	end
-	return roomId, root:GetPivot() * CFrame.new(RoomConfig.origin(floor) + pos)
+	local yaw = RoomConfig.BY_ID[roomId].seatYaw or 0
+	return roomId, root:GetPivot() * CFrame.new(RoomConfig.origin(floor) + pos) * CFrame.Angles(0, math.rad(yaw), 0)
 end
 
 local function reconcile(plot: Plot)
