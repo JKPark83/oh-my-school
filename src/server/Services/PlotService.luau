@@ -72,6 +72,7 @@ local owners: { [number]: Player } = {}
 local plotOf: { [Player]: number } = {}
 local characterConns: { [Player]: RBXScriptConnection } = {}
 local stickerRngs: { [number]: Random } = {} -- 부지마다 스티커 자리 추첨용 하나
+local reachedAt: { [number]: { floors: number, at: number } } = {} -- 순위 동점 판정. 그 층 수에 도달한 os.clock
 
 local stickerTouched = Instance.new("BindableEvent")
 local starTouched = Instance.new("BindableEvent")
@@ -147,7 +148,8 @@ local function gateSignLabel(plotId: number): TextLabel?
 	return label
 end
 
-local function setGateSign(plotId: number, ownerName: string)
+--- 현판 글자. likes > 0 이면 둘째 줄에 받은 「멋져요」 수(개선계획 §6.2)
+local function setGateSign(plotId: number, ownerName: string, likes: number?)
 	local label = gateSignLabel(plotId)
 	if not label then
 		return
@@ -160,7 +162,7 @@ local function setGateSign(plotId: number, ownerName: string)
 		if length > GATE_NAME_MAX then
 			short = string.sub(short, 1, (utf8.offset(short, GATE_NAME_MAX + 1) or #short + 1) - 1)
 		end
-		label.Text = `{short}의 학교`
+		label.Text = if likes and likes > 0 then `{short}의 학교\n👍 {likes}` else `{short}의 학교`
 	end
 end
 
@@ -648,6 +650,49 @@ function PlotService.Start()
 	end)
 end
 
+--[[
+	같은 서버 안 높이 순위(개선계획 §6.1)를 PlotState Rank 에 쓴다. 완공 층 수 내림차순, 같으면 그 층 수에 먼저 도달한 쪽.
+	층 0 은 0(없음). 도달 시각은 이 서버에서 층 수가 바뀐 것을 처음 본 때(입장 때 이미 가진 층은 입장 시각)다.
+	syncAttributes(입장·층 완공 등)와 release 가 부른다. 부지 12개라 매번 다시 정렬한다
+]]
+local function updateRanks()
+	local ranked = {}
+	for plotId, owner in owners do
+		local profile = DataService.get(owner)
+		local floors = if profile then #profile.floors else 0
+		local reached = reachedAt[plotId]
+		if not reached or reached.floors ~= floors then
+			reachedAt[plotId] = { floors = floors, at = os.clock() }
+		end
+		if floors > 0 then
+			table.insert(ranked, plotId)
+		end
+	end
+	table.sort(ranked, function(a, b)
+		local ra, rb = reachedAt[a], reachedAt[b]
+		if ra.floors ~= rb.floors then
+			return ra.floors > rb.floors
+		end
+		if ra.at ~= rb.at then
+			return ra.at < rb.at
+		end
+		return a < b
+	end)
+	for plotId = 1, Keys.PLOT_COUNT do
+		stateFolders[plotId]:SetAttribute(Keys.ATTR_RANK, table.find(ranked, plotId) or 0)
+	end
+end
+
+--- 월드 위치가 그 부지 안(수평 ±PLOT_HALF)인가. 높이는 보지 않는다(탑 위층도 부지 안)
+function PlotService.isInside(plotId: number, position: Vector3): boolean
+	local cf = cframes[plotId]
+	if not cf then
+		return false
+	end
+	local p = cf:PointToObjectSpace(position)
+	return math.abs(p.X) <= PlotLayout.PLOT_HALF and math.abs(p.Z) <= PlotLayout.PLOT_HALF
+end
+
 --- 빈 번호 중 최소. 다 찼으면 nil(MaxPlayers 12 라 실제로는 없다)
 function PlotService.assign(player: Player): number?
 	if plotOf[player] then
@@ -746,6 +791,8 @@ function PlotService.release(player: Player)
 	refreshWorld(plotId, {}, 0)
 	refreshTower(plotId, nil)
 	resetState(plotId)
+	reachedAt[plotId] = nil
+	updateRanks()
 end
 
 function PlotService.plotOf(player: Player): number?
@@ -768,7 +815,7 @@ function PlotService.state(plotId: number): Folder
 	return stateFolders[plotId]
 end
 
---- 프로필 → PlotState 어트리뷰트 + 교문 현판. Rank 는 순위 계산(P4)이 따로 쓴다
+--- 프로필 → PlotState 어트리뷰트 + 교문 현판 + 전 부지 Rank 재계산
 function PlotService.syncAttributes(player: Player)
 	local plotId = plotOf[player]
 	local profile: Types.Profile? = DataService.get(player)
@@ -787,7 +834,8 @@ function PlotService.syncAttributes(player: Player)
 	folder:SetAttribute(Keys.ATTR_TOWER_ROOM, profile.towerRoom)
 	folder:SetAttribute(Keys.ATTR_TOWER_PARTS, profile.towerParts)
 	folder:SetAttribute(Keys.ATTR_LIKES, profile.likes)
-	setGateSign(plotId, player.DisplayName)
+	setGateSign(plotId, player.DisplayName, profile.likes)
+	updateRanks()
 end
 
 --- 부품 k 삽입 + 패드·실루엣·스티커 갱신. 프로필 facilities·buildParts 는 호출자가 먼저 바꾼다

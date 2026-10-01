@@ -7,6 +7,7 @@
 	  GoHome   PlotService.goHome (5초 쿨다운)
 	  층 쌓기  ChooseRoom(주인) → towerRoom. 시설 14개 뒤 층 패드("tower")에 서 있으면 방 부품 자동 구매,
 	           PARTS 번째에 완공(floors·rooftop, 전학생, 순위 제출, 저장). 이벤트는 주인에게만(개선계획 §3·§5)
+	  멋져요   Like(plotId) → 남의 부지 안·세션당 주인 1번 → 주인 likes +1, Liked(주인)·LikeSent(보낸 사람)(§6.2)
 ]]
 
 local Players = game:GetService("Players")
@@ -36,6 +37,7 @@ local EconomyService = {}
 local HOME_COOLDOWN = 5
 local TOUCH_RANGE = 12
 local CHOOSE_COOLDOWN = 0.5
+local LIKE_COOLDOWN = 1
 local CELEBRATE_DELAY = 4.5 -- 층 완공 연출이 끝난 뒤 그 층에 서 있던 주인을 새 옥상으로 올린다
 
 type ComboState = { count: number, last: number }
@@ -45,6 +47,9 @@ local combos: { [Player]: ComboState } = {}
 local lastStickerAt: { [Player]: number } = {}
 local lastStickerPos: { [Player]: Vector3 } = {}
 local starWindows: { [Player]: { [number]: StarWindow } } = {}
+-- 보낸 사람 UserId → 「멋져요」를 받은 주인 UserId. 나가도 지우지 않아 같은 서버 재접속 반복을 막는다
+-- ponytail: 서버 수명 동안만 기억한다(다른 서버로 옮기면 다시 보낼 수 있음). 막으려면 프로필에 저장
+local likesSent: { [number]: { [number]: boolean } } = {}
 
 local function rootOf(player: Player): BasePart?
 	local character = player.Character
@@ -200,6 +205,35 @@ local function chooseRoom(player: Player, roomId: string)
 	Remotes.event(player, "RoomChosen", { plot = plotId, room = roomId })
 	DataService.syncNow(player)
 	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
+end
+
+--[[
+	Like(plotId). 「멋져요」(개선계획 §6.2). 주인이 있는 남의 부지, 보낸 사람 HRP 가 그 부지 안,
+	이 서버에서 그 주인에게 처음일 때만(재접속해도 UserId 로 기억). 거부는 조용히 무시한다(부정 피드백 없음)
+]]
+local function like(player: Player, plotId: number)
+	local owner = PlotService.ownerOf(plotId)
+	if not owner or owner == player then
+		return
+	end
+	local root = rootOf(player)
+	if not root or not PlotService.isInside(plotId, root.Position) then
+		return
+	end
+	local sent = likesSent[player.UserId] or {}
+	local profile: Types.Profile? = DataService.get(owner)
+	if sent[owner.UserId] or not profile then
+		return
+	end
+	sent[owner.UserId] = true
+	likesSent[player.UserId] = sent
+	profile.likes += 1
+	PlotService.syncAttributes(owner)
+	Metrics.liked(player, owner)
+	Remotes.event(owner, "Liked", { plot = plotId, name = player.DisplayName })
+	Remotes.event(player, "LikeSent", { plot = plotId })
+	DataService.markDirty(owner)
+	DataService.saveDebounced(owner, EconomyConfig.SAVE_DEBOUNCE)
 end
 
 --- DevCheat BuildFloor: 강당·돈·패드 없이 그 방을 바로 완공한다(평소 완공 경로 그대로). 못 지으면 false
@@ -432,6 +466,7 @@ function EconomyService.Start()
 		PlotService.goHome(player)
 	end)
 	RemoteGuard.wrap(Remotes.ChooseRoom, { cooldown = CHOOSE_COOLDOWN, args = { "string" } }, chooseRoom)
+	RemoteGuard.wrap(Remotes.Like, { cooldown = LIKE_COOLDOWN, args = { "number" } }, like)
 
 	Players.PlayerRemoving:Connect(function(player)
 		combos[player] = nil

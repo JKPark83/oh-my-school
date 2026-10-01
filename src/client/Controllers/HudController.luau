@@ -88,29 +88,37 @@ local SOUND_AFFORD = "afford_ding"
 local SOUND_TICK = "tick"
 
 -- 사용자에게 보이는 문구(≤12자)
-local TEXT_NEXT_CAPTION = "다음 시설"
-local TEXT_AFFORD = "살 수 있어요!"
-local TEXT_NO_INCOME = "스티커를 줍자!"
-local TEXT_ALL_BUILT = "학교 완성!"
-local TEXT_ALL_BUILT_SUB = "꾸미고 스티커 모으자"
-local TEXT_TOWER_CAPTION = "층 쌓기"
-local TEXT_TOWER_CHOOSE_SUB = "옥상에서 방을 골라요"
-local TEXT_TOWER_TOP = "최고 높이!"
-local TEXT_ELEVATOR_GUIDE = "엘리베이터로 옥상에 가요!" -- 강당 완공 직후 한 번
-local TEXT_GO_HOME = "우리 학교로"
-local TEXT_GO_HOME_SUB = "탭하면 돌아가요"
+local TEXT = {
+	NEXT_CAPTION = "다음 시설",
+	AFFORD = "살 수 있어요!",
+	NO_INCOME = "스티커를 줍자!",
+	ALL_BUILT = "학교 완성!",
+	ALL_BUILT_SUB = "꾸미고 스티커 모으자",
+	TOWER_CAPTION = "층 쌓기",
+	TOWER_CHOOSE_SUB = "옥상에서 방을 골라요",
+	TOWER_TOP = "최고 높이!",
+	ELEVATOR_GUIDE = "엘리베이터로 옥상에 가요!", -- 강당 완공 직후 한 번
+	GO_HOME = "우리 학교로",
+	GO_HOME_SUB = "탭하면 돌아가요",
+	LIKE = "👍 멋져요",
+	LIKE_SENT = "👍 보냈어요",
+}
 
 -- TODO(통합): 아이콘 이미지(용돈·스티커·도감·미션·설정·집). 지금은 글리프로 대신한다
-local GLYPH_COINS = "💰"
-local GLYPH_HOME = "🏠"
-local GLYPH_SETTINGS = "⚙️"
-local GLYPH_MUSIC = "🎵"
-local GLYPH_CODEX = "📖"
-local GLYPH_MISSIONS = "📋"
-local GLYPH_DECOR = "🌷"
-local GLYPH_GIFT = "🎁"
-local GLYPH_FLOORS = "🏫"
--- 선물 아이템이 꾸미기 버튼으로 날아갈 때의 글리프(DecorConfig.Kind 별). 없으면 GLYPH_DECOR
+local GLYPH = {
+	COINS = "💰",
+	HOME = "🏠",
+	SETTINGS = "⚙️",
+	MUSIC = "🎵",
+	CODEX = "📖",
+	MISSIONS = "📋",
+	DECOR = "🌷",
+	GIFT = "🎁",
+	FLOORS = "🏫",
+	LIKE = "👍",
+}
+local RANK_MEDALS = { "🥇", "🥈", "🥉" } -- 같은 서버 높이 순위 1~3(개선계획 §6.1)
+-- 선물 아이템이 꾸미기 버튼으로 날아갈 때의 글리프(DecorConfig.Kind 별). 없으면 GLYPH.DECOR
 local GLYPH_BY_KIND: { [string]: string } = {
 	general = "🌷",
 	friend = "🙂",
@@ -138,6 +146,9 @@ local decorNew = false -- 선물로 받은 꾸미기가 있다. 꾸미기 시트
 local giftToken = 0
 local plotCenters: { [number]: Vector3 } = {}
 local pulses: { [UIStroke]: Tween } = {}
+local sentOwners: { [number]: boolean } = {} -- 「멋져요」를 보낸 주인 UserId. true = 서버 확인, false = 누르고 확인 대기
+local likeTarget: number? = nil -- 지금 「멋져요」 버튼이 보낼 부지. 이미 보냈거나 숨겼으면 nil
+local likeOwner = 0
 local held = false -- 층 완공 축하 동안 숨기고 새 프로필을 그리지 않는다(§9.5)
 local heldFrom: Profile? = nil -- 숨기기 직전 프로필. 풀 때 이것과 비교해 롤·펀치를 낸다
 
@@ -164,6 +175,11 @@ local incomeLabel: TextLabel
 local incomeScale: UIScale
 local floorsChip: Frame
 local floorsLabel: TextLabel
+local likesChip: Frame
+local likesLabel: TextLabel
+local likesScale: UIScale
+local likeButton: TextButton
+local likeLabel: TextLabel
 local card: TextButton
 local cardCaption: TextLabel
 local cardName: TextLabel
@@ -345,7 +361,7 @@ end
 local function flyGift()
 	local from = rootLocal(boardChip)
 	local to = rootLocal(coinsChip)
-	flyer.Text = GLYPH_COINS
+	flyer.Text = GLYPH.COINS
 	flyer.Position = UDim2.fromOffset(from.X, from.Y)
 	flyer.TextTransparency = 0
 	flyer.Visible = true
@@ -361,7 +377,7 @@ local function flyItem(itemId: string)
 	local item = DecorConfig.byId(itemId)
 	local from = rootLocal(boardChip)
 	local to = rootLocal(decorButton)
-	flyer.Text = if item then GLYPH_BY_KIND[item.kind] or GLYPH_DECOR else GLYPH_DECOR
+	flyer.Text = if item then GLYPH_BY_KIND[item.kind] or GLYPH.DECOR else GLYPH.DECOR
 	flyer.Position = UDim2.fromOffset(from.X, from.Y)
 	flyer.TextTransparency = 0
 	flyer.Visible = true
@@ -409,6 +425,11 @@ local function plotModel(plotId: number): Model?
 	local plots = Workspace:FindFirstChild(Keys.PLOTS_FOLDER)
 	local plot = if plots then plots:FindFirstChild(Keys.plotName(plotId)) else nil
 	return if plot and plot:IsA("Model") then plot else nil
+end
+
+local function plotState(plotId: number): Instance?
+	local states = ReplicatedStorage:FindFirstChild(Keys.PLOT_STATE_FOLDER)
+	return if states then states:FindFirstChild(Keys.plotName(plotId)) else nil
 end
 
 --- 부지 중심(월드) = 모델 피벗(PlotShell 이 부지 CFrame 으로 둔다). 바운딩박스는 스트리밍으로 파트 일부만 있으면 어긋난다
@@ -552,6 +573,16 @@ local function renderIncome(profile: Profile, prev: Profile?)
 	end
 end
 
+--- 층 수 칩 글자. 내 부지 Rank 가 1~3 이면 메달을 붙인다(Rank 는 남이 지어도 바뀌어 매 초 다시 쓴다)
+local function floorsText(profile: Profile): string
+	local plotId = HudController.myPlotId()
+	local state = if plotId then plotState(plotId) else nil
+	local rank = if state then state:GetAttribute(Keys.ATTR_RANK) else nil
+	local medal = if type(rank) == "number" then RANK_MEDALS[rank] else nil
+	local text = `{GLYPH.FLOORS} {RoomConfig.topFloor(#profile.floors)}층`
+	return if medal then `{text} {medal}` else text
+end
+
 --- 층 수 칩(강당 완공 뒤). 강당이 막 완공되면 엘리베이터 안내를 한 번 띄운다
 local function renderFloors(profile: Profile, prev: Profile?)
 	local open = RoomConfig.isOpen(profile)
@@ -559,10 +590,39 @@ local function renderFloors(profile: Profile, prev: Profile?)
 	if not open then
 		return
 	end
-	floorsLabel.Text = `{GLYPH_FLOORS} {RoomConfig.topFloor(#profile.floors)}층`
+	floorsLabel.Text = floorsText(profile)
 	if prev and not RoomConfig.isOpen(prev) then
-		HudController.toast(TEXT_ELEVATOR_GUIDE)
+		HudController.toast(TEXT.ELEVATOR_GUIDE)
 	end
+end
+
+--- 받은 「멋져요」 칩. 0 이면 숨긴다. 늘면 펀치
+local function renderLikes(profile: Profile, prev: Profile?)
+	local n = profile.likes or 0
+	likesChip.Visible = n > 0
+	likesLabel.Text = `{GLYPH.LIKE} {n}`
+	if prev and n > (prev.likes or 0) then
+		punch(likesScale)
+	end
+end
+
+--- 「멋져요」 버튼. 남의 부지 안 + 그 부지에 주인이 있을 때만. 이미 보낸 주인이면 「보냈어요」로 잠근다
+local function renderLike()
+	local plotId = HudController.currentPlotId()
+	local state = if plotId and plotId ~= HudController.myPlotId() then plotState(plotId) else nil
+	local owner = if state then state:GetAttribute(Keys.ATTR_OWNER_ID) else nil
+	if not plotId or type(owner) ~= "number" or owner == 0 or owner == player.UserId then
+		likeButton.Visible = false
+		likeTarget = nil
+		return
+	end
+	local sent = sentOwners[owner] ~= nil
+	likeTarget = if sent then nil else plotId
+	likeOwner = owner
+	likeLabel.Text = if sent then TEXT.LIKE_SENT else TEXT.LIKE
+	likeLabel.TextColor3 = if sent then MUTED else YELLOW
+	likeButton.AutoButtonColor = not sent
+	likeButton.Visible = true
 end
 
 -- 판이 찬 순간은 GiftOpened 가 알려 준다(onGift)
@@ -619,10 +679,10 @@ local function showPrice(profile: Profile, caption: string, name: string, price:
 	local affordable = eta <= 0
 	cardCaption.Text = caption
 	cardName.Text = name
-	cardPrice.Text = `{GLYPH_COINS}{Format.coins(price)}`
+	cardPrice.Text = `{GLYPH.COINS}{Format.coins(price)}`
 	cardSub.Text = if affordable
-		then TEXT_AFFORD
-		elseif eta == math.huge then TEXT_NO_INCOME
+		then TEXT.AFFORD
+		elseif eta == math.huge then TEXT.NO_INCOME
 		else `약 {Format.eta(eta)}`
 	cardBar.Visible = true
 	cardFill.Size = UDim2.fromScale(math.clamp(profile.coins / price, 0, 1), 1)
@@ -644,9 +704,9 @@ local function renderCard(profile: Profile)
 	if not home then
 		key = "home"
 		cardCaption.Text = ""
-		cardName.Text = `{GLYPH_HOME} {TEXT_GO_HOME}`
+		cardName.Text = `{GLYPH.HOME} {TEXT.GO_HOME}`
 		cardPrice.Text = ""
-		cardSub.Text = TEXT_GO_HOME_SUB
+		cardSub.Text = TEXT.GO_HOME_SUB
 		cardBar.Visible = false
 		pulse(cardStroke, false)
 	elseif nextPart == nil and RoomConfig.isOpen(profile) and profile.towerRoom ~= "" then
@@ -657,7 +717,7 @@ local function renderCard(profile: Profile)
 		key = "tower:" .. profile.towerRoom
 		showPrice(
 			profile,
-			TEXT_TOWER_CAPTION,
+			TEXT.TOWER_CAPTION,
 			`{where} {if room then room.name else ""} {k}/{RoomConfig.PARTS}`,
 			RoomConfig.partPrice(RoomConfig.stepOf(profile), k)
 		)
@@ -665,13 +725,13 @@ local function renderCard(profile: Profile)
 		-- 방 고르기 유도 또는 상한
 		local canBuild = RoomConfig.nextStep(profile) ~= nil
 		key = if canBuild then "towerChoose" else "towerTop"
-		cardCaption.Text = TEXT_TOWER_CAPTION
+		cardCaption.Text = TEXT.TOWER_CAPTION
 		local top = RoomConfig.topFloor(#profile.floors)
 		-- 층이 꽉 찼으면 남은 것은 옥상 방뿐이다
 		local nextName = if top >= RoomConfig.MAX_FLOOR then "옥상" else `{top + 1}층`
-		cardName.Text = if canBuild then `다음은 {nextName}!` else TEXT_TOWER_TOP
+		cardName.Text = if canBuild then `다음은 {nextName}!` else TEXT.TOWER_TOP
 		cardPrice.Text = ""
-		cardSub.Text = if canBuild then TEXT_TOWER_CHOOSE_SUB else ""
+		cardSub.Text = if canBuild then TEXT.TOWER_CHOOSE_SUB else ""
 		cardBar.Visible = not canBuild
 		cardFill.Size = UDim2.fromScale(1, 1)
 		cardFill.BackgroundColor3 = GOLD
@@ -680,9 +740,9 @@ local function renderCard(profile: Profile)
 		-- 14개를 다 지었는데 강당 전
 		key = "allBuilt"
 		cardCaption.Text = `{facilityCount(profile)}/{FacilityConfig.COUNT}`
-		cardName.Text = TEXT_ALL_BUILT
+		cardName.Text = TEXT.ALL_BUILT
 		cardPrice.Text = ""
-		cardSub.Text = TEXT_ALL_BUILT_SUB
+		cardSub.Text = TEXT.ALL_BUILT_SUB
 		cardBar.Visible = true
 		cardFill.Size = UDim2.fromScale(1, 1)
 		cardFill.BackgroundColor3 = GOLD
@@ -693,7 +753,7 @@ local function renderCard(profile: Profile)
 		key = facility.id
 		showPrice(
 			profile,
-			TEXT_NEXT_CAPTION,
+			TEXT.NEXT_CAPTION,
 			`{facility.name} {nextPart.index}/{nextPart.count}`,
 			FacilityConfig.partPriceOf(facility.id, nextPart.index)
 		)
@@ -709,6 +769,8 @@ local function render(profile: Profile, prev: Profile?)
 	renderCoins(profile, prev)
 	renderIncome(profile, prev)
 	renderFloors(profile, prev)
+	renderLikes(profile, prev)
+	renderLike()
 	renderBoard(profile, prev)
 	renderMultiplier(profile, prev)
 	renderButtons(profile)
@@ -833,7 +895,7 @@ local function buildGui()
 	local coinsGlyph = makeLabel(coinsChip, "Glyph", Enum.Font.GothamBold, YELLOW)
 	coinsGlyph.Position = UDim2.fromOffset(8, 4)
 	coinsGlyph.Size = UDim2.fromOffset(24, 24)
-	coinsGlyph.Text = GLYPH_COINS
+	coinsGlyph.Text = GLYPH.COINS
 	coinsLabel = makeLabel(coinsChip, "Value", Enum.Font.GothamBold, YELLOW)
 	coinsLabel.Position = UDim2.fromOffset(38, 4)
 	coinsLabel.Size = UDim2.fromOffset(154, 24)
@@ -859,12 +921,49 @@ local function buildGui()
 	incomeLabel.TextXAlignment = Enum.TextXAlignment.Left
 	incomeChip.Visible = false
 
-	-- 층 수 칩 (180, 52) 96×24 = 수입 칩 오른쪽. 강당 완공 뒤에만
-	floorsChip = makePanel(root, "Floors", UDim2.fromOffset(180, 52), UDim2.fromOffset(96, 24))
+	-- 층 수 칩 (180, 52) 120×24 = 수입 칩 오른쪽(카드 왼끝 306 전). 강당 완공 뒤에만. 순위 메달이 붙을 자리까지
+	floorsChip = makePanel(root, "Floors", UDim2.fromOffset(180, 52), UDim2.fromOffset(120, 24))
 	floorsLabel = makeLabel(floorsChip, "Value", Enum.Font.GothamBold, WHITE)
 	floorsLabel.Position = UDim2.fromOffset(6, 3)
-	floorsLabel.Size = UDim2.fromOffset(84, 18)
+	floorsLabel.Size = UDim2.fromOffset(108, 18)
 	floorsChip.Visible = false
+
+	-- 받은 「멋져요」 칩 (76, 84) 80×24 = 꾸미기 버튼 오른쪽, 수입 칩(..76) 아래. 0 이면 숨김
+	likesChip = makePanel(root, "Likes", UDim2.fromOffset(76, 84), UDim2.fromOffset(80, 24))
+	likesScale = makeScale(likesChip)
+	likesLabel = makeLabel(likesChip, "Value", Enum.Font.GothamBold, YELLOW)
+	likesLabel.Position = UDim2.fromOffset(6, 3)
+	likesLabel.Size = UDim2.fromOffset(68, 18)
+	likesChip.Visible = false
+
+	-- 「멋져요」 버튼 (12, 148) 140×56 = 꾸미기 버튼(84..140) 아래. 남의 부지에서만 보인다
+	likeButton = makeButton(root, "Like", UDim2.fromOffset(12, 148), UDim2.fromOffset(140, 56))
+	likeLabel = makeLabel(likeButton, "Text", Enum.Font.GothamBold, YELLOW)
+	likeLabel.Position = UDim2.fromOffset(8, 12)
+	likeLabel.Size = UDim2.fromOffset(124, 32)
+	likeButton.Visible = false
+	likeButton.Activated:Connect(function()
+		renderLike()
+		local plotId = likeTarget
+		if not plotId then
+			return
+		end
+		-- 누르자마자 잠깐 잠가 연타를 막는다(false = 확인 대기). 확정 잠금은 onLikeSent 만 한다.
+		-- 서버가 조용히 거절하면(경계에서 위치가 어긋남 등) 2초 뒤 다시 누를 수 있다(서버 쿨다운 1초보다 길게)
+		local owner = likeOwner
+		sentOwners[owner] = false
+		task.delay(2, function()
+			if sentOwners[owner] == false then
+				sentOwners[owner] = nil
+				renderLike()
+			end
+		end)
+		Remotes.Like:FireServer(plotId)
+		if Sound and Sound.play then
+			pcall(Sound.play, SOUND_TICK)
+		end
+		renderLike()
+	end)
 
 	-- 「꾸미기」 버튼 (12, 84) 56×56. 용돈 칩(12..212, 12..44)·수입 칩(12..172, 52..76) 아래라 겹치지 않는다
 	decorButton = makeButton(root, "Decor", UDim2.fromOffset(12, 84), UDim2.fromOffset(56, 56))
@@ -873,7 +972,7 @@ local function buildGui()
 	local decorGlyph = makeLabel(decorButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	decorGlyph.Position = UDim2.fromOffset(12, 12)
 	decorGlyph.Size = UDim2.fromOffset(32, 32)
-	decorGlyph.Text = GLYPH_DECOR
+	decorGlyph.Text = GLYPH.DECOR
 	decorDot = Instance.new("Frame")
 	decorDot.Name = "NewDot"
 	decorDot.AnchorPoint = Vector2.new(1, 0)
@@ -925,7 +1024,7 @@ local function buildGui()
 	local boardGlyph = makeLabel(boardChip, "Caption", Enum.Font.GothamBold, WHITE)
 	boardGlyph.Position = UDim2.fromOffset(6, 4)
 	boardGlyph.Size = UDim2.fromOffset(84, 24)
-	boardGlyph.Text = GLYPH_GIFT
+	boardGlyph.Text = GLYPH.GIFT
 	local _boardBar, fill = makeBar(boardChip, "Ring", UDim2.fromOffset(8, 32), UDim2.fromOffset(80, 10), YELLOW)
 	boardLabel = makeLabel(boardChip, "Value", Enum.Font.GothamBold, MUTED)
 	boardLabel.Position = UDim2.fromOffset(6, 44)
@@ -948,7 +1047,7 @@ local function buildGui()
 	musicGlyph = makeLabel(musicButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	musicGlyph.Position = UDim2.fromOffset(12, 12)
 	musicGlyph.Size = UDim2.fromOffset(32, 32)
-	musicGlyph.Text = GLYPH_MUSIC
+	musicGlyph.Text = GLYPH.MUSIC
 	musicSlash = Instance.new("Frame")
 	musicSlash.Name = "Slash"
 	musicSlash.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -983,7 +1082,7 @@ local function buildGui()
 	local settingsGlyph = makeLabel(settingsButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	settingsGlyph.Position = UDim2.fromOffset(12, 12)
 	settingsGlyph.Size = UDim2.fromOffset(32, 32)
-	settingsGlyph.Text = GLYPH_SETTINGS
+	settingsGlyph.Text = GLYPH.SETTINGS
 	settingsButton.Visible = false
 	settingsButton.Activated:Connect(function()
 		openPanel(PANEL_SETTINGS)
@@ -994,7 +1093,7 @@ local function buildGui()
 	local codexGlyph = makeLabel(codexButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	codexGlyph.Position = UDim2.fromOffset(12, 12)
 	codexGlyph.Size = UDim2.fromOffset(32, 32)
-	codexGlyph.Text = GLYPH_CODEX
+	codexGlyph.Text = GLYPH.CODEX
 	codexDot = Instance.new("Frame")
 	codexDot.Name = "NewDot"
 	codexDot.AnchorPoint = Vector2.new(1, 0)
@@ -1020,7 +1119,7 @@ local function buildGui()
 	local missionGlyph = makeLabel(missionButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	missionGlyph.Position = UDim2.fromOffset(12, 8)
 	missionGlyph.Size = UDim2.fromOffset(32, 28)
-	missionGlyph.Text = GLYPH_MISSIONS
+	missionGlyph.Text = GLYPH.MISSIONS
 	missionBadge = makeLabel(missionButton, "Badge", Enum.Font.GothamBold, YELLOW)
 	missionBadge.Position = UDim2.fromOffset(4, 38)
 	missionBadge.Size = UDim2.fromOffset(48, 14)
@@ -1056,7 +1155,7 @@ local function buildGui()
 	flyer = makeLabel(root, "Flyer", Enum.Font.GothamBold, YELLOW)
 	flyer.AnchorPoint = Vector2.new(0.5, 0.5)
 	flyer.Size = UDim2.fromOffset(28, 28)
-	flyer.Text = GLYPH_COINS
+	flyer.Text = GLYPH.COINS
 	flyer.Visible = false
 	flyer.ZIndex = 5
 
@@ -1064,7 +1163,7 @@ local function buildGui()
 	giftBox = makeLabel(root, "GiftBox", Enum.Font.GothamBold, WHITE)
 	giftBox.AnchorPoint = Vector2.new(0.5, 0.5)
 	giftBox.Size = UDim2.fromOffset(48, 48)
-	giftBox.Text = GLYPH_GIFT
+	giftBox.Text = GLYPH.GIFT
 	giftBox.Visible = false
 	giftBox.ZIndex = 6
 	giftBoxScale = makeScale(giftBox)
@@ -1243,6 +1342,40 @@ function HudController.isOnOwnPlot(): boolean
 	return onOwnPlot
 end
 
+--- 캐릭터가 서 있는 부지 번호(isOnOwnPlot 과 같은 부지 상자 판정). 광장이거나 캐릭터가 없으면 nil
+function HudController.currentPlotId(): number?
+	local character = player.Character
+	local rootPart = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	local plots = Workspace:FindFirstChild(Keys.PLOTS_FOLDER)
+	if not (rootPart and rootPart:IsA("BasePart") and plots) then
+		return nil
+	end
+	for _, plot in plots:GetChildren() do
+		local plotId = Keys.plotIdOf(plot.Name)
+		local center = if plotId then plotCenter(plotId) else nil
+		if center then
+			local offset = rootPart.Position - center
+			if math.abs(offset.X) <= PLOT_HALF and math.abs(offset.Z) <= PLOT_HALF then
+				return plotId
+			end
+		end
+	end
+	return nil
+end
+
+--- 서버 LikeSent(보낸 사람에게만). 그 부지 주인을 「보냈어요」로 잠근다
+function HudController.onLikeSent(payload: any)
+	local plotId = if typeof(payload) == "table" and type(payload.plot) == "number" then payload.plot else nil
+	local state = if plotId then plotState(plotId) else nil
+	local owner = if state then state:GetAttribute(Keys.ATTR_OWNER_ID) else nil
+	if type(owner) == "number" and owner ~= 0 then
+		sentOwners[owner] = true
+	end
+	if built then
+		renderLike()
+	end
+end
+
 --- 「다음 시설」 카드 탭을 가로챈다(PadController 가 패드 위치를 안다). nil 이면 기본 동작(패드로 팬)
 function HudController.setNextFacilityTap(fn: (() -> ())?)
 	nextTap = fn
@@ -1297,6 +1430,12 @@ function HudController.Start()
 		local profile = cached
 		if profile and not held then
 			renderCard(profile)
+			if floorsChip.Visible then
+				floorsLabel.Text = floorsText(profile)
+			end
+		end
+		if not held then
+			renderLike()
 		end
 	end)
 

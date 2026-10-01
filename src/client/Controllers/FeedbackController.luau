@@ -124,6 +124,7 @@ local CELEBRATE_SECONDS = 4
 local CELEBRATE_PITCH = 20
 local CELEBRATE_RADIUS = 60 -- 높이 0 일 때 거리. 높이 1 스터드마다 CELEBRATE_RADIUS_PER_Y 만큼 더 물러난다
 local CELEBRATE_RADIUS_PER_Y = 1.2
+local CELEBRATE_ROOF_LIFT = PlotLayout.FLOOR_STEP * 0.5 -- 옥상 방 축하: 옥상 바닥 위 이만큼을 가까이(CELEBRATE_RADIUS) 돈다
 local TOWER_BASE_Y = PlotLayout.TOWER_BASE_Y
 local FLOOR_STEP = PlotLayout.FLOOR_STEP
 local TOWER_CENTER_Z = (PlotLayout.TOWER_FOOTPRINT.z0 + PlotLayout.TOWER_FOOTPRINT.z1) / 2
@@ -898,24 +899,25 @@ local function celebrate(plotId: number, floor: number, floors: number, roomName
 	end
 	celebrating = true
 	HudController.hold(true)
-	local top = TOWER_BASE_Y + floors * FLOOR_STEP
-	local pivot = plot:GetPivot()
-	local center = pivot:PointToWorldSpace(Vector3.new(0, top * 0.5, TOWER_CENTER_Z))
-	local roof = pivot:PointToWorldSpace(Vector3.new(0, top + 4, TOWER_CENTER_Z))
-	CameraController.orbit(center, CELEBRATE_RADIUS + top * CELEBRATE_RADIUS_PER_Y, CELEBRATE_PITCH, CELEBRATE_SECONDS)
-	sound(SOUND_CELEBRATE)
-	burst(roof, PRESET_CONFETTI, 60)
-	haptic("large")
-	stamp(
-		if floor == 0 then `{roomName} 완공!` else `{floor}층 {roomName} 완공!`,
-		COLOR_GOLD,
-		CELEBRATE_SECONDS - 1
-	)
+	-- 풀기를 먼저 예약한다. 아래 연출이 오류로 끊겨도(캐릭터 리스폰·카메라 없음 등) HUD 와 카메라는 4초 뒤 돌아온다
 	task.delay(CELEBRATE_SECONDS, function()
-		CameraController.restore()
+		pcall(CameraController.restore)
 		HudController.hold(false)
 		celebrating = false
 	end)
+	-- top = 옥상 바닥(맨 위 지붕) y. 층 방은 학교 전체 높이에 맞춰 물러나고, 옥상 방(floor 0)은 옥상을 가까이 돈다
+	local top = TOWER_BASE_Y + floors * FLOOR_STEP
+	local roofRoom = floor == 0
+	local pivot = plot:GetPivot()
+	local centerY = if roofRoom then top + CELEBRATE_ROOF_LIFT else top * 0.5
+	local radius = if roofRoom then CELEBRATE_RADIUS else CELEBRATE_RADIUS + top * CELEBRATE_RADIUS_PER_Y
+	local center = pivot:PointToWorldSpace(Vector3.new(0, centerY, TOWER_CENTER_Z))
+	local roof = pivot:PointToWorldSpace(Vector3.new(0, top + 4, TOWER_CENTER_Z))
+	CameraController.orbit(center, radius, CELEBRATE_PITCH, CELEBRATE_SECONDS)
+	sound(SOUND_CELEBRATE)
+	burst(roof, PRESET_CONFETTI, 60)
+	haptic("large")
+	stamp(if roofRoom then `{roomName} 완공!` else `{floor}층 {roomName} 완공!`, COLOR_GOLD, CELEBRATE_SECONDS - 1)
 end
 
 -- 층 완공: 연출은 주인 화면에서만(§7.5). 남의 부지는 아무것도 없다
@@ -928,6 +930,18 @@ handlers.floorBuilt = function(payload: any)
 	local floors = if type(payload.floors) == "number" then payload.floors else 0
 	local room = if type(payload.room) == "string" then RoomConfig.BY_ID[payload.room] else nil
 	celebrate(plotId, floor, floors, if room then room.name else "")
+end
+
+-- 「멋져요」를 받았다(주인에게만 온다): 짧은 토스트 + 긍정음. 방문객 화면에는 아무것도 없다(§7.5)
+handlers.liked = function(payload: any)
+	local plotId = if type(payload.plot) == "number" then payload.plot else nil
+	if plotId == nil or plotId ~= PadController.myPlot() then
+		return
+	end
+	local name = if type(payload.name) == "string" then payload.name else ""
+	HudController.toast(`{name} 님이 멋져요를 보냈어요!`)
+	sound(SOUND_REWARD)
+	haptic("small")
 end
 
 -- ── 공개 API ─────────────────────────────────────────────────────

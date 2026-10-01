@@ -219,6 +219,17 @@ local dispatch: { [string]: { Handler } } = {
 			call(PadController, "PadController", "refresh")
 		end,
 	},
+	-- 「멋져요」(개선계획 §6.2). Liked 는 주인에게만, LikeSent 는 보낸 사람에게만 온다
+	Liked = {
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "liked", payload)
+		end,
+	},
+	LikeSent = {
+		function(payload)
+			call(HudController, "HudController", "onLikeSent", payload)
+		end,
+	},
 	StickerCollected = {
 		function(payload)
 			call(FeedbackController, "FeedbackController", "play", "sticker", payload)

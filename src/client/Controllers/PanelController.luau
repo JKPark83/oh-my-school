@@ -473,7 +473,7 @@ local function objectParticle(word: string): string
 	return "을"
 end
 
---- 미보유 학생 칸 아래 힌트. 방 이름은 P3 에서 RoomConfig 로 바꾼다
+--- 미보유 학생 칸 아래 힌트
 local function unlockHint(unlock: StudentConfig.Unlock): string
 	if unlock.kind == "facility" then
 		local facility = FacilityConfig.BY_ID[unlock.value :: string]
@@ -481,30 +481,63 @@ local function unlockHint(unlock: StudentConfig.Unlock): string
 			return `{facility.name}{objectParticle(facility.name)} 지으면`
 		end
 	elseif unlock.kind == "room" then
-		return "방을 지으면"
+		local room = RoomConfig.BY_ID[unlock.value :: string]
+		if room then
+			return `{room.name}{objectParticle(room.name)} 지으면`
+		end
 	elseif unlock.kind == "friend" then
 		return "친구 아이템을 사면"
 	end
 	return "?"
 end
 
+--- 지은 방 id → 처음 지은 층(옥상 방은 0). 프로필 floors·rooftop 에서 계산한다(따로 저장하지 않는다, 개선계획 §6.3)
+local function builtRooms(profile: Profile?): ({ [string]: number }, number)
+	local out: { [string]: number } = {}
+	local kinds = 0
+	if not profile then
+		return out, kinds
+	end
+	for i, id in profile.floors do
+		if out[id] == nil then
+			out[id] = i + RoomConfig.FIRST_FLOOR - 1
+			kinds += 1
+		end
+	end
+	for id, done in profile.rooftop do
+		if done and RoomConfig.BY_ID[id] and out[id] == nil then
+			out[id] = 0
+			kinds += 1
+		end
+	end
+	return out, kinds
+end
+
 local function buildCodex(content: Frame)
 	local profile = profileOrNil()
 	local students: { [string]: number } = if profile then profile.students else {}
 	local owned = StudentConfig.ownedCount(students)
+	local rooms, roomKinds = builtRooms(profile)
+	local currentTab = "school"
 
 	padding(content, 16, 10)
 	local title = label(
 		content,
 		"Title",
 		`도감 {owned}/{StudentConfig.COUNT}`,
-		UDim2.fromOffset(180, 36),
+		UDim2.fromOffset(140, 36),
 		nil,
 		26,
 		YELLOW,
 		FONT_BOLD
 	)
 	title.TextXAlignment = Enum.TextXAlignment.Left
+	local function titleText(): string
+		if currentTab == "room" then
+			return `방 {roomKinds}/{#RoomConfig.LIST}`
+		end
+		return `도감 {owned}/{StudentConfig.COUNT}`
+	end
 
 	local scroll = Instance.new("ScrollingFrame")
 	scroll.Name = "Grid"
@@ -544,7 +577,28 @@ local function buildCodex(content: Frame)
 		label(card, "Unknown", text, UDim2.new(1, 0, 0, 28), UDim2.new(0, 0, 1, -32), maxText, GREY, FONT_BOLD)
 	end
 
-	--- tab = "school"(학교 친구: 시설·방 해금) | "friend"(함께 오는 친구: 꾸미기로 만난다)
+	--- 방 도감 12칸(LIST 순서). 지은 방은 벽 색 카드 + 아이콘 + 이름 + 「n층」/「옥상」, 안 지은 방은 회색 실루엣 + 이름
+	local function fillRooms()
+		for i, room in RoomConfig.LIST do
+			local card = cell(i, room.id)
+			local floor = rooms[room.id]
+			if floor then
+				card.BackgroundColor3 = room.wall
+				stroke(card, room.accent, 2)
+				label(card, "Icon", room.icon, UDim2.new(1, 0, 0, 48), UDim2.fromOffset(0, 8), 40)
+				label(card, "Name", room.name, UDim2.new(1, -8, 0, 24), UDim2.fromOffset(4, 60), 18, DARK, FONT_BOLD)
+				local where = if floor == 0 then "옥상" else `{floor}층`
+				label(card, "Floor", where, UDim2.new(1, -8, 0, 20), UDim2.fromOffset(4, 90), 16, DARK)
+			else
+				stroke(card, GREY, 2)
+				local shape = frame(card, "Silhouette", UDim2.fromOffset(56, 56), UDim2.fromOffset(20, 12), DARK)
+				corner(shape, 8)
+				label(card, "Name", room.name, UDim2.new(1, -8, 0, 28), UDim2.new(0, 4, 1, -32), 14, GREY, FONT_BOLD)
+			end
+		end
+	end
+
+	--- tab = "school"(학교 친구: 시설·방 해금) | "friend"(함께 오는 친구: 꾸미기로 만난다) | "room"(방 도감)
 	local function fill(tab: string)
 		tabGen += 1
 		local myTab = tabGen
@@ -553,6 +607,12 @@ local function buildCodex(content: Frame)
 			if child:IsA("GuiObject") then
 				child:Destroy()
 			end
+		end
+		currentTab = tab
+		title.Text = titleText()
+		if tab == "room" then
+			fillRooms()
+			return
 		end
 		local views: { { id: string, card: Frame } } = {}
 		local order = 0
@@ -623,18 +683,19 @@ local function buildCodex(content: Frame)
 		end
 		fill(key)
 	end
-	-- 탭은 그림(🙂 / 🌷) + 작은 글자
+	-- 탭은 그림(🙂 / 🌷 / 🏫) + 작은 글자. 150..626(내용 폭 682, X 버튼은 636 부터)
 	for i, def in
 		{
 			{ key = "school", glyph = "🙂", text = "학교 친구" },
 			{ key = "friend", glyph = "🌷", text = "함께 오는 친구" },
+			{ key = "room", glyph = "🏫", text = "방" },
 		}
 	do
 		local b =
-			button(content, `Tab_{def.key}`, "", UDim2.fromOffset(170, 36), UDim2.fromOffset(190 + (i - 1) * 180, 0))
-		label(b, "Glyph", def.glyph, UDim2.fromOffset(28, 28), UDim2.fromOffset(8, 4), 24)
+			button(content, `Tab_{def.key}`, "", UDim2.fromOffset(152, 36), UDim2.fromOffset(150 + (i - 1) * 164, 0))
+		label(b, "Glyph", def.glyph, UDim2.fromOffset(28, 28), UDim2.fromOffset(6, 4), 24)
 		local tabText =
-			label(b, "Text", def.text, UDim2.new(1, -44, 0, 20), UDim2.fromOffset(40, 8), 14, DARK, FONT_BOLD)
+			label(b, "Text", def.text, UDim2.new(1, -40, 0, 20), UDim2.fromOffset(36, 8), 14, DARK, FONT_BOLD)
 		tabText.TextXAlignment = Enum.TextXAlignment.Left
 		b.Activated:Connect(function()
 			selectTab(def.key)
@@ -645,7 +706,15 @@ local function buildCodex(content: Frame)
 	selectTab("school")
 
 	currentRefresh = function(p: Profile)
-		title.Text = `도감 {StudentConfig.ownedCount(p.students)}/{StudentConfig.COUNT}`
+		owned = StudentConfig.ownedCount(p.students)
+		local prevKinds = roomKinds
+		rooms, roomKinds = builtRooms(p)
+		-- 방 탭을 연 채로 방이 완공되면 격자도 다시 그린다(용돈만 바뀌는 동기화에는 다시 그리지 않는다)
+		if currentTab == "room" and roomKinds ~= prevKinds then
+			fill("room")
+		else
+			title.Text = titleText()
+		end
 	end
 end
 

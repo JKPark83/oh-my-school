@@ -64,6 +64,8 @@ type Session = {
 	firstDecorTapAt: number?, -- 꾸미기 버튼 첫 탭. 세션 시작부터 초
 	stickerSince: { [BasePart]: number }, -- 켜진(다시 뜬) os.clock
 	stickerWaits: { number }, -- 리스폰→줍기(초)
+	likesSent: number, -- 이번 세션에 보낸 「멋져요」
+	likesReceived: number, -- 이번 세션에 받은 「멋져요」
 }
 
 local sessions: { [Player]: Session } = {}
@@ -254,6 +256,8 @@ function Metrics.begin(player: Player)
 		firstDecorTapAt = nil,
 		stickerSince = {},
 		stickerWaits = {},
+		likesSent = 0,
+		likesReceived = 0,
 	}
 	sessions[player] = session
 	-- 세션 시작 때 이미 켜진 스폰은 지금 뜬 것으로 본다
@@ -291,6 +295,7 @@ local function summaryText(session: Session): string
 		partGapText(session),
 		stickerWaitText(session),
 		decor,
+		`멋져요 보냄 {session.likesSent} · 받음 {session.likesReceived}`,
 	}, " · ")
 end
 
@@ -399,6 +404,17 @@ function Metrics.decorPlaced(player: Player)
 end
 
 --- UiMark(key). "decorTap" 만 받고 세션당 첫 값만 적는다. 나머지 key 는 조용히 무시
+--- 「멋져요」 1개(EconomyService like 통과)
+function Metrics.liked(sender: Player, owner: Player)
+	local sent, received = sessions[sender], sessions[owner]
+	if sent then
+		sent.likesSent += 1
+	end
+	if received then
+		received.likesReceived += 1
+	end
+end
+
 local function onUiMark(player: Player, key: string)
 	local session = sessions[player]
 	if not session or key ~= UI_MARK_DECOR_TAP or session.firstDecorTapAt then
