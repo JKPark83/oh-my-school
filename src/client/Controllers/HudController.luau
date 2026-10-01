@@ -24,6 +24,7 @@ local DecorConfig = require(Shared.Config.DecorConfig)
 local EconomyConfig = require(Shared.Config.EconomyConfig)
 local FacilityConfig = require(Shared.Config.FacilityConfig)
 local MissionConfig = require(Shared.Config.MissionConfig)
+local RoomConfig = require(Shared.Config.RoomConfig)
 local StudentConfig = require(Shared.Config.StudentConfig)
 local Format = require(Shared.Format)
 local Remotes = require(Shared.Remotes)
@@ -92,6 +93,10 @@ local TEXT_AFFORD = "살 수 있어요!"
 local TEXT_NO_INCOME = "스티커를 줍자!"
 local TEXT_ALL_BUILT = "학교 완성!"
 local TEXT_ALL_BUILT_SUB = "꾸미고 스티커 모으자"
+local TEXT_TOWER_CAPTION = "층 쌓기"
+local TEXT_TOWER_CHOOSE_SUB = "옥상에서 방을 골라요"
+local TEXT_TOWER_TOP = "최고 높이!"
+local TEXT_ELEVATOR_GUIDE = "엘리베이터로 옥상에 가요!" -- 강당 완공 직후 한 번
 local TEXT_GO_HOME = "우리 학교로"
 local TEXT_GO_HOME_SUB = "탭하면 돌아가요"
 
@@ -104,6 +109,7 @@ local GLYPH_CODEX = "📖"
 local GLYPH_MISSIONS = "📋"
 local GLYPH_DECOR = "🌷"
 local GLYPH_GIFT = "🎁"
+local GLYPH_FLOORS = "🏫"
 -- 선물 아이템이 꾸미기 버튼으로 날아갈 때의 글리프(DecorConfig.Kind 별). 없으면 GLYPH_DECOR
 local GLYPH_BY_KIND: { [string]: string } = {
 	general = "🌷",
@@ -156,6 +162,8 @@ local coinsScale: UIScale
 local incomeChip: Frame
 local incomeLabel: TextLabel
 local incomeScale: UIScale
+local floorsChip: Frame
+local floorsLabel: TextLabel
 local card: TextButton
 local cardCaption: TextLabel
 local cardName: TextLabel
@@ -425,6 +433,14 @@ local function padPosition(plotId: number, facilityId: string): Vector3?
 	return if pad and pad:IsA("BasePart") then pad.Position else nil
 end
 
+--- 층 패드(부지 모델 Tower.TowerPad, 개선계획 §5.2)
+local function towerPadPosition(plotId: number): Vector3?
+	local plot = plotModel(plotId)
+	local tower = if plot then plot:FindFirstChild(Keys.TOWER_FOLDER) else nil
+	local pad = if tower then tower:FindFirstChild(Keys.TOWER_PAD) else nil
+	return if pad and pad:IsA("BasePart") then pad.Position else nil
+end
+
 local function panTo(position: Vector3?)
 	if position and Camera and Camera.panTo then
 		pcall(Camera.panTo, position, PAN_SECONDS)
@@ -474,6 +490,13 @@ end
 local function boughtPartPrice(prev: Profile?, now: Profile): number?
 	if not prev then
 		return nil
+	end
+	-- 층 부품: 방을 완공하면 단계가 오르고, 아니면 같은 방 부품 수가 는다
+	local prevStep, nowStep = RoomConfig.stepOf(prev), RoomConfig.stepOf(now)
+	if nowStep > prevStep then
+		return RoomConfig.partPrice(prevStep, RoomConfig.PARTS)
+	elseif now.towerParts > prev.towerParts then
+		return RoomConfig.partPrice(nowStep, now.towerParts)
 	end
 	local before = FacilityConfig.partsBuilt(prev.facilities, prev.buildParts)
 	local after = FacilityConfig.partsBuilt(now.facilities, now.buildParts)
@@ -526,6 +549,19 @@ local function renderIncome(profile: Profile, prev: Profile?)
 		if grew then
 			punch(incomeScale)
 		end
+	end
+end
+
+--- 층 수 칩(강당 완공 뒤). 강당이 막 완공되면 엘리베이터 안내를 한 번 띄운다
+local function renderFloors(profile: Profile, prev: Profile?)
+	local open = RoomConfig.isOpen(profile)
+	floorsChip.Visible = open
+	if not open then
+		return
+	end
+	floorsLabel.Text = `{GLYPH_FLOORS} {RoomConfig.topFloor(#profile.floors)}층`
+	if prev and not RoomConfig.isOpen(prev) then
+		HudController.toast(TEXT_ELEVATOR_GUIDE)
 	end
 end
 
@@ -613,8 +649,35 @@ local function renderCard(profile: Profile)
 		cardSub.Text = TEXT_GO_HOME_SUB
 		cardBar.Visible = false
 		pulse(cardStroke, false)
+	elseif nextPart == nil and RoomConfig.isOpen(profile) and profile.towerRoom ~= "" then
+		-- 짓는 방의 다음 부품. 키는 방 단위(부품마다 흔들지 않는다)
+		local room = RoomConfig.BY_ID[profile.towerRoom]
+		local k = profile.towerParts + 1
+		local where = if room and room.kind == "roof" then "옥상" else `{RoomConfig.topFloor(#profile.floors) + 1}층`
+		key = "tower:" .. profile.towerRoom
+		showPrice(
+			profile,
+			TEXT_TOWER_CAPTION,
+			`{where} {if room then room.name else ""} {k}/{RoomConfig.PARTS}`,
+			RoomConfig.partPrice(RoomConfig.stepOf(profile), k)
+		)
+	elseif nextPart == nil and RoomConfig.isOpen(profile) then
+		-- 방 고르기 유도 또는 상한
+		local canBuild = RoomConfig.nextStep(profile) ~= nil
+		key = if canBuild then "towerChoose" else "towerTop"
+		cardCaption.Text = TEXT_TOWER_CAPTION
+		local top = RoomConfig.topFloor(#profile.floors)
+		-- 층이 꽉 찼으면 남은 것은 옥상 방뿐이다
+		local nextName = if top >= RoomConfig.MAX_FLOOR then "옥상" else `{top + 1}층`
+		cardName.Text = if canBuild then `다음은 {nextName}!` else TEXT_TOWER_TOP
+		cardPrice.Text = ""
+		cardSub.Text = if canBuild then TEXT_TOWER_CHOOSE_SUB else ""
+		cardBar.Visible = not canBuild
+		cardFill.Size = UDim2.fromScale(1, 1)
+		cardFill.BackgroundColor3 = GOLD
+		pulse(cardStroke, false)
 	elseif nextPart == nil then
-		-- 14개를 다 지었다. 층 쌓기 유도는 P2 에서 넣는다
+		-- 14개를 다 지었는데 강당 전
 		key = "allBuilt"
 		cardCaption.Text = `{facilityCount(profile)}/{FacilityConfig.COUNT}`
 		cardName.Text = TEXT_ALL_BUILT
@@ -645,6 +708,7 @@ end
 local function render(profile: Profile, prev: Profile?)
 	renderCoins(profile, prev)
 	renderIncome(profile, prev)
+	renderFloors(profile, prev)
 	renderBoard(profile, prev)
 	renderMultiplier(profile, prev)
 	renderButtons(profile)
@@ -678,6 +742,8 @@ local function onCardTap()
 	local nextRow = FacilityConfig.nextOf(profile.facilities)
 	if nextRow then
 		panTo(padPosition(plotId, nextRow.id))
+	elseif RoomConfig.isOpen(profile) then
+		panTo(towerPadPosition(plotId))
 	end
 end
 
@@ -792,6 +858,13 @@ local function buildGui()
 	incomeLabel.Size = UDim2.fromOffset(144, 18)
 	incomeLabel.TextXAlignment = Enum.TextXAlignment.Left
 	incomeChip.Visible = false
+
+	-- 층 수 칩 (180, 52) 96×24 = 수입 칩 오른쪽. 강당 완공 뒤에만
+	floorsChip = makePanel(root, "Floors", UDim2.fromOffset(180, 52), UDim2.fromOffset(96, 24))
+	floorsLabel = makeLabel(floorsChip, "Value", Enum.Font.GothamBold, WHITE)
+	floorsLabel.Position = UDim2.fromOffset(6, 3)
+	floorsLabel.Size = UDim2.fromOffset(84, 18)
+	floorsChip.Visible = false
 
 	-- 「꾸미기」 버튼 (12, 84) 56×56. 용돈 칩(12..212, 12..44)·수입 칩(12..172, 52..76) 아래라 겹치지 않는다
 	decorButton = makeButton(root, "Decor", UDim2.fromOffset(12, 84), UDim2.fromOffset(56, 56))

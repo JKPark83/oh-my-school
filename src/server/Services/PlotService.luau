@@ -10,6 +10,8 @@
 	  - 서버 순간이동은 teleport 한 곳을 지나고 Teleported 를 쏜다(goHome 도 이것을 쓴다).
 	  - 패드 판정은 Touched 대신 occupants() 가 주인 캐릭터의 HRP 위치로 직접 계산한다(10Hz = EconomyConfig.PAD_TICK, 활성 패드 1개뿐).
 	    패드 Touched 는 W7 측정(Metrics 의 패드 체류)에만 쓴다. 주인이 자기 활성 패드에 닿으면 PadTouched 로 넘긴다.
+	  - 탑(층 바닥판·Roof·층 패드·엘리베이터 앵커)은 Geometry/Tower 가 짓는다. refreshTower 가 프로필 그대로 맞춘다(개선계획 §5.2).
+	    엘리베이터는 RideElevator 리모트로 받는다. 방문객도 탄다. 엘리베이터 근처에서만, 1층 ~ Roof 층까지.
 ]]
 
 local Players = game:GetService("Players")
@@ -25,12 +27,16 @@ local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local DecorCodec = require(ReplicatedStorage.Shared.DecorCodec)
+local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
+local RemoteGuard = require(script.Parent.Parent.RemoteGuard)
 
 local GeometryFolder = script.Parent.Parent.Geometry
 local BuildKit = require(script.Parent.Parent.BuildKit)
 local PlotShell = require(GeometryFolder.PlotShell)
 local Plaza = require(GeometryFolder.Plaza)
+local Tower = require(GeometryFolder.Tower)
 
 local PlotService = {}
 
@@ -55,6 +61,9 @@ local PAD_HEIGHT = 6
 local SILHOUETTE_TRANSPARENCY = 0.7
 local FALL_Y = -50
 local GATE_NAME_MAX = 8
+local ELEVATOR_COOLDOWN = 1
+local ELEVATOR_REACH = 10 -- 엘리베이터 프롬프트에서 HRP 까지 수평 거리(프롬프트 8 + 여유)
+local ELEVATOR_REACH_Y = 6
 
 local cframes: { CFrame } = {}
 local plotModels: { Model } = {}
@@ -389,6 +398,23 @@ local function refreshWorld(plotId: number, built: { [string]: boolean }, buildP
 	refreshStickers(plotId, built, buildParts)
 end
 
+--- 탑을 프로필 그대로 맞춘다. profile 이 nil 이면(빈 부지) 비운다
+local function refreshTower(plotId: number, profile: Types.Profile?)
+	if not profile then
+		Tower.refresh(plotModels[plotId], cframes[plotId], {}, {}, "", 0, false)
+		return
+	end
+	Tower.refresh(
+		plotModels[plotId],
+		cframes[plotId],
+		profile.floors,
+		RoomConfig.rooftopList(profile.rooftop),
+		profile.towerRoom,
+		profile.towerParts,
+		RoomConfig.isOpen(profile)
+	)
+end
+
 --[[
 	시설 facilityId 의 부품 first..last 를 부지에 넣는다. 구매는 first == last == k, 복원은 1..n.
 	Geometry 로 전체 모델을 임시로 짓고(Workspace 밖) PartIndex 가 범위 안인 BasePart 만 실제 모델로 옮긴 뒤 임시 모델은 버린다.
@@ -520,6 +546,54 @@ local function buildPlot(plotId: number)
 	stateFolders[plotId] = state
 end
 
+--- HRP 가 그 부지 엘리베이터 프롬프트(아무 층) 근처인가
+local function nearElevator(plotId: number, root: BasePart): boolean
+	local tower = plotModels[plotId]:FindFirstChild(Tower.FOLDER)
+	if not tower then
+		return false
+	end
+	for _, d in tower:GetDescendants() do
+		if d:IsA("ProximityPrompt") and d.Name == Tower.PROMPT then
+			local holder = d.Parent
+			local at = if holder and holder:IsA("Attachment")
+				then holder.WorldPosition
+				elseif holder and holder:IsA("BasePart") then holder.Position
+				else nil
+			if at then
+				local offset = root.Position - at
+				if
+					Vector3.new(offset.X, 0, offset.Z).Magnitude <= ELEVATOR_REACH
+					and math.abs(offset.Y) <= ELEVATOR_REACH_Y
+				then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+--- RideElevator(plotId, floor). 방문객도 탄다. 1층 ~ Roof 층, 엘리베이터 근처에서만(개선계획 §3.3)
+local function rideElevator(player: Player, plotId: number, floor: number)
+	if plotId % 1 ~= 0 or floor % 1 ~= 0 or not plotModels[plotId] then
+		return
+	end
+	local owner = owners[plotId]
+	local profile = owner and DataService.get(owner)
+	if not profile or not RoomConfig.isOpen(profile) then
+		return
+	end
+	if floor < 1 or floor > Tower.roofFloor(#profile.floors, profile.towerRoom, profile.towerParts) then
+		return
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not nearElevator(plotId, root) then
+		return
+	end
+	PlotService.teleport(player, Tower.arrival(cframes[plotId], floor))
+end
+
 function PlotService.Start()
 	pcall(function()
 		PhysicsService:RegisterCollisionGroup(Keys.COLLISION_GROUP_PLAYERS)
@@ -553,6 +627,11 @@ function PlotService.Start()
 			PlotService.goHome(player)
 		end
 	end)
+	RemoteGuard.wrap(
+		Remotes.RideElevator,
+		{ cooldown = ELEVATOR_COOLDOWN, args = { "number", "number" } },
+		rideElevator
+	)
 
 	-- 낙하 귀가
 	task.spawn(function()
@@ -619,6 +698,7 @@ function PlotService.assign(player: Player): number?
 			insertParts(plotId, nextPart.facility.id, 1, profile.buildParts, false)
 		end
 		refreshWorld(plotId, profile.facilities, profile.buildParts)
+		refreshTower(plotId, profile)
 	end
 	PlotService.syncAttributes(player)
 	if player.Character then
@@ -646,7 +726,25 @@ function PlotService.release(player: Player)
 			part:SetAttribute("Enabled", nil)
 		end
 	end
+	-- 탑(3층 이상)에 올라가 있던 방문객은 바닥판이 사라지기 전에 각자 집으로 보낸다(수백 스터드 낙하 방지)
+	local foot = PlotLayout.TOWER_FOOTPRINT
+	for other in plotOf do
+		local root = other.Character and other.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if root then
+			local p = cframes[plotId]:PointToObjectSpace(root.Position)
+			if
+				p.X >= foot.x0
+				and p.X <= foot.x1
+				and p.Z >= foot.z0
+				and p.Z <= foot.z1
+				and p.Y >= RoomConfig.floorY(RoomConfig.FIRST_FLOOR)
+			then
+				PlotService.goHome(other, false)
+			end
+		end
+	end
 	refreshWorld(plotId, {}, 0)
+	refreshTower(plotId, nil)
 	resetState(plotId)
 end
 
@@ -677,13 +775,6 @@ function PlotService.syncAttributes(player: Player)
 	if not plotId or not profile then
 		return
 	end
-	local rooftop = {}
-	for id, built in profile.rooftop do
-		if built then
-			table.insert(rooftop, id)
-		end
-	end
-	table.sort(rooftop)
 	local folder = stateFolders[plotId]
 	folder:SetAttribute(Keys.ATTR_OWNER_ID, player.UserId)
 	folder:SetAttribute(Keys.ATTR_OWNER_NAME, player.DisplayName)
@@ -691,8 +782,8 @@ function PlotService.syncAttributes(player: Player)
 	folder:SetAttribute(Keys.ATTR_STUDENTS, StudentConfig.toCsv(profile.students))
 	folder:SetAttribute(Keys.ATTR_INCOME, math.floor(EconomyConfig.incomePerSecond(profile)))
 	folder:SetAttribute(Keys.ATTR_DECOR, DecorCodec.encode(profile.decorPlaced))
-	folder:SetAttribute(Keys.ATTR_FLOORS, table.concat(profile.floors, ","))
-	folder:SetAttribute(Keys.ATTR_ROOFTOP, table.concat(rooftop, ","))
+	folder:SetAttribute(Keys.ATTR_FLOORS, RoomConfig.toCsv(profile.floors))
+	folder:SetAttribute(Keys.ATTR_ROOFTOP, RoomConfig.toCsv(RoomConfig.rooftopList(profile.rooftop)))
 	folder:SetAttribute(Keys.ATTR_TOWER_ROOM, profile.towerRoom)
 	folder:SetAttribute(Keys.ATTR_TOWER_PARTS, profile.towerParts)
 	folder:SetAttribute(Keys.ATTR_LIKES, profile.likes)
@@ -708,6 +799,7 @@ function PlotService.buildPart(player: Player, facilityId: string, k: number): M
 	end
 	local facility = insertParts(plotId, facilityId, k, k, true)
 	refreshWorld(plotId, profile.facilities, profile.buildParts)
+	refreshTower(plotId, profile) -- 강당 완공이면 탑이 생긴다
 	PlotService.syncAttributes(player)
 	return facility
 end
@@ -720,11 +812,23 @@ function PlotService.refreshWorld(player: Player)
 		return
 	end
 	refreshWorld(plotId, profile.facilities, profile.buildParts)
+	refreshTower(plotId, profile)
+	PlotService.syncAttributes(player)
+end
+
+--- 프로필(floors·rooftop·towerRoom·towerParts) 그대로 탑을 다시 맞추고 어트리뷰트를 보낸다. 층 부품·완공·방 고르기 뒤에 부른다
+function PlotService.refreshTower(player: Player)
+	local plotId = plotOf[player]
+	local profile = DataService.get(player)
+	if not plotId or not profile then
+		return
+	end
+	refreshTower(plotId, profile)
 	PlotService.syncAttributes(player)
 end
 
 --- 자기 부지 스폰으로 옮긴다. 도착지 스트리밍을 기다리므로 멈춘다(호출자가 멈추면 안 되면 task.spawn)
-function PlotService.goHome(player: Player)
+function PlotService.goHome(player: Player, waitStream: boolean?)
 	local plotId = plotOf[player]
 	local character = player.Character
 	if not plotId or not character then
@@ -732,7 +836,7 @@ function PlotService.goHome(player: Player)
 	end
 	local spawn = plotModels[plotId]:FindFirstChild(Keys.SPAWN)
 	local cf = if spawn then spawn.CFrame else cframes[plotId] * CFrame.new(0, 0, 60)
-	PlotService.teleport(player, cf)
+	PlotService.teleport(player, cf, waitStream)
 end
 
 --[[
@@ -780,6 +884,11 @@ function PlotService.occupants(player: Player): { [string]: boolean }
 		if pad:IsA("BasePart") and pad:GetAttribute(Keys.ATTR_PAD_STATE) == "active" and isOver(root, pad) then
 			result[pad.Name] = true
 		end
+	end
+	local tower = plotModels[plotId]:FindFirstChild(Tower.FOLDER)
+	local towerPad = tower and tower:FindFirstChild(Tower.PAD)
+	if towerPad and towerPad:GetAttribute(Keys.ATTR_PAD_STATE) == "active" and isOver(root, towerPad) then
+		result[Tower.PAD_ID] = true
 	end
 	return result
 end

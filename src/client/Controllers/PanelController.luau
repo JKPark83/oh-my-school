@@ -1,7 +1,7 @@
 --!strict
 --[[
-	패널 컨트롤러. 기획서 §8.3 의 패널 4개와 꾸미기 시트를 코드로 그린다.
-	  도감(714×330) · 미션(568×300) · 설정(532×150) · 꾸미기(780×340)
+	패널 컨트롤러. 기획서 §8.3 의 패널 4개와 꾸미기 시트, 층 쌓기 패널 2개를 코드로 그린다.
+	  도감(714×330) · 미션(568×300) · 설정(532×150) · 꾸미기(780×340) · 방 고르기(714×330) · 엘리베이터(420×330)
 
 	  ★ 한 번에 하나만 연다. 열기 0.2s Back Out(0.9→1.0), 닫기 0.12s Quad In.
 	  ★ ScreenGui "Panels" DisplayOrder 5, IgnoreGuiInset. UIScale = clamp(세로/375, 0.9, 1.6).
@@ -14,6 +14,7 @@
 ]]
 
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -29,6 +30,7 @@ local FacilityConfig = require(Shared.Config.FacilityConfig)
 local StudentConfig = require(Shared.Config.StudentConfig)
 local MissionConfig = require(Shared.Config.MissionConfig)
 local DecorConfig = require(Shared.Config.DecorConfig)
+local RoomConfig = require(Shared.Config.RoomConfig)
 local DecorBuilder = require(Shared.DecorBuilder)
 local DecorCodec = require(Shared.DecorCodec)
 local Keys = require(Shared.Config.Keys)
@@ -43,7 +45,7 @@ type Profile = Types.Profile
 
 local PanelController = {}
 
-export type PanelName = "codex" | "missions" | "settings" | "decor"
+export type PanelName = "codex" | "missions" | "settings" | "decor" | "room" | "elevator"
 
 -- ── 상수 ──
 
@@ -64,6 +66,8 @@ local SIZES: { [string]: Vector2 } = {
 	missions = Vector2.new(568, 300),
 	settings = Vector2.new(532, 150), -- 토글 4개: 16 + 116×4 + 12×3 + 16
 	decor = Vector2.new(780, 340), -- 812×375 안에 들어간다
+	room = Vector2.new(714, 330),
+	elevator = Vector2.new(420, 330),
 }
 
 -- §8.1 색
@@ -99,6 +103,12 @@ local DECOR_CONFIRM_OK = 88
 local DECOR_VIEW_DIST = 0.9 -- 모델 대각선 × 이 값 = 카메라 거리
 local DECOR_FRIEND_SMALL = 0.45 -- 친구 카드의 작은 물건 크기(그림 한 변 비율)
 local DECOR_PUNCH = 1.15
+
+-- 층 쌓기(개선계획 §5)
+local ELEVATOR_PROMPT = Keys.ELEVATOR_PROMPT
+local ROOM_CARD = Vector2.new(150, 130)
+local ROOM_COLUMNS = 4
+local ELEVATOR_ROW = 60
 
 -- 설정
 local SETTING_ROWS: { { key: Types.SettingKey, icon: string, text: string } } = {
@@ -1185,6 +1195,126 @@ local function buildDecor(content: Frame)
 	table.insert(currentCleanup, closeConfirm)
 end
 
+-- ── 층 쌓기: 방 고르기·엘리베이터 ──
+
+--- 받침이 있으면 「이」, 없으면 「가」(objectParticle 과 같은 판정)
+local function subjectParticle(word: string): string
+	return if objectParticle(word) == "을" then "이" else "가"
+end
+
+--- 제목 + 세로 스크롤. 스크롤 안에 칸을 채운다
+local function titledScroll(content: Frame, title: string): ScrollingFrame
+	padding(content, 16, 10)
+	local t = label(content, "Title", title, UDim2.fromOffset(240, 36), nil, 26, YELLOW, FONT_BOLD)
+	t.TextXAlignment = Enum.TextXAlignment.Left
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = "List"
+	scroll.Size = UDim2.new(1, 0, 1, -46)
+	scroll.Position = UDim2.fromOffset(0, 46)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.CanvasSize = UDim2.new()
+	scroll.ScrollBarThickness = 6
+	scroll.ScrollBarImageColor3 = GREY
+	scroll.Parent = content
+	return scroll
+end
+
+--- 방 카드 그리드. 고르면 ChooseRoom 을 보내고 닫는다(판정은 서버 RoomConfig.canChoose)
+local function buildRoom(content: Frame)
+	local profile = profileOrNil()
+	local scroll = titledScroll(content, "어떤 방을 지을까요?")
+	local grid = Instance.new("UIGridLayout")
+	grid.CellSize = UDim2.fromOffset(ROOM_CARD.X, ROOM_CARD.Y)
+	grid.CellPadding = UDim2.fromOffset(GAP, GAP)
+	grid.FillDirectionMaxCells = ROOM_COLUMNS
+	grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	grid.SortOrder = Enum.SortOrder.LayoutOrder
+	grid.Parent = scroll
+	if not profile then
+		return
+	end
+	local function choiceIds(p: Profile): string
+		local ids = {}
+		for _, room in RoomConfig.choices(p) do
+			table.insert(ids, room.id)
+		end
+		return table.concat(ids, ",")
+	end
+	-- 고를 수 있는 방이 바뀌면(다른 경로로 방을 지었다) 낡은 카드를 누르지 않게 닫는다
+	local shown = choiceIds(profile)
+	currentRefresh = function(p: Profile)
+		if choiceIds(p) ~= shown then
+			PanelController.close()
+		end
+	end
+	for i, room in RoomConfig.choices(profile) do
+		local card = button(scroll, room.id, "", UDim2.fromOffset(ROOM_CARD.X, ROOM_CARD.Y), nil, room.wall)
+		card.LayoutOrder = i
+		label(card, "Icon", room.icon, UDim2.new(1, 0, 0, 52), UDim2.fromOffset(0, 8), 44)
+		label(card, "Name", room.name, UDim2.new(1, -8, 0, 28), UDim2.fromOffset(4, 62), 24, DARK, FONT_BOLD)
+		local studentId = room.student or ""
+		local student = StudentConfig.BY_ID[studentId]
+		if student and (profile.students[studentId] or 0) == 0 then
+			label(
+				card,
+				"Student",
+				`{student.name}{subjectParticle(student.name)} 와요`,
+				UDim2.new(1, -8, 0, 24),
+				UDim2.fromOffset(4, 96),
+				18,
+				DARK
+			)
+		end
+		card.Activated:Connect(function()
+			Remotes.ChooseRoom:FireServer(room.id)
+			PanelController.close()
+		end)
+	end
+end
+
+--- 그 부지 PlotState 로 층 버튼을 만든다. 짓는 중인 층은 「공사 중」, 맨 위는 옥상(도착 판정은 서버)
+local function buildElevator(content: Frame, payload: any)
+	local plotId = if typeof(payload) == "table" and type(payload.plot) == "number" then payload.plot else nil
+	local scroll = titledScroll(content, "엘리베이터")
+	listLayout(scroll, Enum.FillDirection.Vertical, GAP, nil, Enum.VerticalAlignment.Top)
+	local states = ReplicatedStorage:FindFirstChild(Keys.PLOT_STATE_FOLDER)
+	local state = if plotId and states then states:FindFirstChild(Keys.plotName(plotId)) else nil
+	if not plotId or not state then
+		return
+	end
+	local csv = state:GetAttribute(Keys.ATTR_FLOORS)
+	local floors = RoomConfig.fromCsv(if type(csv) == "string" then csv else "")
+	local towerRoom = state:GetAttribute(Keys.ATTR_TOWER_ROOM)
+	local towerParts = state:GetAttribute(Keys.ATTR_TOWER_PARTS)
+	local building = type(towerRoom) == "string"
+		and type(towerParts) == "number"
+		and towerParts >= 1
+		and RoomConfig.BY_ID[towerRoom] ~= nil
+		and RoomConfig.BY_ID[towerRoom].kind == "floor"
+	local top = RoomConfig.topFloor(#floors)
+	local auditorium = FacilityConfig.BY_ID.auditorium
+	local rows: { string } = { "1층", `2층 {if auditorium then auditorium.name else ""}` }
+	for n = RoomConfig.FIRST_FLOOR, top do
+		local room = RoomConfig.BY_ID[RoomConfig.roomOfFloor(floors, n) or ""]
+		table.insert(rows, `{n}층 {if room then room.name else ""}`)
+	end
+	if building then
+		table.insert(rows, `{top + 1}층 공사 중`)
+	end
+	table.insert(rows, "옥상")
+	for floor, text in rows do
+		local b = button(scroll, `Floor{floor}`, text, UDim2.new(1, -12, 0, ELEVATOR_ROW))
+		b.LayoutOrder = floor
+		b.Activated:Connect(function()
+			Remotes.RideElevator:FireServer(plotId, floor)
+			PanelController.close()
+		end)
+	end
+end
+
 -- ── 공개 API ──
 
 local BUILDERS: { [string]: (Frame, any) -> () } = {
@@ -1200,6 +1330,10 @@ local BUILDERS: { [string]: (Frame, any) -> () } = {
 	decor = function(c, _)
 		buildDecor(c)
 	end,
+	room = function(c, _)
+		buildRoom(c)
+	end,
+	elevator = buildElevator,
 }
 
 --- 패널을 연다. 이미 다른 패널이 열려 있으면 바로 바꾼다
@@ -1295,6 +1429,23 @@ function PanelController.Start()
 	UserInputService.InputBegan:Connect(function(input: InputObject, _processed: boolean)
 		if input.KeyCode == Enum.KeyCode.ButtonB and currentName then
 			PanelController.close()
+		end
+	end)
+
+	-- 엘리베이터 프롬프트 → 그 부지 층 목록(방문객도 쓴다)
+	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt)
+		if prompt.Name ~= ELEVATOR_PROMPT then
+			return
+		end
+		local inst: Instance? = prompt
+		while inst and inst ~= Workspace do
+			local id = inst:GetAttribute(Keys.ATTR_PLOT_ID)
+			local plotId = if type(id) == "number" then id else Keys.plotIdOf(inst.Name)
+			if plotId then
+				PanelController.open("elevator", { plot = plotId })
+				return
+			end
+			inst = inst.Parent
 		end
 	end)
 

@@ -71,6 +71,18 @@ PlotLayout.AUDITORIUM_BENCH_D = 1.6
 PlotLayout.TOWER_BASE_Y = 37.2 -- 강당 지붕 윗면(바닥 18 + 바닥판 0.2 + 벽 18 + 지붕 1) = 3층 바닥
 PlotLayout.FLOOR_STEP = 19
 PlotLayout.TOWER_FOOTPRINT = { x0 = -20, x1 = 20, z0 = -35, z1 = -5 } -- 40×30
+-- 방 가구 금지 구역(엘리베이터·도착 자리·층 패드가 있는 발자국 남동쪽 끝). 방 좌석·가구는 이 밖에 둔다
+PlotLayout.TOWER_CLEAR = { x0 = 12.5, x1 = 20, z0 = -22.5, z1 = -5 }
+-- 3층 이상·옥상 엘리베이터 칸(같은 x·z). 도착 자리 = 타는 곳 + ARRIVAL_OFFSET(남쪽 4)
+PlotLayout.ELEVATOR_XZ = Vector2.new(17.5, -17.5)
+PlotLayout.ARRIVAL_OFFSET = Vector3.new(0, 0, 4)
+-- 층 패드(옥상 바닥, 짓는 중이면 짓는 층 바닥). 도착 자리 남쪽, 남벽(z -5) 안
+PlotLayout.TOWER_PAD_XZ = Vector2.new(17.5, -8.5)
+-- 1층 타는 곳: 현관 서쪽 절반 가운데(계단 x 5~14·스티커판 z -9~-1·복도 패드 z ≤ -11.75 밖). 바닥 윗면 y 0
+PlotLayout.ELEVATOR_F1 = Vector3.new(-10, 0, 5)
+-- 2층 타는 곳: 강당 동쪽(착지대 x ≤ 14·동쪽 커튼 z -28.5 사이), 3층 이상 칸 바로 아래. 강당 바닥 윗면 y 18.2
+PlotLayout.ELEVATOR_F2 =
+	Vector3.new(PlotLayout.ELEVATOR_XZ.X, PlotLayout.WALL_H + PlotLayout.AUDITORIUM_FLOOR_T, PlotLayout.ELEVATOR_XZ.Y)
 
 -- ── 스티커(§3.2 #4·#5·#10) ───────────────────────────────────────
 PlotLayout.MIN_GAP = 8 -- 다른 활성 스티커와 최소 거리
@@ -277,6 +289,99 @@ function PlotLayout.pickStickerSpot(
 	local pool = if #best > 0 then best elseif #spaced > 0 then spaced else notPrev
 	local pick = pool[rng:NextInteger(1, #pool)]
 	return pick.spot, pick.floorY
+end
+
+-- ── 엘리베이터·층 패드 겹침 검사(§5.1). 칸은 전부 패드와 같은 4×4 발자국 ──
+do
+	local SPOT = 4
+	local function rectAt(x: number, z: number): DecorRect
+		return around(x, z, SPOT / 2, SPOT / 2)
+	end
+	-- 면이 닿기만 하는 것은 겹침이 아니다
+	local function overlaps(a: DecorRect, b: DecorRect): boolean
+		return a.x0 < b.x1 and b.x0 < a.x1 and a.z0 < b.z1 and b.z0 < a.z1
+	end
+	local function inside(a: DecorRect, b: DecorRect): boolean
+		return a.x0 >= b.x0 and a.x1 <= b.x1 and a.z0 >= b.z0 and a.z1 <= b.z1
+	end
+	local off = PlotLayout.ARRIVAL_OFFSET
+	local wallT = 1 -- 벽 두께(PlotShell·auditorium WALL_T)
+
+	-- 3층 이상: 엘리베이터·도착·패드가 발자국 안 가구 금지 구역 안, 서로 안 겹침
+	local clear = PlotLayout.TOWER_CLEAR :: DecorRect
+	local foot = PlotLayout.TOWER_FOOTPRINT :: DecorRect
+	local elev = rectAt(PlotLayout.ELEVATOR_XZ.X, PlotLayout.ELEVATOR_XZ.Y)
+	local arrive = rectAt(PlotLayout.ELEVATOR_XZ.X + off.X, PlotLayout.ELEVATOR_XZ.Y + off.Z)
+	local pad = rectAt(PlotLayout.TOWER_PAD_XZ.X, PlotLayout.TOWER_PAD_XZ.Y)
+	assert(inside(clear, foot), "PlotLayout: TOWER_CLEAR 가 TOWER_FOOTPRINT 밖이다")
+	local towerSpots: { [string]: DecorRect } = { elevator = elev, arrival = arrive, pad = pad }
+	for name, r in towerSpots do
+		assert(inside(r, clear), `PlotLayout: 탑 {name} 칸이 TOWER_CLEAR 밖이다`)
+	end
+	assert(not overlaps(elev, arrive), "PlotLayout: 탑 엘리베이터 칸과 도착 칸이 겹친다")
+	assert(
+		not overlaps(pad, arrive) and not overlaps(pad, elev),
+		"PlotLayout: 층 패드가 엘리베이터·도착 칸과 겹친다"
+	)
+
+	-- 1층(현관): 타는 곳·도착이 현관 안, 계단·스티커판·복도 패드와 안 겹침
+	local ent = PlotLayout.ENTRANCE
+	local entIn = around(ent.X, ent.Z, PlotLayout.ENTRANCE_SIZE.X / 2 - wallT, PlotLayout.ENTRANCE_SIZE.Z / 2 - wallT)
+	local stairs: DecorRect = {
+		x0 = PlotLayout.STAIR_X0,
+		x1 = PlotLayout.STAIR_X1,
+		z0 = PlotLayout.STAIRWELL_Z0,
+		z1 = PlotLayout.STAIR_Z_BOTTOM,
+	}
+	local board: DecorRect = { x0 = entIn.x0, x1 = entIn.x0 + 1, z0 = -9, z1 = -1 } -- PlotShell STICKER_BOARD
+	local hallRow = FacilityConfig.BY_ID.hall
+	assert(hallRow, "PlotLayout: FacilityConfig 에 hall 행이 없다")
+	local hallPad = rectAt(hallRow.pad.X, hallRow.pad.Z)
+	local f1 = PlotLayout.ELEVATOR_F1
+	local f1Spots: { [string]: DecorRect } = { f1 = rectAt(f1.X, f1.Z), f1Arrival = rectAt(f1.X + off.X, f1.Z + off.Z) }
+	for name, r in f1Spots do
+		assert(inside(r, entIn), `PlotLayout: {name} 칸이 현관 안이 아니다`)
+		assert(not overlaps(r, stairs), `PlotLayout: {name} 칸이 계단과 겹친다`)
+		assert(not overlaps(r, board), `PlotLayout: {name} 칸이 스티커판과 겹친다`)
+		assert(not overlaps(r, hallPad), `PlotLayout: {name} 칸이 복도 패드와 겹친다`)
+	end
+
+	-- 2층(강당): 타는 곳·도착이 강당 안, 계단 구멍·착지대·좌석·강당 패드·커튼(무대 앞 z -28.5)과 안 겹침
+	local aud = FacilityConfig.BY_ID.auditorium
+	assert(aud, "PlotLayout: FacilityConfig 에 auditorium 행이 없다")
+	local audIn = around(aud.center.X, aud.center.Z, aud.size.X / 2 - wallT, aud.size.Z / 2 - wallT)
+	local stairwell: DecorRect = {
+		x0 = PlotLayout.STAIR_X0,
+		x1 = PlotLayout.STAIR_X1,
+		z0 = PlotLayout.STAIRWELL_Z0,
+		z1 = PlotLayout.STAIRWELL_Z1,
+	}
+	local landing =
+		around(PlotLayout.LANDING.X, PlotLayout.LANDING.Z, PlotLayout.LANDING_SIZE.X / 2, PlotLayout.LANDING_SIZE.Z / 2)
+	local cols, rows = PlotLayout.AUDITORIUM_SEAT_COLS, PlotLayout.AUDITORIUM_SEAT_ROWS
+	local benchCX = (cols[1] + cols[#cols]) / 2
+	local seats: DecorRect = {
+		x0 = benchCX - PlotLayout.AUDITORIUM_BENCH_W / 2,
+		x1 = benchCX + PlotLayout.AUDITORIUM_BENCH_W / 2,
+		z0 = rows[1] - PlotLayout.AUDITORIUM_BENCH_D / 2,
+		z1 = rows[#rows] + PlotLayout.AUDITORIUM_BENCH_D / 2,
+	}
+	local stage: DecorRect = { x0 = audIn.x0, x1 = audIn.x1, z0 = audIn.z0, z1 = -28.2 } -- 무대·커튼(auditorium)
+	local audPad = rectAt(aud.pad.X, aud.pad.Z)
+	local f2 = PlotLayout.ELEVATOR_F2
+	assert(
+		math.abs(f2.Y - (aud.center.Y + PlotLayout.AUDITORIUM_FLOOR_T)) < 1e-4,
+		"PlotLayout: f2 높이가 강당 바닥이 아니다"
+	)
+	local f2Spots: { [string]: DecorRect } = { f2 = rectAt(f2.X, f2.Z), f2Arrival = rectAt(f2.X + off.X, f2.Z + off.Z) }
+	local blockers: { [string]: DecorRect } =
+		{ stairwell = stairwell, landing = landing, seats = seats, stage = stage, pad = audPad }
+	for name, r in f2Spots do
+		assert(inside(r, audIn), `PlotLayout: {name} 칸이 강당 안이 아니다`)
+		for what, other in blockers do
+			assert(not overlaps(r, other), `PlotLayout: {name} 칸이 강당 {what} 와 겹친다`)
+		end
+	end
 end
 
 return PlotLayout

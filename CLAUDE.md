@@ -30,13 +30,13 @@ export PATH="$HOME/.rokit/bin:$PATH" && stylua src && rojo sourcemap default.pro
 
 - Studio 에서 스크립트를 고치지 않는다. 파일이 기준이다.
 - Studio 는 `PrincipalSchool_Dev` + Mock 이다. 실제 DataStore 는 ServerScriptService 어트리뷰트 `UseLiveDataStore = true`.
-- `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveCoins:Invoke(player, n)`, `GiveDecor:Invoke(player, itemId, n)`, `MetricsNow:Invoke(player)`(세션을 끝내지 않고 `[Metrics]` 지금까지 요약 줄).
+- `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveCoins:Invoke(player, n)`, `GiveDecor:Invoke(player, itemId, n)`, `MetricsNow:Invoke(player)`(세션을 끝내지 않고 `[Metrics]` 지금까지 요약 줄), `BuildFloor:Invoke(player, roomId)`(강당·돈·패드 없이 그 방 1층 완공).
 
 ## 구조
 
 - `src/server/Services/` 서비스 7개(Data·Plot·Economy·Student·Decor·Mission·Leaderboard). 부팅 순서는 `init.server.luau`.
-- `src/server/Geometry/` 시설·부지·광장을 파트로 짓는 모듈. 나무·화단·광장 Creator Store 모델은 `PropLibrary.luau`(메시 id 가 없거나 실패하면 파트 폴백). 공용 헬퍼는 `src/server/BuildKit.luau`(Geometry 밖).
-- `src/client/Controllers/` 컨트롤러 11개(`InteriorRenderController` = 방 안 소품). 층 쌓기(방 골라 쌓기·엘리베이터)는 P2 에서 다시 넣는다(개선계획). 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
+- `src/server/Geometry/` 시설·부지·광장을 파트로 짓는 모듈. 층 쌓기 탑(층 바닥판·옥상·층 패드·엘리베이터)은 `Tower.luau`. 나무·화단·광장 Creator Store 모델은 `PropLibrary.luau`(메시 id 가 없거나 실패하면 파트 폴백). 공용 헬퍼는 `src/server/BuildKit.luau`(Geometry 밖).
+- `src/client/Controllers/` 컨트롤러 12개(`InteriorRenderController` = 1층 방 안 소품, `TowerRenderController` = 12부지 층 쌓기 탑 외관·방 안). 방 레시피는 `src/client/Rooms/`(P2 는 공통 임시 레시피, 방별은 P3). 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
 - `src/shared/Config/` 수치의 단일 소스. 가격·확률·시간·문구는 여기서만 바꾼다.
 - `src/shared/Remotes.luau`(프로토콜은 기획서 §11.5), `Types.luau`, `Seats.luau`, `CharacterBuilder.luau`, 꾸미기 공용 `DecorGrid`·`DecorCodec`·`DecorBuilder`(수치는 `Config/DecorConfig.luau`). `src/first/` 로딩 화면.
 

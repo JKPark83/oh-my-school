@@ -5,6 +5,8 @@
 	  스티커   PlotService.StickerTouched → 검증(주인·간격·속도·거리) → 가치·콤보·판 → 15초 뒤 리스폰(금 판단)
 	  별       PlotService.StarTouched → 방문자 판 +1 (부지·60초당 2개)
 	  GoHome   PlotService.goHome (5초 쿨다운)
+	  층 쌓기  ChooseRoom(주인) → towerRoom. 시설 14개 뒤 층 패드("tower")에 서 있으면 방 부품 자동 구매,
+	           PARTS 번째에 완공(floors·rooftop, 전학생, 순위 제출, 저장). 이벤트는 주인에게만(개선계획 §3·§5)
 ]]
 
 local Players = game:GetService("Players")
@@ -16,10 +18,15 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
+local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
+local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
+local Seats = require(ReplicatedStorage.Shared.Seats)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local StudentService = require(script.Parent.StudentService)
 local MissionService = require(script.Parent.MissionService)
+local LeaderboardService = require(script.Parent.LeaderboardService)
+local Tower = require(script.Parent.Parent.Geometry.Tower)
 local GiftBoard = require(script.Parent.Parent.GiftBoard)
 local RemoteGuard = require(script.Parent.Parent.RemoteGuard)
 local Metrics = require(script.Parent.Parent.Metrics)
@@ -28,6 +35,8 @@ local EconomyService = {}
 
 local HOME_COOLDOWN = 5
 local TOUCH_RANGE = 12
+local CHOOSE_COOLDOWN = 0.5
+local CELEBRATE_DELAY = 4.5 -- 층 완공 연출이 끝난 뒤 그 층에 서 있던 주인을 새 옥상으로 올린다
 
 type ComboState = { count: number, last: number }
 type StarWindow = { start: number, count: number, taken: { [BasePart]: boolean } }
@@ -104,6 +113,122 @@ local function buy(player: Player, profile: Types.Profile, nextPart: FacilityCon
 	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
 end
 
+--- 층 완공 뒤 floorNo 층 발자국 안에 서 있으면 새 옥상(floorNo + 1) 도착 자리로 올린다
+local function liftToRoof(player: Player, floorNo: number)
+	local plotId = PlotService.plotOf(player)
+	local root = rootOf(player)
+	if not plotId or not root then
+		return
+	end
+	local p = PlotService.cframe(plotId):PointToObjectSpace(root.Position)
+	local foot = PlotLayout.TOWER_FOOTPRINT
+	local inside = p.X >= foot.x0 and p.X <= foot.x1 and p.Z >= foot.z0 and p.Z <= foot.z1
+	if inside and p.Y >= RoomConfig.floorY(floorNo) and p.Y < RoomConfig.floorY(floorNo + 1) then
+		PlotService.teleport(player, Tower.arrival(PlotService.cframe(plotId), floorNo + 1))
+	end
+end
+
+--- 짓던 방(towerRoom) 완공. 부품 수·돈은 호출자가 처리했다
+local function finishRoom(player: Player, profile: Types.Profile)
+	local roomId = profile.towerRoom
+	local room = RoomConfig.BY_ID[roomId]
+	local floorNo = 0
+	if room.kind == "floor" then
+		table.insert(profile.floors, roomId)
+		floorNo = RoomConfig.topFloor(#profile.floors)
+	else
+		profile.rooftop[roomId] = true
+	end
+	profile.towerParts = 0
+	profile.towerRoom = ""
+	PlotService.refreshTower(player)
+	local plotId = PlotService.plotOf(player)
+	Remotes.event(player, "FloorBuilt", { plot = plotId, room = roomId, floor = floorNo, floors = #profile.floors })
+	if room.student then
+		if (profile.students[room.student] or 0) == 0 then
+			StudentService.grant(player, room.student, true)
+		elseif
+			(room.kind == "roof" or table.find(profile.floors, roomId) == #profile.floors)
+			and Seats.roomSeat(room.student, profile.floors, RoomConfig.rooftopList(profile.rooftop))
+		then
+			-- 이미 데리고 있던 아이가 새 방 자리에 나타난다(시설 완공과 같다).
+			-- 반복 층이면 자리는 처음 지은 층 그대로라 다시 등장시키지 않는다
+			Remotes.event(nil, "StudentJoined", { plot = plotId, studentId = room.student, walk = true })
+		end
+	end
+	MissionService.onBuilt(player)
+	LeaderboardService.submit(player, #profile.floors)
+	if floorNo > 0 then
+		task.delay(CELEBRATE_DELAY, liftToRoof, player, floorNo)
+	end
+	DataService.syncNow(player)
+	DataService.save(player)
+end
+
+--- 방 부품 1개 구매. 돈은 호출자가 확인했다. PARTS 번째면 완공
+local function buyRoomPart(player: Player, profile: Types.Profile, step: number)
+	local k = profile.towerParts + 1
+	profile.coins -= RoomConfig.partPrice(step, k)
+	Metrics.partBuilt(player)
+	if k >= RoomConfig.PARTS then
+		finishRoom(player, profile)
+		return
+	end
+	profile.towerParts = k
+	PlotService.refreshTower(player)
+	local room = RoomConfig.BY_ID[profile.towerRoom]
+	Remotes.event(player, "FloorPart", {
+		plot = PlotService.plotOf(player),
+		room = profile.towerRoom,
+		partIndex = k,
+		floor = if room.kind == "floor" then RoomConfig.topFloor(#profile.floors) + 1 else 0,
+	})
+	DataService.syncNow(player)
+	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
+end
+
+--- ChooseRoom(roomId). 주인만(자기 프로필), 강당 완공·짓는 방 없음·고를 수 있는 방(canChoose 가 전부 본다)
+local function chooseRoom(player: Player, roomId: string)
+	local profile: Types.Profile? = DataService.get(player)
+	local plotId = PlotService.plotOf(player)
+	if not profile or not plotId or not RoomConfig.canChoose(profile, roomId) then
+		return
+	end
+	profile.towerRoom = roomId
+	profile.towerParts = 0
+	PlotService.refreshTower(player)
+	Remotes.event(player, "RoomChosen", { plot = plotId, room = roomId })
+	DataService.syncNow(player)
+	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
+end
+
+--- DevCheat BuildFloor: 강당·돈·패드 없이 그 방을 바로 완공한다(평소 완공 경로 그대로). 못 지으면 false
+function EconomyService.buildRoom(player: Player, roomId: string): boolean
+	local profile: Types.Profile? = DataService.get(player)
+	local room = RoomConfig.BY_ID[roomId]
+	if not profile or not room or not PlotService.plotOf(player) then
+		return false
+	end
+	if room.kind == "roof" and profile.rooftop[roomId] then
+		return false
+	end
+	if room.kind == "floor" and RoomConfig.topFloor(#profile.floors) >= RoomConfig.MAX_FLOOR then
+		return false
+	end
+	-- 정상 경로와 같이 안 지은 층 방 종류가 남아 있으면 이미 지은 방은 다시 못 짓는다(§3.2)
+	if room.kind == "floor" and table.find(profile.floors, roomId) then
+		for _, other in RoomConfig.LIST do
+			if other.kind == "floor" and not table.find(profile.floors, other.id) then
+				return false
+			end
+		end
+	end
+	-- 짓던 방이 있으면 그 부품은 버린다(치트)
+	profile.towerRoom = roomId
+	finishRoom(player, profile)
+	return true
+end
+
 local function tick()
 	for _, player in Players:GetPlayers() do
 		local profile: Types.Profile? = DataService.get(player)
@@ -133,6 +258,16 @@ local function padTick()
 			local price = FacilityConfig.partPriceOf(id, nextPart.index)
 			if profile.coins >= price and PlotService.occupants(player)[id] then
 				buy(player, profile, nextPart)
+			end
+		elseif profile.towerRoom ~= "" then
+			-- 시설 14개 뒤: 고른 방의 다음 부품(층 패드)
+			local step = RoomConfig.nextStep(profile)
+			if
+				step
+				and profile.coins >= RoomConfig.partPrice(step, profile.towerParts + 1)
+				and PlotService.occupants(player)[Tower.PAD_ID]
+			then
+				buyRoomPart(player, profile, step)
 			end
 		end
 	end
@@ -296,6 +431,7 @@ function EconomyService.Start()
 	RemoteGuard.wrap(Remotes.GoHome, { cooldown = HOME_COOLDOWN, args = {} }, function(player)
 		PlotService.goHome(player)
 	end)
+	RemoteGuard.wrap(Remotes.ChooseRoom, { cooldown = CHOOSE_COOLDOWN, args = { "string" } }, chooseRoom)
 
 	Players.PlayerRemoving:Connect(function(player)
 		combos[player] = nil

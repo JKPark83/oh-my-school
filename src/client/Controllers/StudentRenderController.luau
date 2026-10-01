@@ -27,6 +27,7 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Seats = require(ReplicatedStorage.Shared.Seats)
+local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
 local SoundController = require(script.Parent.SoundController)
 
@@ -922,7 +923,27 @@ end
 -- 상태 → 모델 맞추기
 -------------------------------------------------------------------------------
 
-type Want = { facilityId: string, index: number, model: Model }
+type Want = { facilityId: string, index: number, seat: CFrame } -- facilityId 는 방 학생이면 방 id
+
+--- 방 학생 자리(부지 로컬 = RoomConfig.origin(층) + 방 로컬, −Z 를 본다). 방 학생이 아니거나 방이 없으면 nil.
+--- 층 방을 짓는 중(부품 ≥ 1)이면 옥상이 한 층 올라가므로 옥상 방 학생도 따라 올린다(TowerRenderController 와 같은 규칙)
+local function roomSeatCFrame(plotId: number, state: Instance, studentId: string): (string?, CFrame?)
+	local floors = RoomConfig.fromCsv(attrString(state, Keys.ATTR_FLOORS))
+	local rooftop = RoomConfig.fromCsv(attrString(state, Keys.ATTR_ROOFTOP))
+	local roomId, floor, pos = Seats.roomSeat(studentId, floors, rooftop)
+	local root = plotModel(plotId)
+	if not roomId or not floor or not pos or not root then
+		return nil, nil
+	end
+	if RoomConfig.BY_ID[roomId].kind == "roof" then
+		local building = RoomConfig.BY_ID[attrString(state, Keys.ATTR_TOWER_ROOM)]
+		local parts = state:GetAttribute(Keys.ATTR_TOWER_PARTS)
+		if building and building.kind == "floor" and type(parts) == "number" and parts >= 1 then
+			floor += 1
+		end
+	end
+	return roomId, root:GetPivot() * CFrame.new(RoomConfig.origin(floor) + pos)
+end
 
 local function reconcile(plot: Plot)
 	if not plot.rendered then
@@ -939,15 +960,33 @@ local function reconcile(plot: Plot)
 			local model = facilityModel(plot, facilityId)
 			if model then
 				for index, studentId in room do
-					wanted[studentId] = { facilityId = facilityId, index = index, model = model }
+					local seat = seatCFrame(model, index)
+					if seat then
+						wanted[studentId] = { facilityId = facilityId, index = index, seat = seat }
+					else
+						warn(`[StudentRender] {facilityId} 에 {Seats.attachmentName(index)} 자리가 없다`)
+					end
 				end
+			end
+		end
+		-- 방 학생(층 쌓기). Seats.occupants 는 방 id 가 시설이 아니라 건너뛴다
+		for studentId in students do
+			local roomId, seat = roomSeatCFrame(plot.id, state, studentId)
+			if roomId and seat then
+				local index = StudentConfig.BY_ID[studentId].seat.index
+				wanted[studentId] = { facilityId = roomId, index = index, seat = seat }
 			end
 		end
 	end
 
 	for studentId, person in plot.persons do
 		local want = wanted[studentId]
-		if not want or want.facilityId ~= person.facilityId or want.index ~= person.seatIndex then
+		if
+			not want
+			or want.facilityId ~= person.facilityId
+			or want.index ~= person.seatIndex
+			or (want.seat.Position - person.home.Position).Magnitude > 0.01 -- 옥상이 올라가면 옥상 방 자리도 바뀐다
+		then
 			removePerson(plot, person)
 		end
 	end
@@ -957,13 +996,8 @@ local function reconcile(plot: Plot)
 	for studentId, want in wanted do
 		local person = plot.persons[studentId]
 		if not person then
-			local seat = seatCFrame(want.model, want.index)
-			if seat then
-				person = newPerson(plot.id, studentId, want.facilityId, want.index, seat)
-				plot.persons[studentId] = person
-			else
-				warn(`[StudentRender] {want.facilityId} 에 {Seats.attachmentName(want.index)} 자리가 없다`)
-			end
+			person = newPerson(plot.id, studentId, want.facilityId, want.index, want.seat)
+			plot.persons[studentId] = person
 		end
 		if person and not person.model and not person.arrive then
 			if mine and pendingArrive[studentId] then
@@ -1002,7 +1036,7 @@ end
 -- LOD (1초마다)
 -------------------------------------------------------------------------------
 
---- 부지 거리 = 지어진 시설 모델들의 S01 자리 중 가장 가까운 것. 시설이 없으면 무한대
+--- 부지 거리 = 지어진 시설 모델들의 S01 자리·방 학생 자리 중 가장 가까운 것. 둘 다 없으면 무한대
 local function plotDistance(plot: Plot, camPos: Vector3): number
 	local state = stateFolder(plot.id)
 	local root = plotModel(plot.id)
@@ -1015,6 +1049,13 @@ local function plotDistance(plot: Plot, camPos: Vector3): number
 		local cf = if model and model:IsA("Model") then seatCFrame(model, 1) else nil
 		if cf then
 			best = math.min(best, (cf.Position - camPos).Magnitude)
+		end
+	end
+	-- 방 학생 자리도 본다(높은 층에 있으면 1·2층 시설보다 방이 훨씬 가깝다)
+	for studentId in StudentConfig.fromCsv(attrString(state, Keys.ATTR_STUDENTS)) do
+		local _, seat = roomSeatCFrame(plot.id, state, studentId)
+		if seat then
+			best = math.min(best, (seat.Position - camPos).Magnitude)
 		end
 	end
 	return best
@@ -1321,6 +1362,12 @@ local function watchState(folder: Instance)
 	folder:GetAttributeChangedSignal(Keys.ATTR_FACILITIES):Connect(function()
 		markDirty(plotId)
 	end)
+	-- 방 학생 자리(층·옥상 높이)
+	for _, name in { Keys.ATTR_FLOORS, Keys.ATTR_ROOFTOP, Keys.ATTR_TOWER_ROOM, Keys.ATTR_TOWER_PARTS } do
+		folder:GetAttributeChangedSignal(name):Connect(function()
+			markDirty(plotId)
+		end)
+	end
 	markDirty(plotId)
 end
 

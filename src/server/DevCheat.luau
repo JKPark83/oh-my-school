@@ -1,11 +1,13 @@
 --!strict
 --[[
 	Studio 전용 치트. 계획서 §0 수치 검증용. Studio 가 아니면 아무것도 하지 않는다.
-	ServerScriptService.DevCheat 폴더에 BindableFunction 4개를 둔다.
+	ServerScriptService.DevCheat 폴더에 BindableFunction 5개를 둔다.
 	  FastForward(player, seconds)  초당 수입 × seconds 만큼 용돈 지급. 지급액을 돌려준다
 	  GiveCoins(player, n)          용돈 n. 지급 후 보유 용돈을 돌려준다
 	  GiveDecor(player, itemId, n)  꾸미기 보관함 n 개(아이템당 MAX_OWNED 까지). 넣은 뒤 보관함 수를 돌려준다
 	  MetricsNow(player)            세션을 끝내지 않고 [Metrics] 「지금까지 요약」 줄을 찍는다. 세션이 있으면 true
+	  BuildFloor(player, roomId)    강당·돈·패드 없이 그 방(층·옥상)을 바로 완공(평소 완공 경로). 지었으면 true
+	                                강당이 없으면 서버 탑 파트는 안 생긴다(프로필·이벤트만)
 	MCP execute_luau 예:
 	  game.ServerScriptService.DevCheat.FastForward:Invoke(game.Players:GetPlayers()[1], 600)
 ]]
@@ -27,6 +29,7 @@ local FAST_FORWARD = "FastForward"
 local GIVE_COINS = "GiveCoins"
 local GIVE_DECOR = "GiveDecor"
 local METRICS_NOW = "MetricsNow"
+local BUILD_FLOOR = "BuildFloor"
 
 --- seconds 초 동안의 수입을 한 번에 지급. 지급액 반환
 function DevCheat.fastForward(player: Player, seconds: number): number
@@ -108,8 +111,21 @@ function DevCheat.Start()
 	end
 	metricsNow.Parent = folder
 
+	local buildFloor = Instance.new("BindableFunction")
+	buildFloor.Name = BUILD_FLOOR
+	buildFloor.OnInvoke = function(player: any, roomId: any): boolean
+		if not isPlayer(player) or typeof(roomId) ~= "string" then
+			warn(`[DevCheat] {BUILD_FLOOR}(player, roomId) 인자가 틀렸다`)
+			return false
+		end
+		return EconomyService.buildRoom(player, roomId)
+	end
+	buildFloor.Parent = folder
+
 	folder.Parent = ServerScriptService
-	print(`[DevCheat] {FOLDER_NAME}.{FAST_FORWARD} / {GIVE_COINS} / {GIVE_DECOR} / {METRICS_NOW} 준비`)
+	print(
+		`[DevCheat] {FOLDER_NAME}.{FAST_FORWARD} / {GIVE_COINS} / {GIVE_DECOR} / {METRICS_NOW} / {BUILD_FLOOR} 준비`
+	)
 end
 
 return DevCheat

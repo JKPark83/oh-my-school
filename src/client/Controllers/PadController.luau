@@ -30,6 +30,7 @@ local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
 local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
@@ -50,6 +51,13 @@ local PadController = {}
 local PAD_ACTIVE = "active"
 local PAD_NEXT = "next"
 local PAD_BUILT = "built"
+
+-- 층 쌓기(개선계획 §5.2)
+local TOWER_FOLDER = Keys.TOWER_FOLDER
+local TOWER_PAD = Keys.TOWER_PAD
+local TOWER_FACILITY = Keys.TOWER_PAD_ID
+local TEXT_CHOOSE_ROOM = "방 고르기"
+local TEXT_TOWER_TOP = "최고 높이!"
 
 -- 색(기획서 §8.1)
 local COLOR_PANEL = Color3.fromRGB(31, 41, 55)
@@ -204,6 +212,8 @@ local facilities: { [Model]: FacilityEntry } = {}
 local ringClock = 0
 local lastHint = 0
 local board: BoardEntry? = nil -- 내 부지 스티커판 하나만 그린다. 남의 판 칸 수는 클라가 모른다
+-- PanelController 는 HudController 를 require 하므로 Start 에서 늦게 잇는다(순환 방지)
+local PanelController: any = nil
 
 -- ── 공통 헬퍼 ────────────────────────────────────────────────────
 
@@ -350,10 +360,30 @@ local function updateRing(entry: PadEntry)
 	end
 	local profile = HudController.profile()
 	local coins = if profile then profile.coins else 0
-	local nextIndex = if profile then profile.buildParts + 1 else 1
-	local price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex)
-	local ratio = if price > 0 then math.clamp(coins / price, 0, 1) else 1
-	ring.price.Text = Format.coins(price)
+	local price: number
+	if entry.facilityId == TOWER_FACILITY then
+		-- 층 패드: 짓는 방 부품 / 방 고르기 / 최고 높이. 가격이 없으면 링을 비우고 숨쉬지 않는다
+		local text, towerPrice = TEXT_TOWER_TOP, 0
+		if profile and profile.towerRoom ~= "" then
+			local room = RoomConfig.BY_ID[profile.towerRoom]
+			local k = profile.towerParts + 1
+			text = `{if room then room.name else ""} {RoomConfig.PART_NAMES[k]} {k}/{RoomConfig.PARTS}`
+			towerPrice = RoomConfig.partPrice(RoomConfig.stepOf(profile), k)
+		elseif profile and RoomConfig.nextStep(profile) then
+			text = TEXT_CHOOSE_ROOM
+		end
+		ring.name.Text = text
+		price = towerPrice
+	else
+		local nextIndex = if profile then profile.buildParts + 1 else 1
+		price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex)
+	end
+	-- 층 패드는 가격이 없으면(고르기·최고 높이) 빈 링
+	local ratio = if price > 0
+		then math.clamp(coins / price, 0, 1)
+		elseif entry.facilityId == TOWER_FACILITY then 0
+		else 1
+	ring.price.Text = if price > 0 then Format.coins(price) else ""
 	local lit = math.floor(ratio * RING_DOTS + 1e-6)
 	for i, dot in ring.dots do
 		local on = i <= lit
@@ -1164,9 +1194,26 @@ local function watchFolder(folder: Instance, plotId: number, add: (Instance, num
 	end
 end
 
+local function watchTowerChild(child: Instance, plotId: number)
+	if child.Name == TOWER_PAD then
+		watchPad(child, plotId)
+	end
+end
+
+--- Tower 폴더가 통째로 빠지면 ChildRemoved 가 안 오므로 월드에서 떨어진 패드를 쓸어 낸다
+local function sweepDetachedPads()
+	for part in pads do
+		if not part:IsDescendantOf(Workspace) then
+			unwatchPad(part)
+		end
+	end
+end
+
 local function onPlotChildAdded(child: Instance, plotId: number, animate: boolean)
 	if child.Name == Keys.PADS_FOLDER then
 		watchFolder(child, plotId, watchPad, unwatchPad)
+	elseif child.Name == TOWER_FOLDER then
+		watchFolder(child, plotId, watchTowerChild, unwatchPad)
 	elseif child.Name == Keys.STICKERS_FOLDER then
 		watchFolder(child, plotId, watchSticker, unwatchSticker)
 	elseif child.Name == Keys.STARS_FOLDER then
@@ -1229,7 +1276,9 @@ local function watchPlot(model: Instance, animate: boolean)
 	table.insert(
 		conns,
 		model.ChildRemoved:Connect(function(child)
-			if child:IsA("Model") then
+			if child.Name == TOWER_FOLDER then
+				sweepDetachedPads()
+			elseif child:IsA("Model") then
 				unwatchFacility(child)
 			end
 		end)
@@ -1274,6 +1323,28 @@ local function refreshAll()
 end
 
 -- ── 프레임 ───────────────────────────────────────────────────────
+
+--- 층 패드에 서 있는 동안 고를 방이 생기면(올라섬·옥상 방 완공) 방 고르기 패널을 한 번 연다. 내려오면 닫는다
+local towerPrompted = false
+local function onTowerStand(standing: boolean, changed: boolean)
+	if not PanelController then
+		return
+	end
+	if standing then
+		local profile = HudController.profile()
+		if not profile or profile.towerRoom ~= "" then
+			towerPrompted = false -- 짓는 중. 완공되면 다시 연다
+		elseif not towerPrompted and RoomConfig.nextStep(profile) then
+			towerPrompted = true
+			PanelController.open("room")
+		end
+	elseif changed then
+		towerPrompted = false
+		if PanelController.current() == "room" then
+			PanelController.close()
+		end
+	end
+end
 
 local function onHeartbeat(dt: number)
 	local character = player.Character
@@ -1355,8 +1426,12 @@ local function onHeartbeat(dt: number)
 				and offset.Y > top
 				and offset.Y - top <= PAD_PRESS_DY
 		end
-		if standing ~= entry.pressed then
+		local changed = standing ~= entry.pressed
+		if changed then
 			setPressed(entry, standing)
+		end
+		if entry.facilityId == TOWER_FACILITY and entry.plotId == myPlotId then
+			onTowerStand(standing, changed)
 		end
 	end
 
@@ -1399,6 +1474,10 @@ function PadController.Start()
 	HudController.onProfile(function()
 		PadController.refresh()
 	end)
+	local ok, panel = pcall(require, script.Parent.PanelController)
+	if ok then
+		PanelController = panel
+	end
 	RunService.Heartbeat:Connect(onHeartbeat)
 
 	-- Plots 폴더는 서버 부팅 뒤 온다. Start 를 막지 않게 따로 기다린다

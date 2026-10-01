@@ -1,15 +1,15 @@
 --!strict
 --[[
 	경제 상수와 공식. 기획서 §1·§5.1. docs/sim/sim-parts.py 와 같은 값(docs/sim/check-config.py 로 대조)이어야 한다.
-	  초당 수입 = Σ(지은 시설 income) × (1 + Σ 보유 학생 기여)
-	  ★ 개선계획 §3.4: 층 쌓기(P2)에서 Σ 완공 단계 income(RoomConfig.incomeOf)을 시설 합에 더한다.
-	    sim-parts.py 의 단계 가격은 그 수입을 전제로 맞췄다. P1 에서는 단계를 완공할 수 없어 0 이다.
+	  초당 수입 = (Σ 지은 시설 income + Σ 완공 단계 income(RoomConfig.incomeOf)) × (1 + Σ 보유 학생 기여)
+	  sim-parts.py 의 단계 가격은 그 수입을 전제로 맞췄다(개선계획 §3.4).
 	서버(EconomyService)와 클라(HUD 예상 시간·패드 링)가 같은 함수를 쓴다.
 ]]
 
 local Types = require(script.Parent.Parent.Types)
 local FacilityConfig = require(script.Parent.FacilityConfig)
 local StudentConfig = require(script.Parent.StudentConfig)
+local RoomConfig = require(script.Parent.RoomConfig)
 
 local EconomyConfig = {}
 
@@ -57,9 +57,9 @@ function EconomyConfig.multiplier(profile: Types.Profile): number
 	return 1 + StudentConfig.contribSum(profile.students)
 end
 
---- 초당 수입
+--- 초당 수입 = (시설 수입 + 완공 단계 수입) × 배율(§3.4)
 function EconomyConfig.incomePerSecond(profile: Types.Profile): number
-	return EconomyConfig.facilityIncome(profile) * EconomyConfig.multiplier(profile)
+	return (EconomyConfig.facilityIncome(profile) + RoomConfig.incomeOf(profile)) * EconomyConfig.multiplier(profile)
 end
 
 --- 스티커 1장 가치(금 스티커 제외)

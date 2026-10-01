@@ -81,8 +81,8 @@ export type GameEventKind =
 	| "DecorBought"
 	| "DecorReturned"
 	| "RoomChosen" -- { plot, room }. 주인
-	| "FloorPart" -- { plot, room, partIndex, floor }. floor = 층 번호, 옥상 방이면 0. 전원
-	| "FloorBuilt" -- { plot, room, floor, floors }. 전원(연출은 주인 화면만)
+	| "FloorPart" -- { plot, room, partIndex, floor }. floor = 층 번호, 옥상 방이면 0. 주인(방문객 화면은 PlotState 어트리뷰트로 그린다)
+	| "FloorBuilt" -- { plot, room, floor, floors }. 주인
 	| "Liked" -- { plot, name }. name = 보낸 사람 DisplayName. 주인
 	| "LikeSent" -- { plot }. 보낸 사람
 

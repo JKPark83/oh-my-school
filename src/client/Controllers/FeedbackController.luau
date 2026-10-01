@@ -26,6 +26,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local MissionConfig = require(ReplicatedStorage.Shared.Config.MissionConfig)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
+local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
 local Seats = require(ReplicatedStorage.Shared.Seats)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
@@ -805,9 +806,17 @@ handlers.part = function(payload: any)
 	if plotId == nil or plotId ~= PadController.myPlot() then
 		return -- 방문객 화면은 아무것도 없음
 	end
-	local facilityId = if type(payload.facilityId) == "string" then payload.facilityId else ""
+	-- FloorPart(층 부품)는 facilityId·partCount 가 없다. 탑 패드 자리·RoomConfig.PARTS 로 받는다
+	local isFloor = type(payload.room) == "string"
+	local facilityId = if isFloor
+		then Keys.TOWER_PAD_ID
+		elseif type(payload.facilityId) == "string" then payload.facilityId
+		else ""
 	local index = if type(payload.partIndex) == "number" then payload.partIndex else 1
-	local count = if type(payload.partCount) == "number" then payload.partCount else index
+	local count = if isFloor
+		then RoomConfig.PARTS
+		elseif type(payload.partCount) == "number" then payload.partCount
+		else index
 	if index >= count then
 		return -- 마지막 부품은 바로 뒤에 오는 FacilityBuilt(purchase)가 소리·햅틱·먼지를 맡는다
 	end
@@ -882,7 +891,7 @@ end
 
 --- 층 완공 축하(개선계획 §5.5). 약 4초. 카메라가 학교 중심을 한 바퀴 돌고 끝나면 원래 카메라로 돌아온다.
 --- floors = 완공 층 수. 맨 위 지붕 y = TOWER_BASE_Y + floors × FLOOR_STEP(층 0 이면 강당 지붕)
-local function celebrate(plotId: number, floor: number, floors: number)
+local function celebrate(plotId: number, floor: number, floors: number, roomName: string)
 	local plot = PadController.plotModel(plotId)
 	if not plot then
 		return
@@ -897,8 +906,11 @@ local function celebrate(plotId: number, floor: number, floors: number)
 	sound(SOUND_CELEBRATE)
 	burst(roof, PRESET_CONFETTI, 60)
 	haptic("large")
-	-- 옥상 방 이름은 P2 의 RoomConfig 가 생기면 「{방 이름} 완공!」으로 바꾼다
-	stamp(if floor == 0 then "옥상 완공!" else `{floor}층 완공!`, COLOR_GOLD, CELEBRATE_SECONDS - 1)
+	stamp(
+		if floor == 0 then `{roomName} 완공!` else `{floor}층 {roomName} 완공!`,
+		COLOR_GOLD,
+		CELEBRATE_SECONDS - 1
+	)
 	task.delay(CELEBRATE_SECONDS, function()
 		CameraController.restore()
 		HudController.hold(false)
@@ -914,7 +926,8 @@ handlers.floorBuilt = function(payload: any)
 	end
 	local floor = if type(payload.floor) == "number" then payload.floor else 0
 	local floors = if type(payload.floors) == "number" then payload.floors else 0
-	celebrate(plotId, floor, floors)
+	local room = if type(payload.room) == "string" then RoomConfig.BY_ID[payload.room] else nil
+	celebrate(plotId, floor, floors, if room then room.name else "")
 end
 
 -- ── 공개 API ─────────────────────────────────────────────────────

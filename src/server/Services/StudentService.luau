@@ -11,6 +11,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seats = require(ReplicatedStorage.Shared.Seats)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
+local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 
@@ -28,7 +29,9 @@ function StudentService.grant(player: Player, studentId: string, walk: boolean)
 	DataService.markDirty(player)
 
 	local plotId = PlotService.plotOf(player)
-	if plotId and Seats.seatOf(studentId, profile.facilities) then
+	local seated = Seats.seatOf(studentId, profile.facilities)
+		or Seats.roomSeat(studentId, profile.floors, RoomConfig.rooftopList(profile.rooftop))
+	if plotId and seated then
 		Remotes.event(nil, "StudentJoined", { plot = plotId, studentId = studentId, walk = walk })
 	end
 end

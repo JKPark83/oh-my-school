@@ -13,7 +13,7 @@ export type Mission = {
 
 local LIST: { Mission } = {
 	{ id = "stickers", text = "스티커 30장 줍기", target = 30 },
-	{ id = "built", text = "시설 1개 짓기", target = 1 },
+	{ id = "built", text = "시설·방 1개 짓기", target = 1 },
 	{ id = "chair", text = "교장 의자 앉기", target = 1 },
 }
 MissionConfig.LIST = LIST

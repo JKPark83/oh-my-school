@@ -2,7 +2,7 @@
 --[[
 	클라이언트 부트스트랩. 컨트롤러 시작 순서와 리모트 배선을 아는 유일한 곳이다(구현계획 §3.7).
 
-	  ★ 순서: Remotes.wait() → Hud → Panel → Pad → StudentRender → Feedback → Tutorial → Camera → Decor → Sound → Transition.
+	  ★ 순서: Remotes.wait() → Hud → Panel → Pad → StudentRender → Feedback → Tutorial → Camera → Decor → Sound → Transition → InteriorRender → TowerRender.
 	    Hud 가 프로필 캐시를 들고 있으므로 가장 먼저, Panel 은 Hud 를 읽으므로 바로 다음이다.
 	  ★ 컨트롤러 Start 는 각각 pcall 이다. 하나가 죽어도 나머지는 뜬다 — 검정 화면보다 반쪽 HUD 가 낫다.
 	  ★ ProfileSync 는 HudController.setProfile 하나로만 들어간다(seq 필터도 거기). GameEvent 는 kind 별 표로
@@ -57,6 +57,7 @@ local DecorController = load("DecorController")
 local SoundController = load("SoundController")
 local TransitionController = load("TransitionController")
 local InteriorRenderController = load("InteriorRenderController")
+local TowerRenderController = load("TowerRenderController")
 
 --- 컨트롤러의 함수를 pcall 로 부른다. 함수가 없으면 조용히 건너뛴다(구현 전 컨트롤러 허용)
 local function call(controller: any, name: string, method: string, ...: any)
@@ -93,6 +94,7 @@ start(DecorController, "DecorController")
 start(SoundController, "SoundController")
 start(TransitionController, "TransitionController")
 start(InteriorRenderController, "InteriorRenderController")
+start(TowerRenderController, "TowerRenderController")
 
 -- ── 설정 반영 ──
 -- 프로필 settings 가 바뀔 때만 각 컨트롤러에 알린다. 첫 프로필은 무조건 한 번 반영한다
@@ -186,10 +188,35 @@ local dispatch: { [string]: { Handler } } = {
 			call(HudController, "HudController", "refresh")
 		end,
 	},
-	-- 층 완공(전원에게 온다. 축하 연출은 주인 화면만, 개선계획 §5.5). 서버는 P2 부터 보낸다
+	-- 층 쌓기(개선계획 §2.3). 축하 연출은 주인 화면만(§5.5), 탑 모양은 TowerRenderController 가 그린다
+	RoomChosen = {
+		function(payload)
+			call(TowerRenderController, "TowerRenderController", "onEvent", "RoomChosen", payload)
+		end,
+		function()
+			call(PadController, "PadController", "refresh")
+		end,
+	},
+	FloorPart = {
+		function(payload)
+			call(TowerRenderController, "TowerRenderController", "onEvent", "FloorPart", payload)
+		end,
+		function(payload)
+			call(FeedbackController, "FeedbackController", "play", "part", payload)
+		end,
+		function()
+			call(PadController, "PadController", "refresh")
+		end,
+	},
 	FloorBuilt = {
 		function(payload)
+			call(TowerRenderController, "TowerRenderController", "onEvent", "FloorBuilt", payload)
+		end,
+		function(payload)
 			call(FeedbackController, "FeedbackController", "play", "floorBuilt", payload)
+		end,
+		function()
+			call(PadController, "PadController", "refresh")
 		end,
 	},
 	StickerCollected = {
