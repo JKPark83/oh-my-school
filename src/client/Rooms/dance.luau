@@ -2,11 +2,13 @@
 --[[
 	댄스실 레시피. 북쪽 벽 거울 + 발레 바, 나무 마루, 스피커 2(남쪽 벽), 미러볼(천장), 매트 더미·물병 선반(서쪽).
 	가운데는 비워 춤출 자리. 학생은 서쪽 벽 긴 벤치에 앉아 동쪽(무대)을 본다(seatYaw 270, stand 없음).
-	파트 big 19 · props 15 · finish 11 = 45.
+	스피커는 메시(PropAssets.HERO.speaker)가 준비되면 하나에 메시 1, 아니면 파트 3(몸통·우퍼·트위터).
+	파트 big 19 · props 15 · finish 11 = 45(폴백) / big 15 → 41(메시).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local rgb = Color3.fromRGB
@@ -17,7 +19,11 @@ local BENCH_X0, BENCH_X1 = -Kit.X_IN, -15.7 -- 벤치 앞 가장자리는 좌석
 local FACE_Z = CFrame.Angles(0, math.pi / 2, 0) -- 원기둥 축(X)을 Z 로(북쪽을 보는 원판)
 local BALL = Vector3.new(-2, 15, -4) -- 미러볼 가운데
 
-local function speaker(put: Kit.Put, i: number, x: number)
+local function speaker(put: Kit.Put, ready: Kit.Ready, i: number, x: number)
+	-- 메시: 높이 5 → 발자국 1.93×1.87, 남쪽 벽에 붙어 북쪽(춤 자리)을 본다
+	if Kit.hero(put, ready, `Speaker{i}`, PropAssets.HERO.speaker, Vector3.new(x, 0, Kit.Z_S - 1), 5, 180, true) then
+		return
+	end
 	local front = Kit.Z_S - 2
 	put(`Speaker{i}`, Vector3.new(2.4, 4.5, 2), Vector3.new(x, 2.25, Kit.Z_S - 1), SPEAKER, { collide = true })
 	put(
@@ -59,8 +65,8 @@ local recipe: Kit.Recipe = {
 			WorldPalette.benchWood
 		)
 		put("BenchBack", Vector3.new(0.5, 2.2, 15), Vector3.new(-Kit.X_IN + 0.25, 2.5, 0), WorldPalette.benchWood)
-		speaker(put, 1, -8)
-		speaker(put, 2, 9)
+		speaker(put, ctx.ready, 1, -8)
+		speaker(put, ctx.ready, 2, 9)
 		Kit.shelf(put, "BottleShelf", "W", -11, 4, 4, WorldPalette.wood, room.wall)
 		-- 매트 더미(남서 모서리)
 		for i, color in { room.accent, WorldPalette.star, PINK } do

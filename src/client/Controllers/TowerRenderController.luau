@@ -34,7 +34,6 @@
 	  짧게 튀긴다), partCount(): number(TowerFx 안 BasePart 수).
 ]]
 
-local AssetService = game:GetService("AssetService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -50,6 +49,7 @@ local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
+local MeshCache = require(script.Parent.Parent.MeshCache)
 local Rooms = require(script.Parent.Parent.Rooms)
 
 -- 형제 컨트롤러는 형태만 선언하고 any 로 받는다(StudentRenderController 는 이 모듈을 require 하지 않는다)
@@ -115,9 +115,7 @@ local popPending: { [number]: string } = {} -- 부지 → 튀길 조각 key(이�
 local herePlot: number? = nil -- 캐릭터가 서 있는 탑 부지
 local hereFloor = 0
 local faded: { [BasePart]: true } = {}
--- 레시피 메시(PutOpts.mesh). id → 원본 MeshPart | false(실패). 준비되면 meshVersion 이 올라 방 서명이 바뀐다
-local meshCache: { [number]: MeshPart | false } = {}
-local meshLoading: { [number]: boolean } = {}
+-- 레시피 메시(PutOpts.mesh, MeshCache). 새 메시가 준비되면 meshVersion 이 올라 방 서명이 바뀐다
 local meshVersion = 0
 local renderAll: () -> ()
 local fadeParams: RaycastParams? = nil
@@ -332,31 +330,8 @@ local function buildRoof(pivot: CFrame, roofN: number, rank: number, isNear: boo
 	return m
 end
 
---- 메시 원본. 아직이면 불러오기를 걸고 nil(그동안 파트). 클라 CreateMeshPartAsync 는 P5 가 Studio 에서 확인한다
-local function meshOf(id: number): MeshPart?
-	local cached = meshCache[id]
-	if cached ~= nil then
-		return if cached then cached :: MeshPart else nil
-	end
-	if id > 0 and not meshLoading[id] then
-		meshLoading[id] = true
-		task.spawn(function()
-			local ok, result = pcall(function()
-				return AssetService:CreateMeshPartAsync(Content.fromAssetId(id), {
-					CollisionFidelity = Enum.CollisionFidelity.Box,
-					RenderFidelity = Enum.RenderFidelity.Automatic,
-				})
-			end)
-			meshCache[id] = if ok and result then result else false
-			if ok and result then
-				meshVersion += 1
-				renderAll()
-			else
-				warn(`[TowerRender] 메시 {id} 를 못 만들었다. 파트로 짓는다 ({result})`)
-			end
-		end)
-	end
-	return nil
+local function meshReady(asset: PropAssets.MeshAsset): boolean
+	return MeshCache.get(asset) ~= nil
 end
 
 --- 레시피 put. origin = 방 로컬 원점(월드). 만든 파트 수는 두 번째 반환 함수로
@@ -365,12 +340,10 @@ local function recipePut(m: Model, origin: CFrame): (Rooms.Put, () -> number)
 	local function put(name: string, size: Vector3, pos: Vector3, color: Color3, opts: Rooms.PutOpts?): BasePart
 		count += 1
 		local o: Rooms.PutOpts = opts or {}
-		local mesh = if o.mesh then meshOf(o.mesh.id) else nil
+		local mesh = if o.mesh then MeshCache.get(o.mesh) else nil
 		local p: BasePart
 		if mesh then
-			local mp = mesh:Clone()
-			mp.TextureID = ""
-			p = mp
+			p = mesh:Clone()
 		else
 			local plain = Instance.new("Part")
 			plain.Shape = o.shape or Enum.PartType.Block
@@ -401,7 +374,7 @@ end
 local function runRecipe(m: Model, origin: CFrame, room: RoomConfig.Room, n: number, stage: number): number
 	local put, count = recipePut(m, origin)
 	local recipe = Rooms.get(room.id)
-	local ctx = { room = room, floor = n }
+	local ctx = { room = room, floor = n, ready = meshReady }
 	if stage >= 2 then
 		recipe.big(put, ctx)
 	end
@@ -885,6 +858,10 @@ function TowerRenderController.Start()
 		myPlotId = if type(v) == "number" then v else nil
 	end
 	readMyPlot()
+	MeshCache.onReady(function()
+		meshVersion += 1
+		renderAll()
+	end)
 	player:GetAttributeChangedSignal(Keys.ATTR_PLOT):Connect(function()
 		readMyPlot()
 		updateNear()

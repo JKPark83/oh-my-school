@@ -15,6 +15,7 @@
 	  f 뜬 파트 없음: 바닥 위, 다른 파트 윗면~안(가로 겹침), 벽 안쪽 면·천장에 붙음(층 방만). 허용 0.15
 	  g 빨강 없음: 색상 H < 15° 또는 > 345° 이면서 채도 S > 0.5 금지
 	  h 충돌 파트(opts.collide)가 좌석 상자에 겹치지 않고, 통로(폭 4, 도착 자리 → 방 가운데·옥상은 구역 가운데)를 막지 않는다
+	방마다 두 번 돈다: 폴백(ctx.ready = false, 전부 파트)과 메시(ctx.ready = true, Kit.hero 메시는 그 크기 상자).
 	회전은 AABB 로 감싼다(공 = 지름 min(size), 원기둥 = 축 X·지름 min(Y, Z)).
 ]]
 
@@ -370,7 +371,7 @@ do
 	end
 end
 
-local function checkRoom(room: any)
+local function checkRoom(room: any, meshes: boolean)
 	local id = room.id
 	local roof = room.kind == "roof"
 	local boxes: { Box } = {}
@@ -409,7 +410,13 @@ local function checkRoom(room: any)
 		return {}
 	end
 	local recipe = Rooms.get(id)
-	local ctx = { room = room, floor = RoomConfig.FIRST_FLOOR }
+	local ctx = {
+		room = room,
+		floor = RoomConfig.FIRST_FLOOR,
+		ready = function(_asset: any): boolean
+			return meshes
+		end,
+	}
 	recipe.big(put, ctx)
 	recipe.props(put, ctx)
 	recipe.finish(put, ctx)
@@ -545,14 +552,25 @@ local function checkRoom(room: any)
 			fail(id, "e", `좌석 {sb.i} {s} 아래 앉을 Chair* (윗면 {Kit.SIT_HIP - 0.4}~{Kit.SIT_HIP})가 없다`)
 		end
 	end
-	print(string.format("%-12s %-6s 파트 %2d/%d  좌석 %d", id, room.kind, #boxes, limit, #room.seats))
+	print(
+		string.format(
+			"%-12s %-6s %s 파트 %2d/%d  좌석 %d",
+			id,
+			room.kind,
+			if meshes then "메시" else "폴백",
+			#boxes,
+			limit,
+			#room.seats
+		)
+	)
 end
 
 local found = false
 for _, room in RoomConfig.LIST do
 	if onlyRoom == nil or onlyRoom == room.id then
 		found = true
-		checkRoom(room)
+		checkRoom(room, false) -- 메시가 하나도 없을 때(id 0·불러오기 실패)
+		checkRoom(room, true) -- 메시가 전부 준비됐을 때(메시 = 그 크기 상자)
 	end
 end
 assert(found, `모르는 방 id {onlyRoom}`)

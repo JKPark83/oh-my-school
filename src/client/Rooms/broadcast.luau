@@ -3,11 +3,13 @@
 	방송실 레시피. 좌석은 모두 남쪽(seatYaw 180)을 본다.
 	북쪽 = 학교 색 배경막 앞 방송 데스크(학생 자리 1번·2번 앵커, 마이크 2), 가운데 = 카메라 삼각대·조명 스탠드 2,
 	서쪽 = 믹서 콘솔 자리(3번), 남쪽 = 미리보기 모니터 자리(4·5번), 서쪽 벽 = 체크 무늬 방음 패널, 북쪽 벽 = ON AIR 등(노랑·초록).
-	파트: big 22 / props 15 / finish 15 = 52.
+	카메라 몸통은 PropAssets.HERO.camera 메시(렌즈가 데스크 쪽 북쪽). 삼각대 다리는 늘 파트, 메시가 없으면 몸통·렌즈도 파트.
+	파트: 폴백 big 22 / props 15 / finish 15 = 52, 메시일 때 big 22 / props 14 / finish 15 = 51.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local DESK = { x = -5, z = -7, w = 10 } -- 방송 데스크 윗판 가운데(앵커 좌석 1·2 남쪽)
@@ -65,7 +67,9 @@ local recipe: Kit.Recipe = {
 			WorldPalette.lampIron,
 			{ rot = CFrame.Angles(-TILT, 0, 0) }
 		)
-		put("Camera", Vector3.new(1.2, 1, 1.8), CAM + Vector3.new(0, CAM_Y + 0.5, 0), WorldPalette.boardDark)
+		if not Kit.hero(put, ctx.ready, "Camera", PropAssets.HERO.camera, CAM + Vector3.new(0, CAM_Y, 0), 1.4, 180) then
+			put("Camera", Vector3.new(1.2, 1, 1.8), CAM + Vector3.new(0, CAM_Y + 0.5, 0), WorldPalette.boardDark)
+		end
 		-- 조명 스탠드 받침·기둥
 		for k, p in LIGHTS do
 			Kit.cylinder(put, `LightBase{k}`, p + Vector3.new(0, 0.1, 0), 1.4, 0.2, WorldPalette.lampIron)
@@ -94,14 +98,16 @@ local recipe: Kit.Recipe = {
 		for k, c in { WorldPalette.sticker, WorldPalette.pad, WorldPalette.star } do
 			put(`Fader{k}`, Vector3.new(0.25, 0.2, 0.6), mix + Vector3.new(-1.2 + k * 0.6, 0.4, 0.1), c)
 		end
-		-- 카메라 렌즈(북쪽으로)
-		put(
-			"CameraLens",
-			Vector3.new(0.8, 0.6, 0.6),
-			CAM + Vector3.new(0, CAM_Y + 0.5, -0.9),
-			WorldPalette.lampIron,
-			{ shape = Enum.PartType.Cylinder, rot = CFrame.Angles(0, math.pi / 2, 0) }
-		)
+		-- 카메라 렌즈(북쪽으로). 메시는 렌즈가 붙어 있다
+		if not ctx.ready(PropAssets.HERO.camera) then
+			put(
+				"CameraLens",
+				Vector3.new(0.8, 0.6, 0.6),
+				CAM + Vector3.new(0, CAM_Y + 0.5, -0.9),
+				WorldPalette.lampIron,
+				{ shape = Enum.PartType.Cylinder, rot = CFrame.Angles(0, math.pi / 2, 0) }
+			)
+		end
 		-- 조명 머리
 		for k, p in LIGHTS do
 			put(`LightHead{k}`, Vector3.new(1.4, 1, 0.8), p + Vector3.new(0, 6.3, 0), WorldPalette.lampIron)

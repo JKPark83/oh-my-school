@@ -13,6 +13,7 @@ export type MeshAsset = {
 	id: number, -- 0 = 파트 폴백
 	size: Vector3, -- 지을 때 맞출 크기(스터드)
 	triangles: number, -- 삼각형 수(성능 예산 기록용)
+	texture: number?, -- 원래 텍스처(없으면 파트 색을 입힌다)
 }
 
 -- 여러 파트로 나뉜 메시 하나. offset = 밑면 중심에서 파트 중심까지(스터드, 파트 회전 0)
@@ -98,6 +99,206 @@ PropAssets.MESH_TIMEOUT = 5
 ]]
 PropAssets.MESHES = {
 	flowerbed = { id = 0, size = Vector3.new(4, 1.6, 2), triangles = 0 } :: MeshAsset,
+}
+
+--[[
+	주인공 소품 메시(P5, 2026-10-02 Studio 메시 생성으로 만들어 게임 소유자 계정에 올렸다). 방마다 한두 개.
+	  · 전부 한 덩어리 MeshPart + 원래 텍스처. 앞(정면)이 +Z 다. size 는 만든 그대로의 크기라 비율로만 쓴다.
+	  · 클라만 쓴다(client/MeshCache). 층 쌓기 방은 Rooms/Kit.hero, 1층 시설은 InteriorRenderController 의 hero.
+	  · id 가 0 이거나 못 불러오면 레시피가 그 자리를 파트로 짓는다.
+	  · 삼각형 예산(기획서 §12.1): 층 방 하나 ≤ 10,000, 1층 시설 하나 ≤ 6,000.
+	  · 올렸지만 안 쓰는 것: 체육관 뜀틀 70614742892634(서버 뜀틀이 이미 있고 방 파트 상한 16 이 찼다).
+]]
+PropAssets.HERO = {
+	-- 미술실 이젤
+	easel = {
+		id = 96778598060402,
+		texture = 99222712226432,
+		size = Vector3.new(3.866, 6.000, 3.433),
+		triangles = 1186,
+	} :: MeshAsset,
+	-- 컴퓨터실 컴퓨터(둥근 모니터 + 키보드)
+	computer = {
+		id = 78608019305396,
+		texture = 138581128872401,
+		size = Vector3.new(4.000, 3.276, 3.163),
+		triangles = 1498,
+	} :: MeshAsset,
+	-- 방송실 카메라(받침은 파트)
+	camera = {
+		id = 88148426784576,
+		texture = 99259905251958,
+		size = Vector3.new(3.376, 4.270, 6.000),
+		triangles = 2376,
+	} :: MeshAsset,
+	-- 요리실 가스레인지·오븐
+	stove = {
+		id = 139592776915418,
+		texture = 116329955182294,
+		size = Vector3.new(5.407, 6.000, 4.044),
+		triangles = 2366,
+	} :: MeshAsset,
+	-- 댄스실 스피커
+	speaker = {
+		id = 102281057644806,
+		texture = 135929759277500,
+		size = Vector3.new(2.321, 6.000, 2.239),
+		triangles = 1920,
+	} :: MeshAsset,
+	-- 코딩로봇실 로봇 팔
+	robotarm = {
+		id = 131894019159918,
+		texture = 131334285648079,
+		size = Vector3.new(2.217, 6.000, 2.629),
+		triangles = 2374,
+	} :: MeshAsset,
+	-- 코딩로봇실 바퀴 로봇
+	rover = {
+		id = 127806762745904,
+		texture = 130456899187463,
+		size = Vector3.new(2.395, 3.000, 1.442),
+		triangles = 1196,
+	} :: MeshAsset,
+	-- 영어체험실 가게
+	stall = {
+		id = 117138893734484,
+		texture = 107280353571922,
+		size = Vector3.new(7.267, 8.000, 4.809),
+		triangles = 2428,
+	} :: MeshAsset,
+	-- 돌봄교실 곰 인형
+	bear = {
+		id = 135239448763276,
+		texture = 81658468484901,
+		size = Vector3.new(2.133, 3.000, 1.934),
+		triangles = 1500,
+	} :: MeshAsset,
+	-- 교무실 복사기
+	copier = {
+		id = 113793820750970,
+		texture = 132014390874777,
+		size = Vector3.new(4.751, 3.794, 5.000),
+		triangles = 1770,
+	} :: MeshAsset,
+	-- 전시실 공룡
+	dinosaur = {
+		id = 78996120472708,
+		texture = 75298412257207,
+		size = Vector3.new(1.576, 2.890, 4.000),
+		triangles = 2998,
+	} :: MeshAsset,
+	-- 전시실·복도 트로피
+	trophy = {
+		id = 91745675938798,
+		texture = 116058333119970,
+		size = Vector3.new(2.232, 4.000, 1.458),
+		triangles = 1288,
+	} :: MeshAsset,
+	-- 옥상정원 꽃 덩굴 문
+	arch = {
+		id = 133025776012634,
+		texture = 117510415804079,
+		size = Vector3.new(8.000, 7.618, 3.763),
+		triangles = 2488,
+	} :: MeshAsset,
+	-- 옥상정원 분수
+	fountain = {
+		id = 107779413878530,
+		texture = 88606053725281,
+		size = Vector3.new(6.000, 4.917, 5.995),
+		triangles = 2376,
+	} :: MeshAsset,
+	-- 천문대 망원경
+	telescope = {
+		id = 78336418283145,
+		texture = 124935983986664,
+		size = Vector3.new(3.021, 6.000, 4.664),
+		triangles = 2386,
+	} :: MeshAsset,
+	-- 천문대 로켓
+	rocket = {
+		id = 98833396412810,
+		texture = 128214638871826,
+		size = Vector3.new(2.097, 6.000, 1.520),
+		triangles = 1546,
+	} :: MeshAsset,
+	-- 사물함 책가방
+	backpack = {
+		id = 89379326213843,
+		texture = 87460020437638,
+		size = Vector3.new(2.143, 3.000, 2.384),
+		triangles = 1494,
+	} :: MeshAsset,
+	-- 급식실 배식대
+	counter = {
+		id = 87934425741993,
+		texture = 84400000421382,
+		size = Vector3.new(8.000, 7.046, 4.683),
+		triangles = 2382,
+	} :: MeshAsset,
+	-- 도서관·교실 지구본
+	globe = {
+		id = 136211906853197,
+		texture = 102275712094742,
+		size = Vector3.new(2.490, 3.000, 2.050),
+		triangles = 1456,
+	} :: MeshAsset,
+	-- 보건실 침대(머리맡이 −Z)
+	bed = {
+		id = 120992832932517,
+		texture = 88860029233546,
+		size = Vector3.new(3.954, 3.930, 7.000),
+		triangles = 1880,
+	} :: MeshAsset,
+	-- 과학실 현미경
+	microscope = {
+		id = 93997462882077,
+		texture = 138680107435996,
+		size = Vector3.new(1.988, 3.000, 1.649),
+		triangles = 1348,
+	} :: MeshAsset,
+	-- 과학실 플라스크
+	flasks = {
+		id = 117661223686773,
+		texture = 91202557465745,
+		size = Vector3.new(2.627, 3.000, 1.409),
+		triangles = 1494,
+	} :: MeshAsset,
+	-- 음악실 드럼
+	drums = {
+		id = 130554595778952,
+		texture = 116255109095872,
+		size = Vector3.new(6.000, 4.246, 2.288),
+		triangles = 2490,
+	} :: MeshAsset,
+	-- 체육관 공 카트
+	ballcart = {
+		id = 120408447662560,
+		texture = 84519629578794,
+		size = Vector3.new(3.838, 5.000, 2.149),
+		triangles = 2000,
+	} :: MeshAsset,
+	-- 운동장 시상대
+	podium = {
+		id = 76836348412095,
+		texture = 71035013299200,
+		size = Vector3.new(7.000, 2.918, 3.251),
+		triangles = 1312,
+	} :: MeshAsset,
+	-- 교장실 책상(스탠드·화분 포함 높이)
+	principaldesk = {
+		id = 131803893381238,
+		texture = 136575204085146,
+		size = Vector3.new(4.523, 5.000, 2.253),
+		triangles = 2340,
+	} :: MeshAsset,
+	-- 강당 연단
+	lectern = {
+		id = 112256689602283,
+		texture = 132341444607968,
+		size = Vector3.new(3.968, 5.000, 3.466),
+		triangles = 1286,
+	} :: MeshAsset,
 }
 
 --[[

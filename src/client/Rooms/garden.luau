@@ -3,11 +3,14 @@
 	옥상정원 레시피(옥상 방, 구역 x -18.9 ~ -2, z -13.9 ~ 13.9). 바닥 = 나무 데크.
 	북쪽 = 텃밭(당근 줄·상추 줄), 학생 자리 1번은 그 앞 스툴(물뿌리개 옆). 서쪽 가장자리 = 화단 2, 남쪽 = 화단 1·연못(분수)·팻말,
 	가운데 남쪽 = 등받이 벤치(좌석 2~4). 동쪽 입구(엘리베이터에서 오는 길) = 덩굴 아치, 동북 = 새집, 나무 2그루.
-	파트: big 20 / props 13 / finish 9 = 42.
+	메시(PropAssets.HERO): 덩굴 아치 6 파트 → arch 1(문이 닫혀 있어 통로를 비켜 동쪽 가장자리, 앞이 서쪽 정원 안,
+	새집은 그 북쪽으로 옮긴다), 연못·분수 4 파트 → fountain 1.
+	파트: 폴백 big 20 / props 13 / finish 9 = 42, 메시 big 17 / props 13 / finish 4 = 34.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local BED_H = 0.9 -- 화단 상자 윗면(흙판은 그 위 0.1)
@@ -23,6 +26,7 @@ local POND_H = 0.6 -- 연못 테두리 높이
 local ARCH_X = -3 -- 덩굴 아치(입구 통로 z 약 1.7 이 기둥 사이)
 local ARCH_Z = { -0.5, 4.5 }
 local ARCH_H = 6
+local ARCH_MESH = Vector3.new(-3.5, 0, -4.3) -- 아치 메시 밑면 가운데(동쪽 가장자리, 통로 북쪽)
 
 local recipe: Kit.Recipe = {
 	big = function(put, ctx)
@@ -76,27 +80,44 @@ local recipe: Kit.Recipe = {
 				{ material = Enum.Material.Grass }
 			)
 		end
-		-- 연못: 돌 테두리 + 물
-		Kit.cylinder(put, "PondRim", Vector3.new(POND.X, POND_H / 2, POND.Y), 5, POND_H, WorldPalette.stone)
-		Kit.cylinder(
-			put,
-			"PondWater",
-			Vector3.new(POND.X, POND_H - 0.05, POND.Y),
-			4.4,
-			0.1,
-			WorldPalette.star,
-			{ transparency = 0.2 }
-		)
-		-- 덩굴 아치 뼈대: 기둥 2 + 위 들보
-		for i, az in ARCH_Z do
-			Kit.cylinder(put, `ArchPost{i}`, Vector3.new(ARCH_X, ARCH_H / 2, az), 0.6, ARCH_H, WorldPalette.trim)
+		-- 연못·분수: 메시(지름 5) 또는 돌 테두리 + 물(물기둥은 finish)
+		if
+			not Kit.hero(
+				put,
+				ctx.ready,
+				"Fountain",
+				PropAssets.HERO.fountain,
+				Vector3.new(POND.X, 0, POND.Y),
+				4.1,
+				0,
+				true
+			)
+		then
+			-- 연못: 돌 테두리 + 물
+			Kit.cylinder(put, "PondRim", Vector3.new(POND.X, POND_H / 2, POND.Y), 5, POND_H, WorldPalette.stone)
+			Kit.cylinder(
+				put,
+				"PondWater",
+				Vector3.new(POND.X, POND_H - 0.05, POND.Y),
+				4.4,
+				0.1,
+				WorldPalette.star,
+				{ transparency = 0.2 }
+			)
 		end
-		put(
-			"ArchBeam",
-			Vector3.new(0.6, 0.6, ARCH_Z[2] - ARCH_Z[1] + 0.6),
-			Vector3.new(ARCH_X, ARCH_H - 0.1, (ARCH_Z[1] + ARCH_Z[2]) / 2),
-			WorldPalette.trim
-		)
+		-- 덩굴 아치: 메시(동쪽 가장자리, 앞 = 서쪽) 또는 기둥 2 + 위 들보(덩굴·꽃은 finish)
+		if not Kit.hero(put, ctx.ready, "Arch", PropAssets.HERO.arch, ARCH_MESH, 5.6, 270, true) then
+			-- 덩굴 아치 뼈대: 기둥 2 + 위 들보
+			for i, az in ARCH_Z do
+				Kit.cylinder(put, `ArchPost{i}`, Vector3.new(ARCH_X, ARCH_H / 2, az), 0.6, ARCH_H, WorldPalette.trim)
+			end
+			put(
+				"ArchBeam",
+				Vector3.new(0.6, 0.6, ARCH_Z[2] - ARCH_Z[1] + 0.6),
+				Vector3.new(ARCH_X, ARCH_H - 0.1, (ARCH_Z[1] + ARCH_Z[2]) / 2),
+				WorldPalette.trim
+			)
+		end
 	end,
 
 	props = function(put, ctx)
@@ -138,33 +159,38 @@ local recipe: Kit.Recipe = {
 
 	finish = function(put, ctx)
 		local room = ctx.room
-		-- 아치 위 덩굴 + 꽃 2
-		local vineY = ARCH_H + 0.2 + 0.4
-		local mid = (ARCH_Z[1] + ARCH_Z[2]) / 2
-		put(
-			"ArchVine",
-			Vector3.new(1, 0.8, ARCH_Z[2] - ARCH_Z[1] + 1),
-			Vector3.new(ARCH_X, vineY, mid),
-			WorldPalette.hedge,
-			{ material = Enum.Material.Grass }
-		)
-		for k, off in { -1.2, 1.4 } do
-			Kit.ball(put, `ArchFlower{k}`, Vector3.new(ARCH_X, vineY + 0.6, mid + off), 0.6, WorldPalette.blossom)
+		if not ctx.ready(PropAssets.HERO.arch) then
+			-- 아치 위 덩굴 + 꽃 2
+			local vineY = ARCH_H + 0.2 + 0.4
+			local mid = (ARCH_Z[1] + ARCH_Z[2]) / 2
+			put(
+				"ArchVine",
+				Vector3.new(1, 0.8, ARCH_Z[2] - ARCH_Z[1] + 1),
+				Vector3.new(ARCH_X, vineY, mid),
+				WorldPalette.hedge,
+				{ material = Enum.Material.Grass }
+			)
+			for k, off in { -1.2, 1.4 } do
+				Kit.ball(put, `ArchFlower{k}`, Vector3.new(ARCH_X, vineY + 0.6, mid + off), 0.6, WorldPalette.blossom)
+			end
 		end
-		-- 분수: 물 가운데 기둥 + 물보라
-		Kit.cylinder(put, "FountainSpout", Vector3.new(POND.X, POND_H + 0.5, POND.Y), 0.4, 1, WorldPalette.stone)
-		Kit.ball(
-			put,
-			"FountainSpray",
-			Vector3.new(POND.X, POND_H + 1.2, POND.Y),
-			0.9,
-			WorldPalette.star,
-			{ transparency = 0.3 }
-		)
-		-- 새집(기둥 + 집 + 지붕), 동북
-		Kit.cylinder(put, "BirdPole", Vector3.new(-3.5, 2, -6), 0.25, 4, WorldPalette.wood)
-		put("BirdHouse", Vector3.new(1, 1, 1), Vector3.new(-3.5, 4.5, -6), WorldPalette.trunk)
-		put("BirdRoof", Vector3.new(1.4, 0.2, 1.4), Vector3.new(-3.5, 5.1, -6), room.accent)
+		if not ctx.ready(PropAssets.HERO.fountain) then
+			-- 분수: 물 가운데 기둥 + 물보라
+			Kit.cylinder(put, "FountainSpout", Vector3.new(POND.X, POND_H + 0.5, POND.Y), 0.4, 1, WorldPalette.stone)
+			Kit.ball(
+				put,
+				"FountainSpray",
+				Vector3.new(POND.X, POND_H + 1.2, POND.Y),
+				0.9,
+				WorldPalette.star,
+				{ transparency = 0.3 }
+			)
+		end
+		-- 새집(기둥 + 집 + 지붕), 동북. 아치 메시가 있으면 그 북쪽으로 비킨다
+		local birdZ = if ctx.ready(PropAssets.HERO.arch) then -8.2 else -6
+		Kit.cylinder(put, "BirdPole", Vector3.new(-3.5, 2, birdZ), 0.25, 4, WorldPalette.wood)
+		put("BirdHouse", Vector3.new(1, 1, 1), Vector3.new(-3.5, 4.5, birdZ), WorldPalette.trunk)
+		put("BirdRoof", Vector3.new(1.4, 0.2, 1.4), Vector3.new(-3.5, 5.1, birdZ), room.accent)
 		-- 이름 팻말(TowerRender 가 Back 면에 방 이름을 붙인다). 남쪽 난간에 붙어 있어 180° 돌려 글씨가 정원 안(북쪽)을 보게 한다
 		put(
 			"Sign",

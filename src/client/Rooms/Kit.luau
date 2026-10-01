@@ -19,10 +19,12 @@ export type PutOpts = {
 	rot: CFrame?,
 	transparency: number?,
 	collide: boolean?, -- 바닥에 놓인 큰 가구만 true
-	mesh: PropAssets.MeshAsset?, -- id 0 이거나 불러오기 실패면 보통 파트(P5 가 채운다)
+	mesh: PropAssets.MeshAsset?, -- 준비됐으면 그 메시(원래 텍스처), 아니면 보통 파트. Kit.hero 가 쓴다
 }
 export type Put = (name: string, size: Vector3, pos: Vector3, color: Color3, opts: PutOpts?) -> BasePart
-export type Ctx = { room: RoomConfig.Room, floor: number }
+-- ready(asset) = 그 메시를 지금 쓸 수 있나(id 0·불러오는 중·실패 = false. 준비되면 방을 다시 짓는다)
+export type Ready = (asset: PropAssets.MeshAsset) -> boolean
+export type Ctx = { room: RoomConfig.Room, floor: number, ready: Ready }
 export type Builder = (put: Put, ctx: Ctx) -> ()
 export type Recipe = { big: Builder, props: Builder, finish: Builder }
 export type Side = "N" | "W" | "E"
@@ -53,6 +55,7 @@ Kit.ARRIVAL = Vector2.new(
 Kit.SIT_HIP = CharacterBuilder.SIT_HIP
 Kit.SIT_DESK = CharacterBuilder.SIT_DESK
 local DESK_W, DESK_D, DESK_TOP = 3, 1.6, 0.25
+local WHITE = Color3.new(1, 1, 1)
 local DESK_AHEAD = 1.9 -- 좌석 → 책상 가운데
 
 --- 가구를 놓을 수 있는 곳. 층 방 = 벽 안쪽 전체, 옥상 방 = RoomConfig 의 zone
@@ -67,6 +70,31 @@ end
 --- 좌석 s 에서 yaw 로 돌린 오프셋(앞 = −Z)
 local function around(s: Vector3, yaw: CFrame, offset: Vector3): Vector3
 	return s + yaw:VectorToWorldSpace(offset)
+end
+
+--[[
+	주인공 소품(PropAssets.HERO 메시) 1 파트. 메시가 준비됐으면 놓고 true, 아니면 아무것도 안 하고 false 를
+	돌려준다. 부르는 쪽은 false 일 때 파트로 같은 자리에 짓는다(폴백이 늘 있어야 한다):
+	    if not Kit.hero(put, ctx.ready, "Easel1", PropAssets.HERO.easel, Vector3.new(x, 0, z), 5) then ...파트... end
+	base = 밑면 가운데, h = 높이(메시 비율 그대로 키운다), yaw = 도(0 = 메시 앞이 +Z 남쪽, 180 = 북쪽).
+	collide = 바닥에 놓인 큰 가구만 true(충돌은 상자).
+]]
+function Kit.hero(
+	put: Put,
+	ready: Ready,
+	name: string,
+	asset: PropAssets.MeshAsset,
+	base: Vector3,
+	h: number,
+	yaw: number?,
+	collide: boolean?
+): boolean
+	if not ready(asset) then
+		return false
+	end
+	local size = asset.size * (h / asset.size.Y)
+	put(name, size, base + Vector3.new(0, h / 2, 0), WHITE, { mesh = asset, rot = yawOf(yaw), collide = collide })
+	return true
 end
 
 --- 좌석 앞 책상 윗면 가운데(책·소품 놓을 자리)

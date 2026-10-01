@@ -2,11 +2,14 @@
 --[[
 	교무실 레시피. 서쪽 선생님 책상 2줄(파티션·모니터·서류), 남쪽 회의 탁자, 북쪽 시간표·서류 캐비닛, 북동 복사기, 동쪽 커피 코너.
 	좌석: 1·6 회의 탁자, 2~5 선생님 책상(RoomConfig staff).
+	복사기는 메시(PropAssets.HERO.copier, 앞이 남쪽)가 준비되면 몸통·덮개·종이 받침·불빛 대신 1 파트.
+	파트 수: 폴백 58 / 메시 55.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local H = Kit.SIT_DESK
@@ -37,13 +40,15 @@ local recipe: Kit.Recipe = {
 			)
 		end
 		-- 복사기, 서류 캐비닛 2, 커피 코너 받침, 책장
-		put(
-			"Copier",
-			Vector3.new(3, 3.5, 2.4),
-			COPIER + Vector3.new(0, 1.75, 0),
-			WorldPalette.ghost,
-			{ collide = true }
-		)
+		if not Kit.hero(put, ctx.ready, "Copier", PropAssets.HERO.copier, COPIER, 3.2, 0, true) then
+			put(
+				"Copier",
+				Vector3.new(3, 3.5, 2.4),
+				COPIER + Vector3.new(0, 1.75, 0),
+				WorldPalette.ghost,
+				{ collide = true }
+			)
+		end
 		for k, x in { 7, 9.2 } do
 			put(
 				`Cabinet{k}`,
@@ -59,7 +64,7 @@ local recipe: Kit.Recipe = {
 		Kit.shelf(put, "Bookcase", "W", 8, 5, 6, WorldPalette.benchWood, ctx.room.wall)
 	end,
 
-	props = function(put, ctx) -- 19 파트
+	props = function(put, ctx) -- 19 파트(메시 17)
 		local seats = ctx.room.seats
 		-- 책상 위: 모니터·서류 더미, 두 책상엔 머그컵
 		for i = 2, 5 do
@@ -84,8 +89,10 @@ local recipe: Kit.Recipe = {
 			)
 		end
 		-- 복사기 덮개 + 종이 받침
-		put("CopierLid", Vector3.new(3, 0.25, 2.4), COPIER + Vector3.new(0, 3.625, 0), WorldPalette.boardDark)
-		put("CopierTray", Vector3.new(1.2, 0.2, 1.6), COPIER + Vector3.new(-1.8, 2.4, 0), WorldPalette.trim)
+		if not ctx.ready(PropAssets.HERO.copier) then
+			put("CopierLid", Vector3.new(3, 0.25, 2.4), COPIER + Vector3.new(0, 3.625, 0), WorldPalette.boardDark)
+			put("CopierTray", Vector3.new(1.2, 0.2, 1.6), COPIER + Vector3.new(-1.8, 2.4, 0), WorldPalette.trim)
+		end
 		-- 커피 머신 + 컵 2
 		put("CoffeeMachine", Vector3.new(1, 1.4, 1), Vector3.new(COFFEE_X, 3.7, -7.6), WorldPalette.boardDark)
 		for k, z in { -5.8, -5.1 } do
@@ -98,7 +105,7 @@ local recipe: Kit.Recipe = {
 		Kit.plant(put, "Plant", -17, 12.5, WorldPalette.trunk, WorldPalette.hedge)
 	end,
 
-	finish = function(put, ctx) -- 11 파트
+	finish = function(put, ctx) -- 11 파트(메시 10)
 		-- 시간표 게시판(요일 줄 4) + 시계
 		Kit.board(put, "Timetable", "N", -6, 8.5, 10, 5, WorldPalette.cork)
 		for k, c in { WorldPalette.star, WorldPalette.sticker, WorldPalette.lawn, WorldPalette.blossom } do
@@ -112,9 +119,11 @@ local recipe: Kit.Recipe = {
 		Kit.board(put, "Notice", "W", -1, 8, 6, 4, WorldPalette.signBoard)
 		put("NoticeNote", Vector3.new(0.3, 1.4, 1.8), Vector3.new(-XI + 0.15, 8.4, -2), ctx.room.accent)
 		-- 복사기 버튼 불빛, 천장 등 2
-		put("CopierLight", Vector3.new(0.8, 0.1, 0.5), COPIER + Vector3.new(0.8, 3.8, 0.6), WorldPalette.pad, {
-			material = Enum.Material.Neon,
-		})
+		if not ctx.ready(PropAssets.HERO.copier) then
+			put("CopierLight", Vector3.new(0.8, 0.1, 0.5), COPIER + Vector3.new(0.8, 3.8, 0.6), WorldPalette.pad, {
+				material = Enum.Material.Neon,
+			})
+		end
 		for k, p in { Vector3.new(-12.5, 0, -1), Vector3.new(2, 0, 4) } do
 			put(
 				`CeilingLight{k}`,

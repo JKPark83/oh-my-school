@@ -1,11 +1,14 @@
 --!strict
 --[[
-	요리실 레시피. 조리대 4개(서쪽 2×2)·냉장고·오븐(북쪽 벽)·그릇 선반·앞치마 걸이(서쪽 벽)·시식 탁자와 케이크(가운데 북편).
-	좌석: [1]~[4] 조리대 남쪽 스툴(북쪽을 본다), [5]·[6] 시식 탁자. 파트 big 23 · props 22 · finish 14 = 59.
+	요리실 레시피. 조리대 4개(서쪽 2×2)·냉장고·가스레인지 오븐(북쪽 벽)·그릇 선반·앞치마 걸이(서쪽 벽)·시식 탁자와 케이크(가운데 북편).
+	가스레인지 오븐은 메시(PropAssets.HERO.stove)가 준비되면 메시 1, 아니면 파트 2(몸통·창).
+	좌석: [1]~[4] 조리대 남쪽 스툴(북쪽을 본다), [5]·[6] 시식 탁자.
+	파트 big 23 · props 22 · finish 14 = 59(폴백) / big 22 → 58(메시).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local rgb = Color3.fromRGB
@@ -41,11 +44,24 @@ local recipe: Kit.Recipe = {
 		put("Fridge", Vector3.new(4, 9, 2.5), Vector3.new(14, 4.5, Kit.Z_N + 1.25), APPLIANCE, { collide = true })
 		put("FridgeLine", Vector3.new(3.8, 0.1, 0.1), Vector3.new(14, 6, Kit.Z_N + 2.5), STEEL)
 		put("FridgeHandle", Vector3.new(0.2, 3, 0.2), Vector3.new(15.4, 4.5, Kit.Z_N + 2.55), WorldPalette.lampIron)
-		-- 오븐
-		put("Oven", Vector3.new(3.5, 3, 2.5), Vector3.new(9.5, 1.5, Kit.Z_N + 1.25), APPLIANCE, { collide = true })
-		put("OvenWindow", Vector3.new(2.4, 1.2, 0.1), Vector3.new(9.5, 1.4, Kit.Z_N + 2.5), DARK, {
-			material = Enum.Material.Glass,
-		})
+		-- 가스레인지 오븐(높이 4.5 → 발자국 4.06×3.03, 벽에 붙어 남쪽을 본다)
+		if
+			not Kit.hero(
+				put,
+				ctx.ready,
+				"Oven",
+				PropAssets.HERO.stove,
+				Vector3.new(9.5, 0, Kit.Z_N + 1.6),
+				4.5,
+				0,
+				true
+			)
+		then
+			put("Oven", Vector3.new(3.5, 3, 2.5), Vector3.new(9.5, 1.5, Kit.Z_N + 1.25), APPLIANCE, { collide = true })
+			put("OvenWindow", Vector3.new(2.4, 1.2, 0.1), Vector3.new(9.5, 1.4, Kit.Z_N + 2.5), DARK, {
+				material = Enum.Material.Glass,
+			})
+		end
 		Kit.lowTable(put, "TasteTable", TABLE.X, TABLE.Y, 6, 3, Kit.SIT_DESK, WorldPalette.wood)
 		Kit.shelf(put, "Shelf", "W", -1, 6, 5, WorldPalette.wood, WorldPalette.trim)
 	end,

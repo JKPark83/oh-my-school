@@ -3,11 +3,14 @@
 	컴퓨터실 레시피. 서쪽에 책상 2줄 × 3(학생 자리 1번은 앞줄 가운데), 자리마다 모니터·키보드·본체.
 	북쪽 벽 = 선생님 큰 스크린, 동쪽 벽 = 서버 랙(작은 불빛), 북쪽 가운데 = 프린터, 바닥 = 케이블 덮개.
 	부품 3(소품)은 꺼진 모니터, 완공(마무리)에서 화면이 켜진다.
-	파트: big 28 / props 20 / finish 11 = 59.
+	모니터·키보드는 PropAssets.HERO.computer 메시(둥근 레트로 모니터 + 키보드 한 덩어리, 정면이 좌석 쪽).
+	메시가 없으면 파트(받침·모니터·키보드, 완공 때 화면 Neon).
+	파트: 폴백 big 28 / props 20 / finish 11 = 59, 메시일 때 big 28 / props 8 / finish 5 = 41.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local RACK = Vector3.new(Kit.X_IN - 1, 0, -9) -- 서버 랙 바닥 가운데(동쪽 벽, 깊이 2)
@@ -44,27 +47,29 @@ local recipe: Kit.Recipe = {
 		local rot = CFrame.Angles(0, math.rad(room.seatYaw or 0), 0)
 		for i, s in room.seats do
 			local top = Kit.deskTop(s, room.seatYaw)
-			put(
-				`MonitorStand{i}`,
-				Vector3.new(0.3, 0.6, 0.3),
-				at(top, room.seatYaw, Vector3.new(0, 0.3, -0.4)),
-				WorldPalette.lampIron,
-				{ rot = rot }
-			)
-			put(
-				`Monitor{i}`,
-				Vector3.new(2.2, 1.4, 0.15),
-				at(top, room.seatYaw, Vector3.new(0, 1.3, -0.4)),
-				WorldPalette.lampIron,
-				{ rot = rot }
-			)
-			put(
-				`Keyboard{i}`,
-				Vector3.new(1.6, 0.1, 0.5),
-				at(top, room.seatYaw, Vector3.new(0, 0.05, 0.4)),
-				WorldPalette.ghost,
-				{ rot = rot }
-			)
+			if not Kit.hero(put, ctx.ready, `Computer{i}`, PropAssets.HERO.computer, top, 1.6, room.seatYaw) then
+				put(
+					`MonitorStand{i}`,
+					Vector3.new(0.3, 0.6, 0.3),
+					at(top, room.seatYaw, Vector3.new(0, 0.3, -0.4)),
+					WorldPalette.lampIron,
+					{ rot = rot }
+				)
+				put(
+					`Monitor{i}`,
+					Vector3.new(2.2, 1.4, 0.15),
+					at(top, room.seatYaw, Vector3.new(0, 1.3, -0.4)),
+					WorldPalette.lampIron,
+					{ rot = rot }
+				)
+				put(
+					`Keyboard{i}`,
+					Vector3.new(1.6, 0.1, 0.5),
+					at(top, room.seatYaw, Vector3.new(0, 0.05, 0.4)),
+					WorldPalette.ghost,
+					{ rot = rot }
+				)
+			end
 		end
 		put("Printer", Vector3.new(2.4, 1, 1.6), PRINTER + Vector3.new(0, PRINTER_TOP + 0.5, 0), WorldPalette.ghost)
 		put(
@@ -78,16 +83,18 @@ local recipe: Kit.Recipe = {
 	finish = function(put, ctx)
 		local room = ctx.room
 		local rot = CFrame.Angles(0, math.rad(room.seatYaw or 0), 0)
-		-- 모니터 화면이 켜진다(모니터 앞면에 0.025 묻힌 Neon)
-		for i, s in room.seats do
-			local top = Kit.deskTop(s, room.seatYaw)
-			put(
-				`MonitorGlow{i}`,
-				Vector3.new(1.9, 1.1, 0.05),
-				at(top, room.seatYaw, Vector3.new(0, 1.3, -0.4 + 0.075)),
-				if i % 2 == 1 then WorldPalette.star else WorldPalette.pad,
-				{ rot = rot, material = Enum.Material.Neon }
-			)
+		-- 모니터 화면이 켜진다(모니터 앞면에 0.025 묻힌 Neon). 메시는 화면이 이미 그려져 있다
+		if not ctx.ready(PropAssets.HERO.computer) then
+			for i, s in room.seats do
+				local top = Kit.deskTop(s, room.seatYaw)
+				put(
+					`MonitorGlow{i}`,
+					Vector3.new(1.9, 1.1, 0.05),
+					at(top, room.seatYaw, Vector3.new(0, 1.3, -0.4 + 0.075)),
+					if i % 2 == 1 then WorldPalette.star else WorldPalette.pad,
+					{ rot = rot, material = Enum.Material.Neon }
+				)
+			end
 		end
 		-- 선생님 스크린 화면(큰 면이라 Neon 아님)
 		put("ScreenFace", Vector3.new(13, 6, 0.05), Vector3.new(-9, 8, Kit.Z_N + 0.2), room.wall)

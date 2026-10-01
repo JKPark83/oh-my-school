@@ -2,11 +2,14 @@
 --[[
 	코딩로봇실 레시피. 가운데 서편 로봇 경기장 탁자(검은 판·흰 트랙·바퀴 로봇 3), 북동 로봇 팔,
 	서쪽 벽 부품 서랍장, 남쪽 노트북 책상 줄, 북쪽 벽 화면에 블록 코딩.
-	좌석: [1]·[2] 경기장 남쪽(조종기), [3]~[5] 노트북 책상. 파트 big 24 · props 23 · finish 12 = 59.
+	좌석: [1]·[2] 경기장 남쪽(조종기), [3]~[5] 노트북 책상.
+	로봇 팔은 메시(PropAssets.HERO.robotarm)면 1, 아니면 파트 7. 바퀴 로봇은 메시(rover)면 하나에 1, 아니면 3.
+	파트 big 24 · props 23 · finish 12 = 59(폴백) / big 18 · props 17 → 47(메시).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local rgb = Color3.fromRGB
@@ -20,7 +23,11 @@ local ARM = Vector3.new(14, 0, -9) -- 로봇 팔 받침 가운데
 local AXIS_Z = CFrame.Angles(0, math.pi / 2, 0) -- 원기둥 축을 Z 로(관절)
 
 --- 바퀴 로봇 3 파트: 몸통 + 바퀴 축(원기둥) + 눈(Neon). yaw 0 이면 -Z 를 본다
-local function robot(put: Kit.Put, i: number, x: number, z: number, yaw: number, color: Color3)
+--- 메시(rover)면 1 파트(높이 1.2). 메시 앞은 +Z 라 yaw + 180
+local function robot(put: Kit.Put, ready: Kit.Ready, i: number, x: number, z: number, yaw: number, color: Color3)
+	if Kit.hero(put, ready, `Robot{i}`, PropAssets.HERO.rover, Vector3.new(x, TOP, z), 1.2, yaw + 180) then
+		return
+	end
 	local r = CFrame.Angles(0, math.rad(yaw), 0)
 	local base = Vector3.new(x, TOP, z)
 	put(`Robot{i}`, Vector3.new(1, 0.6, 1), base + Vector3.new(0, 0.3, 0), color, { rot = r })
@@ -62,20 +69,23 @@ local recipe: Kit.Recipe = {
 				Kit.seat(put, i, s, WorldPalette.wood, room.accent, room.seatYaw)
 			end
 		end
-		-- 로봇 팔: 받침(충돌)·회전판·아래팔·관절·윗팔·손목 관절·집게
-		put("ArmStand", Vector3.new(3, 2.5, 3), ARM + Vector3.new(0, 1.25, 0), METAL, { collide = true })
-		Kit.cylinder(put, "ArmTurntable", ARM + Vector3.new(0, 2.8, 0), 2, 0.6, WorldPalette.lampIron)
-		put("ArmLower", Vector3.new(0.6, 3.5, 0.6), ARM + Vector3.new(0, 4.85, 0), ORANGE)
-		put("ArmJoint", Vector3.new(0.9, 1, 1), ARM + Vector3.new(0, 6.6, 0), WorldPalette.lampIron, {
-			shape = Enum.PartType.Cylinder,
-			rot = AXIS_Z,
-		})
-		put("ArmUpper", Vector3.new(3.5, 0.5, 0.5), ARM + Vector3.new(-1.75, 6.6, 0), ORANGE)
-		put("ArmWrist", Vector3.new(0.7, 0.7, 0.7), ARM + Vector3.new(-3.4, 6.6, 0), WorldPalette.lampIron, {
-			shape = Enum.PartType.Cylinder,
-			rot = AXIS_Z,
-		})
-		put("ArmGripper", Vector3.new(0.4, 0.7, 0.9), ARM + Vector3.new(-3.8, 6.6, 0), room.accent)
+		-- 로봇 팔: 메시(높이 7 → 발자국 2.59×3.07, 서쪽 경기장을 본다) 또는
+		-- 받침(충돌)·회전판·아래팔·관절·윗팔·손목 관절·집게
+		if not Kit.hero(put, ctx.ready, "ArmStand", PropAssets.HERO.robotarm, ARM, 7, 270, true) then
+			put("ArmStand", Vector3.new(3, 2.5, 3), ARM + Vector3.new(0, 1.25, 0), METAL, { collide = true })
+			Kit.cylinder(put, "ArmTurntable", ARM + Vector3.new(0, 2.8, 0), 2, 0.6, WorldPalette.lampIron)
+			put("ArmLower", Vector3.new(0.6, 3.5, 0.6), ARM + Vector3.new(0, 4.85, 0), ORANGE)
+			put("ArmJoint", Vector3.new(0.9, 1, 1), ARM + Vector3.new(0, 6.6, 0), WorldPalette.lampIron, {
+				shape = Enum.PartType.Cylinder,
+				rot = AXIS_Z,
+			})
+			put("ArmUpper", Vector3.new(3.5, 0.5, 0.5), ARM + Vector3.new(-1.75, 6.6, 0), ORANGE)
+			put("ArmWrist", Vector3.new(0.7, 0.7, 0.7), ARM + Vector3.new(-3.4, 6.6, 0), WorldPalette.lampIron, {
+				shape = Enum.PartType.Cylinder,
+				rot = AXIS_Z,
+			})
+			put("ArmGripper", Vector3.new(0.4, 0.7, 0.9), ARM + Vector3.new(-3.8, 6.6, 0), room.accent)
+		end
 		-- 부품 서랍장(서쪽 벽): 몸통(충돌) + 서랍 앞판 3
 		put("Drawers", Vector3.new(1.6, 3.5, 6), Vector3.new(-Kit.X_IN + 0.8, 1.75, -6), METAL, { collide = true })
 		for i, color in { WorldPalette.sticker, WorldPalette.star, room.accent } do
@@ -90,9 +100,9 @@ local recipe: Kit.Recipe = {
 		put("TrackS", Vector3.new(7.3, 0.03, 0.3), Vector3.new(ARENA.X, y, -1.5), white)
 		put("TrackW", Vector3.new(0.3, 0.03, 3.7), Vector3.new(-10.5, y, -3.5), white)
 		put("TrackE", Vector3.new(0.3, 0.03, 3.7), Vector3.new(-3.5, y, -3.5), white)
-		robot(put, 1, -8, -5.5, 90, room.accent)
-		robot(put, 2, -3.5, -3.5, 0, ORANGE)
-		robot(put, 3, -6, -1.5, 270, WorldPalette.star)
+		robot(put, ctx.ready, 1, -8, -5.5, 90, room.accent)
+		robot(put, ctx.ready, 2, -3.5, -3.5, 0, ORANGE)
+		robot(put, ctx.ready, 3, -6, -1.5, 270, WorldPalette.star)
 		-- 경기장 앞 조종기 2(좌석 [1]·[2] 손 앞)
 		for i = 1, 2 do
 			put(`Remote{i}`, Vector3.new(0.8, 0.15, 0.5), Kit.deskTop(room.seats[i]) + Vector3.new(0, 0.075, 0), SCREEN)

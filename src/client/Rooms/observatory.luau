@@ -3,11 +3,13 @@
 	천문대 레시피(옥상 방, 구역 x 0 ~ 11, z -13.9 ~ -3). 바닥 = 밤색 데크 + Neon 별 점.
 	서북 = 둥근 돔(원통 받침 + 구, 남쪽 슬릿, 동쪽 문 + 계단 발판 2), 가운데 = 삼각대 큰 망원경(북쪽 하늘을 본다).
 	학생 자리 1번은 망원경 접안렌즈 뒤 스툴. 서남 = 별자리 판 앞 벤치(좌석 2·3), 동쪽 = 스툴(좌석 4)·로켓 모형, 동북 = 안테나 접시.
-	파트: big 15 / props 11 / finish 12 = 38.
+	메시(PropAssets.HERO): 삼각대·통·접안렌즈·파인더 6 파트 → telescope 1(대물렌즈 북쪽), 로켓 4 파트 → rocket 1.
+	파트: 폴백 big 15 / props 11 / finish 12 = 38, 메시 big 12 / props 6 / finish 12 = 30.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local DOME = Vector2.new(2.6, -11.4) -- 돔 가운데
@@ -57,27 +59,32 @@ local recipe: Kit.Recipe = {
 			{ rot = CFrame.Angles(math.rad(45), 0, 0) }
 		)
 		put("DomeDoor", Vector3.new(0.2, 2.2, 1.2), Vector3.new(DOME.X + DOME_D / 2, 0.6 + 1.1, DOME.Y), room.accent)
-		-- 삼각대 다리 3: 꼭대기 SCOPE 에서 밑동(방향 φ, 거리 LEG_R)까지
-		local legLen = math.sqrt(LEG_R ^ 2 + SCOPE.Y ^ 2)
-		local tilt = math.atan(LEG_R / SCOPE.Y)
-		for i, phi in { 90, 210, 330 } do
-			local a = math.rad(phi)
-			local mid = SCOPE + Vector3.new(math.cos(a), 0, -math.sin(a)) * (LEG_R / 2)
+		-- 망원경: 메시(대물렌즈 북쪽 = yaw 180, 돔 계단 발판을 비켜 조금 동쪽) 또는 삼각대 + 통
+		if
+			not Kit.hero(put, ctx.ready, "Telescope", PropAssets.HERO.telescope, Vector3.new(7.6, 0, SCOPE.Z), 5, 180)
+		then
+			-- 삼각대 다리 3: 꼭대기 SCOPE 에서 밑동(방향 φ, 거리 LEG_R)까지
+			local legLen = math.sqrt(LEG_R ^ 2 + SCOPE.Y ^ 2)
+			local tilt = math.atan(LEG_R / SCOPE.Y)
+			for i, phi in { 90, 210, 330 } do
+				local a = math.rad(phi)
+				local mid = SCOPE + Vector3.new(math.cos(a), 0, -math.sin(a)) * (LEG_R / 2)
+				put(
+					`TripodLeg{i}`,
+					Vector3.new(0.25, legLen, 0.25),
+					Vector3.new(mid.X, 1.79, mid.Z),
+					WorldPalette.lampIron,
+					{ rot = CFrame.Angles(0, a, 0) * CFrame.Angles(0, 0, tilt) }
+				)
+			end
 			put(
-				`TripodLeg{i}`,
-				Vector3.new(0.25, legLen, 0.25),
-				Vector3.new(mid.X, 1.79, mid.Z),
-				WorldPalette.lampIron,
-				{ rot = CFrame.Angles(0, a, 0) * CFrame.Angles(0, 0, tilt) }
+				"ScopeTube",
+				Vector3.new(TUBE_LEN, 0.9, 0.9),
+				Vector3.new(SCOPE.X, TUBE_Y, SCOPE.Z),
+				WorldPalette.trim,
+				{ shape = Enum.PartType.Cylinder, rot = TUBE_ROT }
 			)
 		end
-		put(
-			"ScopeTube",
-			Vector3.new(TUBE_LEN, 0.9, 0.9),
-			Vector3.new(SCOPE.X, TUBE_Y, SCOPE.Z),
-			WorldPalette.trim,
-			{ shape = Enum.PartType.Cylinder, rot = TUBE_ROT }
-		)
 		-- 의자: 학생 스툴(접안렌즈 뒤)·벤치(좌석 2·3, Chair*)·스툴(좌석 4)
 		Kit.chair(put, 1, room.seats[1], WorldPalette.wood, room.seatYaw)
 		local h = Kit.SIT_HIP - 0.15
@@ -92,32 +99,38 @@ local recipe: Kit.Recipe = {
 			WorldPalette.trim,
 			{ shape = Enum.PartType.Cylinder, rot = DISH_ROT }
 		)
-		-- 로켓 몸통
-		Kit.cylinder(put, "RocketBody", Vector3.new(ROCKET.X, 1.3, ROCKET.Y), 1, 2.6, WorldPalette.trim)
+		-- 로켓: 메시(창이 남쪽) 또는 몸통(코·날개는 props)
+		if not Kit.hero(put, ctx.ready, "Rocket", PropAssets.HERO.rocket, Vector3.new(ROCKET.X, 0, ROCKET.Y), 3.5) then
+			Kit.cylinder(put, "RocketBody", Vector3.new(ROCKET.X, 1.3, ROCKET.Y), 1, 2.6, WorldPalette.trim)
+		end
 	end,
 
 	props = function(put, ctx)
 		local room = ctx.room
-		local tube = Vector3.new(SCOPE.X, TUBE_Y, SCOPE.Z)
-		-- 접안렌즈(통 아래 끝) + 파인더(통 위에 나란히)
-		put(
-			"Eyepiece",
-			Vector3.new(0.5, 0.35, 0.35),
-			tube - TUBE_AXIS * (TUBE_LEN / 2 + 0.2),
-			WorldPalette.lampIron,
-			{ shape = Enum.PartType.Cylinder, rot = TUBE_ROT }
-		)
-		put(
-			"Finder",
-			Vector3.new(1.5, 0.3, 0.3),
-			tube + TUBE_UP * 0.6,
-			room.accent,
-			{ shape = Enum.PartType.Cylinder, rot = TUBE_ROT }
-		)
-		-- 로켓: 코 + 날개 2(십자)
-		Kit.ball(put, "RocketNose", Vector3.new(ROCKET.X, 2.7, ROCKET.Y), 1, WorldPalette.sticker)
-		put("RocketFinA", Vector3.new(2, 1, 0.15), Vector3.new(ROCKET.X, 0.5, ROCKET.Y), room.accent)
-		put("RocketFinB", Vector3.new(0.15, 1, 2), Vector3.new(ROCKET.X, 0.5, ROCKET.Y), room.accent)
+		if not ctx.ready(PropAssets.HERO.telescope) then
+			local tube = Vector3.new(SCOPE.X, TUBE_Y, SCOPE.Z)
+			-- 접안렌즈(통 아래 끝) + 파인더(통 위에 나란히)
+			put(
+				"Eyepiece",
+				Vector3.new(0.5, 0.35, 0.35),
+				tube - TUBE_AXIS * (TUBE_LEN / 2 + 0.2),
+				WorldPalette.lampIron,
+				{ shape = Enum.PartType.Cylinder, rot = TUBE_ROT }
+			)
+			put(
+				"Finder",
+				Vector3.new(1.5, 0.3, 0.3),
+				tube + TUBE_UP * 0.6,
+				room.accent,
+				{ shape = Enum.PartType.Cylinder, rot = TUBE_ROT }
+			)
+		end
+		if not ctx.ready(PropAssets.HERO.rocket) then
+			-- 로켓: 코 + 날개 2(십자)
+			Kit.ball(put, "RocketNose", Vector3.new(ROCKET.X, 2.7, ROCKET.Y), 1, WorldPalette.sticker)
+			put("RocketFinA", Vector3.new(2, 1, 0.15), Vector3.new(ROCKET.X, 0.5, ROCKET.Y), room.accent)
+			put("RocketFinB", Vector3.new(0.15, 1, 2), Vector3.new(ROCKET.X, 0.5, ROCKET.Y), room.accent)
+		end
 		-- 안테나 수신기(접시 앞면에 붙인다: 접시 반두께 0.125 + 공 반지름 0.15 - 살짝 묻힘 0.025)
 		local dishAxis = DISH_ROT:VectorToWorldSpace(Vector3.new(1, 0, 0))
 		Kit.ball(

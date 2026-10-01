@@ -2,11 +2,13 @@
 --[[
 	돌봄교실 레시피. 북서 낮잠 매트, 서쪽 낮은 원탁, 남쪽 블록 러그·책 읽는 빈백, 북동 장난감 선반·사물함, 남동 간식 탁자.
 	좌석: 1·2 원탁 방석, 3·4 빈백, 5 간식 탁자(RoomConfig care). 원탁은 좌석 상자에 걸쳐서 이름이 Desk* 다.
+	선반 위 곰 인형은 메시(PropAssets.HERO.bear)가 준비되면 공 4 대신 1 파트. 파트 수: 폴백 55 / 메시 52.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local ZN, XI = Kit.Z_N, Kit.X_IN
@@ -71,7 +73,7 @@ local recipe: Kit.Recipe = {
 		put("BookRack", Vector3.new(6, 2.4, 1), Vector3.new(-2.5, 1.2, 13.8), WorldPalette.trim, { collide = true })
 	end,
 
-	props = function(put, ctx) -- 21 파트
+	props = function(put, ctx) -- 21 파트(메시 18)
 		-- 원탁 위: 크레파스 상자 + 도화지
 		put(
 			"Crayons",
@@ -98,17 +100,20 @@ local recipe: Kit.Recipe = {
 		end
 		-- 선반 위 곰 인형(몸·머리·귀 2)과 블록 2
 		local bearX, shelfZ = 7.5, ZN + 0.75
-		Kit.ball(put, "BearBody", Vector3.new(bearX, 4.6, shelfZ), 1.4, WorldPalette.cork, { material = FABRIC })
-		Kit.ball(put, "BearHead", Vector3.new(bearX, 5.7, shelfZ), 1, WorldPalette.cork, { material = FABRIC })
-		for k, dx in { -0.35, 0.35 } do
-			Kit.ball(
-				put,
-				`BearEar{k}`,
-				Vector3.new(bearX + dx, 6.15, shelfZ),
-				0.4,
-				WorldPalette.cork,
-				{ material = FABRIC }
-			)
+		-- 메시: 선반(윗면 4, 깊이 1.2) 위에 앉아 방 쪽(남)을 본다
+		if not Kit.hero(put, ctx.ready, "Bear", PropAssets.HERO.bear, Vector3.new(bearX, 4, ZN + 0.6), 1.8, 0) then
+			Kit.ball(put, "BearBody", Vector3.new(bearX, 4.6, shelfZ), 1.4, WorldPalette.cork, { material = FABRIC })
+			Kit.ball(put, "BearHead", Vector3.new(bearX, 5.7, shelfZ), 1, WorldPalette.cork, { material = FABRIC })
+			for k, dx in { -0.35, 0.35 } do
+				Kit.ball(
+					put,
+					`BearEar{k}`,
+					Vector3.new(bearX + dx, 6.15, shelfZ),
+					0.4,
+					WorldPalette.cork,
+					{ material = FABRIC }
+				)
+			end
 		end
 		put("ShelfBlock1", Vector3.one * 0.9, Vector3.new(9.6, 4.45, shelfZ), WorldPalette.star)
 		put("ShelfBlock2", Vector3.one * 0.9, Vector3.new(10.7, 4.45, shelfZ), WorldPalette.lawn)

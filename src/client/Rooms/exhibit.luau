@@ -3,11 +3,13 @@
 	전시실(공룡·행성) 레시피. 서북 = 받침대 위 공룡 뼈대(목은 동쪽, 꼬리는 서쪽), 그 앞(남쪽) = 관람 벤치 두 줄.
 	학생 자리 1번은 앞 벤치 가운데(공룡 바로 앞). 북쪽 벽 = 유리 진열장 2개(화석·운석)와 포스터 2장,
 	가운데~동쪽 천장 = 행성 모빌(해 + 행성 6개). 벤치는 좌석 상자 안이라 이름을 Chair* 로 둔다.
-	파트: big 20 / props 18 / finish 11 = 49.
+	메시(PropAssets.HERO): 뼈대 13 파트 → dinosaur 1(머리 동쪽), 운석 → trophy 1(동쪽 진열장 속 금 트로피).
+	파트: 폴백 big 20 / props 18 / finish 11 = 49, 메시 big 8 / props 18 / finish 11 = 37.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local DINO_Z = -5 -- 공룡 뼈대 줄(받침대 가운데 z)
@@ -47,31 +49,44 @@ local recipe: Kit.Recipe = {
 			WorldPalette.stone,
 			{ collide = true }
 		)
-		-- 다리 4(등뼈 아래로 조금 벌어진다)
-		local legH = LEG_TOP - STAGE_TOP
-		for i, p in { Vector2.new(-11, -0.3), Vector2.new(-11, 0.3), Vector2.new(-7, -0.3), Vector2.new(-7, 0.3) } do
-			Kit.cylinder(put, `BoneLeg{i}`, Vector3.new(p.X, STAGE_TOP + legH / 2, DINO_Z + p.Y), 0.6, legH, BONE)
+		-- 공룡 뼈대: 메시(몸 길이 11, 머리 동쪽 = yaw 90) 또는 파트 묶음
+		if
+			not Kit.hero(
+				put,
+				ctx.ready,
+				"Dinosaur",
+				PropAssets.HERO.dinosaur,
+				Vector3.new(-10, STAGE_TOP, DINO_Z),
+				8,
+				90
+			)
+		then
+			-- 다리 4(등뼈 아래로 조금 벌어진다)
+			local legH = LEG_TOP - STAGE_TOP
+			for i, p in { Vector2.new(-11, -0.3), Vector2.new(-11, 0.3), Vector2.new(-7, -0.3), Vector2.new(-7, 0.3) } do
+				Kit.cylinder(put, `BoneLeg{i}`, Vector3.new(p.X, STAGE_TOP + legH / 2, DINO_Z + p.Y), 0.6, legH, BONE)
+			end
+			-- 등뼈(x -12.5 ~ -5.5, y 4.7 ~ 5.3)
+			put("BoneSpine", Vector3.new(7, 0.6, 0.6), Vector3.new(-9, 5, DINO_Z), BONE)
+			-- 박물관식 쇠 받침 막대(다리를 꿰뚫고 갈비를 받친다)
+			put(
+				"Armature",
+				Vector3.new(10, 0.2, 0.2),
+				Vector3.new(-11.5, ROD_Y, DINO_Z),
+				WorldPalette.lampIron,
+				{ shape = Enum.PartType.Cylinder }
+			)
+			-- 갈비 4(막대 위 2.3 ~ 등뼈 4.9)
+			for i, x in { -10.2, -9.4, -8.6, -7.8 } do
+				put(`BoneRib{i}`, Vector3.new(0.25, 2.6, 2.2), Vector3.new(x, ROD_Y + 1.3, DINO_Z), BONE)
+			end
+			-- 긴 목: 등뼈 동쪽 끝(-5.8, 5)에서 40° 위로 길이 5 → 끝 (-1.97, 8.21)
+			put("BoneNeck", Vector3.new(5, 0.5, 0.5), Vector3.new(-3.885, 6.607, DINO_Z), BONE, { rot = rz(40) })
+			put("BoneHead", Vector3.new(1.4, 0.8, 0.8), Vector3.new(-1.4, 8.3, DINO_Z), BONE)
+			-- 꼬리: 등뼈 서쪽 끝(-12.2, 5)에서 25° 아래로 길이 6 → 끝 (-17.64, 2.46). 등뼈에 붙어 있고,
+			-- 막대 서쪽 끝(x -16.5)에서는 막대 윗면보다 약 0.37 위라 막대에는 닿지 않는다
+			put("BoneTail", Vector3.new(6, 0.4, 0.4), Vector3.new(-14.92, 3.73, DINO_Z), BONE, { rot = rz(25) })
 		end
-		-- 등뼈(x -12.5 ~ -5.5, y 4.7 ~ 5.3)
-		put("BoneSpine", Vector3.new(7, 0.6, 0.6), Vector3.new(-9, 5, DINO_Z), BONE)
-		-- 박물관식 쇠 받침 막대(다리를 꿰뚫고 갈비를 받친다)
-		put(
-			"Armature",
-			Vector3.new(10, 0.2, 0.2),
-			Vector3.new(-11.5, ROD_Y, DINO_Z),
-			WorldPalette.lampIron,
-			{ shape = Enum.PartType.Cylinder }
-		)
-		-- 갈비 4(막대 위 2.3 ~ 등뼈 4.9)
-		for i, x in { -10.2, -9.4, -8.6, -7.8 } do
-			put(`BoneRib{i}`, Vector3.new(0.25, 2.6, 2.2), Vector3.new(x, ROD_Y + 1.3, DINO_Z), BONE)
-		end
-		-- 긴 목: 등뼈 동쪽 끝(-5.8, 5)에서 40° 위로 길이 5 → 끝 (-1.97, 8.21)
-		put("BoneNeck", Vector3.new(5, 0.5, 0.5), Vector3.new(-3.885, 6.607, DINO_Z), BONE, { rot = rz(40) })
-		put("BoneHead", Vector3.new(1.4, 0.8, 0.8), Vector3.new(-1.4, 8.3, DINO_Z), BONE)
-		-- 꼬리: 등뼈 서쪽 끝(-12.2, 5)에서 25° 아래로 길이 6 → 끝 (-17.64, 2.46). 등뼈에 붙어 있고,
-		-- 막대 서쪽 끝(x -16.5)에서는 막대 윗면보다 약 0.37 위라 막대에는 닿지 않는다
-		put("BoneTail", Vector3.new(6, 0.4, 0.4), Vector3.new(-14.92, 3.73, DINO_Z), BONE, { rot = rz(25) })
 
 		-- 유리 진열장 2(받침 충돌 + 유리)
 		for _, c in { { name = "Fossil", x = FOSSIL_X }, { name = "Meteor", x = METEOR_X } } do
@@ -93,7 +108,7 @@ local recipe: Kit.Recipe = {
 		end
 	end,
 
-	props = function(put, _ctx)
+	props = function(put, ctx)
 		-- 행성 모빌: 가운데~동쪽 천장(가구 금지 구역 x ≥ 12.5 를 비킨다)
 		hang(put, "Sun", Vector3.new(4, 13.5, 2), 2.4, WorldPalette.sticker)
 		hang(put, "Mercury", Vector3.new(6.5, 14.2, 2.5), 0.6, WorldPalette.stone)
@@ -115,14 +130,19 @@ local recipe: Kit.Recipe = {
 			{ shape = Enum.PartType.Cylinder, rot = CFrame.Angles(0, math.pi / 2, 0) }
 		)
 		put("FossilBone", Vector3.new(1.4, 0.3, 0.3), Vector3.new(fx + 0.8, CASE_TOP + 0.15, CASE_Z), BONE)
-		Kit.ball(
-			put,
-			"Meteorite",
-			Vector3.new(METEOR_X, CASE_TOP + 0.45, CASE_Z),
-			0.9,
-			WorldPalette.lampIron,
-			{ material = Enum.Material.Slate }
-		)
+		-- 동쪽 진열장: 금 트로피 메시(앞이 남쪽 관람객) 또는 운석
+		if
+			not Kit.hero(put, ctx.ready, "Trophy", PropAssets.HERO.trophy, Vector3.new(METEOR_X, CASE_TOP, CASE_Z), 1.6)
+		then
+			Kit.ball(
+				put,
+				"Meteorite",
+				Vector3.new(METEOR_X, CASE_TOP + 0.45, CASE_Z),
+				0.9,
+				WorldPalette.lampIron,
+				{ material = Enum.Material.Slate }
+			)
+		end
 	end,
 
 	finish = function(put, ctx)

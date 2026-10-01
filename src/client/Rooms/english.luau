@@ -2,29 +2,40 @@
 --[[
 	영어체험실 레시피. 역할놀이 코너 두 곳(서쪽 가게·동쪽 공항 체크인)과 북쪽 세계 지도, 남쪽 책상 3개.
 	좌석: 1 가게 계산대 뒤, 2 체크인 데스크 뒤, 3~5 남쪽 책상(RoomConfig english).
+	가게는 메시(PropAssets.HERO.stall, 앞이 남쪽 좌석·방 가운데 쪽)가 준비되면 계산대·기둥·간판·금전등록기·과일·띠 대신 1 파트.
+	파트 수: 폴백 58 / 메시 51.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local H = Kit.SIT_DESK -- 계산대·데스크 윗면 높이
 local ZN = Kit.Z_N
 
 local recipe: Kit.Recipe = {
-	big = function(put, ctx) -- 22 파트
+	big = function(put, ctx) -- 22 파트(메시 19)
 		local room = ctx.room
 		local s1, s2 = room.seats[1], room.seats[2]
-		-- 가게: 계산대 + 기둥 2 + 간판(글자 없는 색 띠)
+		-- 가게: 계산대 + 기둥 2 + 간판(글자 없는 색 띠). 메시는 계산대 높이가 H 쯤 되게 h 6, 좌석 상자 북쪽에 붙인다
 		local shopZ = s1.Z - 1.9
-		put("ShopCounter", Vector3.new(5, H, 1.6), Vector3.new(s1.X, H / 2, shopZ), WorldPalette.benchWood, {
-			collide = true,
-		})
-		for k, dx in { -2.3, 2.3 } do
-			put(`ShopPost{k}`, Vector3.new(0.3, 3.6, 0.3), Vector3.new(s1.X + dx, H + 1.8, shopZ), WorldPalette.pole)
+		local stallBase = Vector3.new(s1.X, 0, s1.Z - 2.9)
+		if not Kit.hero(put, ctx.ready, "ShopStall", PropAssets.HERO.stall, stallBase, 6, 0, true) then
+			put("ShopCounter", Vector3.new(5, H, 1.6), Vector3.new(s1.X, H / 2, shopZ), WorldPalette.benchWood, {
+				collide = true,
+			})
+			for k, dx in { -2.3, 2.3 } do
+				put(
+					`ShopPost{k}`,
+					Vector3.new(0.3, 3.6, 0.3),
+					Vector3.new(s1.X + dx, H + 1.8, shopZ),
+					WorldPalette.pole
+				)
+			end
+			put("ShopSign", Vector3.new(5.4, 1.2, 0.4), Vector3.new(s1.X, H + 4.2, shopZ), WorldPalette.sticker)
 		end
-		put("ShopSign", Vector3.new(5.4, 1.2, 0.4), Vector3.new(s1.X, H + 4.2, shopZ), WorldPalette.sticker)
 		Kit.chair(put, 1, s1, WorldPalette.wood)
 		Kit.shelf(put, "ShopShelf", "W", -6, 6, 6, WorldPalette.benchWood, WorldPalette.leaf[1])
 		-- 공항: 체크인 데스크 + 가방 저울
@@ -42,14 +53,16 @@ local recipe: Kit.Recipe = {
 		Kit.lowTable(put, "GlobeTable", -4, -11.5, 2.4, 2.4, 2.4, WorldPalette.benchWood)
 	end,
 
-	props = function(put, ctx) -- 19 파트
+	props = function(put, ctx) -- 19 파트(메시 16)
 		local room = ctx.room
 		local s1, s2 = room.seats[1], room.seats[2]
 		local shopZ, inZ = s1.Z - 1.9, s2.Z - 1.9
-		-- 계산대: 금전등록기 + 과일 2
-		put("Register", Vector3.new(1.2, 0.7, 0.9), Vector3.new(s1.X + 1.2, H + 0.35, shopZ), WorldPalette.ghost)
-		Kit.ball(put, "Fruit1", Vector3.new(s1.X - 1.4, H + 0.3, shopZ), 0.6, WorldPalette.sticker)
-		Kit.ball(put, "Fruit2", Vector3.new(s1.X - 0.7, H + 0.3, shopZ), 0.6, WorldPalette.lawn)
+		-- 계산대: 금전등록기 + 과일 2(메시 가게엔 과일이 이미 있다)
+		if not ctx.ready(PropAssets.HERO.stall) then
+			put("Register", Vector3.new(1.2, 0.7, 0.9), Vector3.new(s1.X + 1.2, H + 0.35, shopZ), WorldPalette.ghost)
+			Kit.ball(put, "Fruit1", Vector3.new(s1.X - 1.4, H + 0.3, shopZ), 0.6, WorldPalette.sticker)
+			Kit.ball(put, "Fruit2", Vector3.new(s1.X - 0.7, H + 0.3, shopZ), 0.6, WorldPalette.lawn)
+		end
 		-- 체크인: 화면 + 저울 위 가방 + 줄 선 여행 가방 2(손잡이)
 		put(
 			"CheckInScreen",
@@ -95,7 +108,7 @@ local recipe: Kit.Recipe = {
 		end
 	end,
 
-	finish = function(put, ctx) -- 17 파트
+	finish = function(put, ctx) -- 17 파트(메시 16)
 		local room = ctx.room
 		local s1, s2 = room.seats[1], room.seats[2]
 		-- 대륙(지도 판 앞으로 0.1 나온다)
@@ -127,7 +140,9 @@ local recipe: Kit.Recipe = {
 		})
 		-- 데스크·간판 포인트 띠, 블록 깔개
 		put("CheckInStripe", Vector3.new(6, 0.6, 0.2), Vector3.new(s2.X, 2, s2.Z - 2.7), room.accent)
-		put("ShopStripe", Vector3.new(5.4, 0.4, 0.5), Vector3.new(s1.X, H + 4.2, s1.Z - 1.9), room.accent)
+		if not ctx.ready(PropAssets.HERO.stall) then
+			put("ShopStripe", Vector3.new(5.4, 0.4, 0.5), Vector3.new(s1.X, H + 4.2, s1.Z - 1.9), room.accent)
+		end
 		Kit.rug(put, "BlockRug", -5.8, -1.5, 5, 4, room.wall)
 	end,
 }

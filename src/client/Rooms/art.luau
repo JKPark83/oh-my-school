@@ -2,14 +2,17 @@
 --[[
 	미술실 레시피. 북쪽 줄 = 이젤 3개(학생 자리 1번은 가운데 이젤), 서남쪽 = 큰 작업 탁자(남쪽에 스툴 2개).
 	북쪽 벽 = 아이들 그림 액자, 동쪽 벽 = 앞치마 걸이, 서쪽 벽 = 물감 선반, 동북 = 석고상.
-	파트: big 22 / props 18 / finish 16 = 56.
+	이젤은 PropAssets.HERO.easel 메시(그림이 걸린 채, 정면이 좌석 쪽 +Z). 메시가 없으면 파트(기둥·받침·캔버스·그림).
+	파트: 폴백 big 22 / props 18 / finish 16 = 56, 메시일 때 big 13 / props 12 / finish 16 = 41.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Kit = require(script.Parent.Kit)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local EASEL_Z = -8.4 -- 이젤 캔버스 가운데 z(이젤 좌석 z -6 앞)
+local EASEL_MESH_Z = -8.6 -- 이젤 메시 밑면 가운데 z(깊이 2.86 → 좌석 상자 z -7 앞에서 끝난다)
 local LEDGE_TOP = 2.375 -- 캔버스 받침 윗면
 local CANVAS_H = 2.4
 local TABLE = { x = -10, z = 6, w = 10, d = 3, h = Kit.SIT_DESK } -- 작업 탁자(남쪽 좌석 4·5 앞)
@@ -24,26 +27,30 @@ local recipe: Kit.Recipe = {
 		-- 이젤 3개(좌석 1~3 앞): 기둥 2 + 받침 + 빈 캔버스
 		for i = 1, 3 do
 			local x = room.seats[i].X
-			for k, dx in { -1, 1 } do
+			if
+				not Kit.hero(put, ctx.ready, `Easel{i}`, PropAssets.HERO.easel, Vector3.new(x, 0, EASEL_MESH_Z), 5, 0)
+			then
+				for k, dx in { -1, 1 } do
+					put(
+						`Easel{i}Post{k}`,
+						Vector3.new(0.2, 5, 0.2),
+						Vector3.new(x + dx, 2.5, EASEL_Z - 0.2),
+						WorldPalette.wood
+					)
+				end
 				put(
-					`Easel{i}Post{k}`,
-					Vector3.new(0.2, 5, 0.2),
-					Vector3.new(x + dx, 2.5, EASEL_Z - 0.2),
+					`Easel{i}Ledge`,
+					Vector3.new(2.6, 0.15, 0.5),
+					Vector3.new(x, LEDGE_TOP - 0.075, EASEL_Z),
 					WorldPalette.wood
 				)
+				put(
+					`Canvas{i}`,
+					Vector3.new(3, CANVAS_H, 0.15),
+					Vector3.new(x, LEDGE_TOP + CANVAS_H / 2, EASEL_Z),
+					WorldPalette.trim
+				)
 			end
-			put(
-				`Easel{i}Ledge`,
-				Vector3.new(2.6, 0.15, 0.5),
-				Vector3.new(x, LEDGE_TOP - 0.075, EASEL_Z),
-				WorldPalette.wood
-			)
-			put(
-				`Canvas{i}`,
-				Vector3.new(3, CANVAS_H, 0.15),
-				Vector3.new(x, LEDGE_TOP + CANVAS_H / 2, EASEL_Z),
-				WorldPalette.trim
-			)
 		end
 		Kit.lowTable(put, "WorkTable", TABLE.x, TABLE.z, TABLE.w, TABLE.d, TABLE.h, WorldPalette.benchWood)
 		Kit.shelf(put, "PaintShelf", "W", 0, 6, 4.5, WorldPalette.wood, WorldPalette.star)
@@ -65,11 +72,13 @@ local recipe: Kit.Recipe = {
 			{ room.accent, WorldPalette.pad },
 		}
 		local front = EASEL_Z + 0.075 -- 캔버스 앞면
-		for i = 1, 3 do
-			local x = room.seats[i].X
-			local y = LEDGE_TOP + CANVAS_H / 2
-			put(`Paint{i}a`, Vector3.new(1.8, 1.0, 0.05), Vector3.new(x - 0.3, y + 0.4, front), paints[i][1])
-			put(`Paint{i}b`, Vector3.new(1.2, 0.8, 0.05), Vector3.new(x + 0.5, y - 0.5, front), paints[i][2])
+		if not ctx.ready(PropAssets.HERO.easel) then -- 메시는 그림이 이미 걸려 있다
+			for i = 1, 3 do
+				local x = room.seats[i].X
+				local y = LEDGE_TOP + CANVAS_H / 2
+				put(`Paint{i}a`, Vector3.new(1.8, 1.0, 0.05), Vector3.new(x - 0.3, y + 0.4, front), paints[i][1])
+				put(`Paint{i}b`, Vector3.new(1.2, 0.8, 0.05), Vector3.new(x + 0.5, y - 0.5, front), paints[i][2])
+			end
 		end
 		-- 작업 탁자 위: 팔레트 + 물감 3 방울, 붓통 + 붓 2
 		local top = TABLE.h
