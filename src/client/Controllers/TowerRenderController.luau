@@ -436,6 +436,24 @@ local function buildInterior(pivot: CFrame, key: string, n: number, room: RoomCo
 	local m = newModel(pivot, n, key)
 	local count = runRecipe(m, pivot * CFrame.new(RoomConfig.origin(n)), room, n, stage)
 	assert(count <= MAX_ROOM_PARTS, `TowerRender {room.id}: 방 안 {count}개 > {MAX_ROOM_PARTS}`)
+	-- 천장등. 위층 바닥판이 그림자를 드리워 방 안이 Ambient 만으로는 새카맣다(BuildKit 천장등과 같은 색·밝기).
+	-- 방 안은 캐릭터가 있는 층 ±1 만 그리니 켜지는 등도 그만큼뿐이다
+	local lamp = part(
+		m,
+		"CeilingLight",
+		pivot,
+		RoomConfig.origin(n) + Vector3.new(0, WALL_H - 1, 0),
+		Vector3.one,
+		WorldPalette.stone
+	)
+	lamp.Transparency = 1
+	lamp.CastShadow = false
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 244, 226)
+	light.Brightness = 1.2
+	light.Range = 40
+	light.Shadows = false
+	light.Parent = lamp
 	return m
 end
 
