@@ -36,6 +36,9 @@ local LIGHT_BRIGHTNESS = 1.2
 -- 지붕 아랫면에서 바닥까지 17(체육관 20). 16 이던 때는 바닥이 범위 밖이라 벽 위만 밝고 바닥은 새카맸다.
 -- 26 도 모자랐다: 사방이 막힌 방(교실1·2·급식실)은 바닥 가장자리만 밝았고, 밝아 보이던 방은 벽 틈으로 든 하늘빛이었다
 local LIGHT_RANGE = 40
+-- 빛 퍼짐(아랫면 기준 원뿔 각). 그림자를 끈 빛은 벽을 뚫는다. 90 이면 옆으로 40 까지 퍼져
+-- 현관 천장등이 30 떨어진 교실1 바깥벽 위쪽에 빛 얼룩을 냈다. 45 면 옆으로 간 거리만큼 내려가야 닿아 이웃 건물 벽까지 못 간다
+local LIGHT_ANGLE = 45
 
 -- 박공지붕 처마가 벽 바깥으로 나오는 길이
 BuildKit.EAVE = 0.5
@@ -63,7 +66,7 @@ local function finish(p: BasePart, parent: Instance, name: string, size: Vector3
 	if opts.light then
 		local light = Instance.new("SurfaceLight")
 		light.Face = Enum.NormalId.Bottom
-		light.Angle = 90
+		light.Angle = LIGHT_ANGLE
 		light.Color = LIGHT_COLOR
 		light.Brightness = LIGHT_BRIGHTNESS
 		light.Range = LIGHT_RANGE

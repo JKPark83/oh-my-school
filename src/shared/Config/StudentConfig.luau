@@ -90,7 +90,7 @@ local LIST: { Student } = {
 		mesh = "BOY_A",
 		fallbackVariant = "BOY_A",
 		tint = nil,
-		prop = "cap",
+		prop = nil, -- 모자류는 조각 머리에 떠 보여서 벗겼다(2026-10-01)
 		seat = seat("desk", 2),
 		unlock = byFacility("board"),
 	},
@@ -145,7 +145,7 @@ local LIST: { Student } = {
 		mesh = "GIRL_D",
 		fallbackVariant = "GIRL_D",
 		tint = nil,
-		prop = "headband",
+		prop = nil, -- 모자류는 조각 머리에 떠 보여서 벗겼다(2026-10-01)
 		seat = seat("library", 1),
 		unlock = byFacility("library"),
 	},
@@ -167,7 +167,7 @@ local LIST: { Student } = {
 		mesh = "BOY_D",
 		fallbackVariant = "BOY_D",
 		tint = C(245, 235, 180),
-		prop = "capBaseball",
+		prop = nil, -- 모자류는 조각 머리에 떠 보여서 벗겼다(2026-10-01)
 		seat = seat("science", 1),
 		unlock = byFacility("science"),
 	},

@@ -25,31 +25,37 @@ PlotLayout.GATE_PILLAR = 1.5 -- 교문 기둥 한 변
 PlotLayout.SIGNPOST = Vector3.new(-12.5, 0, 62.5) -- 「우리 학교로」 팻말
 PlotLayout.ADMISSION = Vector3.new(15, 0, 57.5) -- 접수대(몸통 4×4)
 PlotLayout.FLAGPOLE = Vector3.new(-12.5, 0, 57.5)
-PlotLayout.TREES = { Vector2.new(37.5, 50), Vector2.new(-10, 12.5) }
+-- 둘째 나무는 현관이 z 29.5 까지 늘면서 (-10, 12.5) 에서 옮겼다(앞마당 서쪽 잔디, 운동장 동쪽 끝 x -15 안)
+PlotLayout.TREES = { Vector2.new(37.5, 50), Vector2.new(-12.5, 42.5) }
 -- 화단 2(4×2, 교문 기둥 바깥 면 ±7.5 옆). z 65~67 은 DECOR_STATIC 첫 칸(교문 줄)이 이미 막아 둔 자리라 마스크를 안 바꾼다
 PlotLayout.FLOWERBEDS = { Vector2.new(-10, 66), Vector2.new(10, 66) }
--- 현관 (0,-5) 30×25(계단·착지대가 안에 있다). 남문 (0,7.5), 북문 (0,-17.5)
-PlotLayout.ENTRANCE = Vector3.new(0, 0, -5)
-PlotLayout.ENTRANCE_SIZE = Vector3.new(30, PlotLayout.WALL_H, 25)
+-- 현관 (0,6) 30×47(계단·착지대가 안에 있다). 남문 (0,29.5), 북문 (0,-17.5).
+-- 2026-10-01 30×25 에서 앞마당 쪽으로 22 늘렸다. 양옆은 과학실·음악실이라 남쪽으로만 넓힐 수 있다.
+-- 건물 줄(시설 앞줄) 남쪽 끝은 그대로 z 7.5(ROW_FRONT_Z)이고 현관만 앞마당으로 튀어나온다
+PlotLayout.ENTRANCE = Vector3.new(0, 0, 6)
+PlotLayout.ENTRANCE_SIZE = Vector3.new(30, PlotLayout.WALL_H, 47)
+PlotLayout.ROW_FRONT_Z = 7.5
 -- 교실1 (-60,-47.5) 30×30. 남문 (-60,-32.5)
 PlotLayout.CLASS1 = Vector3.new(-60, 0, -47.5)
 PlotLayout.CLASS1_SIZE = Vector3.new(30, PlotLayout.WALL_H, 30)
 
 -- ── 2층 계단·착지대(§3.6) ──────────────────────────────────────
--- 계단 11단(높이 1.5, 너비 1.2)을 x 5~14 · z 2.7 → -10.5 로 두고 12단째를 착지대(y18)로 삼는다.
--- 단 너비 1.5 일 때는 첫 단(z 6)이 현관 남벽 안쪽 면(z 6.5)에 붙어 계단 앞이 벽에 막혀 보였다.
--- 1.2 로 줄여 첫 단 앞에 3.8 studs 빈 바닥을 둔다. 착지대·구멍 북쪽 끝은 그대로다
-PlotLayout.STAIR_X0 = 5
+-- 계단 17단(높이 1, 디딤 1.5 → 경사 34°)을 x 5~14 · z 15 → -10.5 로 두고 18단째를 착지대(y18)로 삼는다.
+-- 2026-10-01 전에는 11단(높이 1.5, 디딤 1.2 → 51°)이라 가파르고, 첫 단 앞 빈 바닥이 3.8 뿐이었다.
+-- 현관을 22 늘려 첫 단 앞에 13.5 빈 바닥(남벽 안쪽 면 z 28.5)이 남는다. 착지대·구멍 북쪽 끝은 그대로다
+PlotLayout.STAIR_X0 = 5 -- 서쪽에 난간
 PlotLayout.STAIR_X1 = 14 -- 현관 동쪽 벽 안쪽 면
-PlotLayout.STAIR_STEPS = 11 -- 1.5 × 12 = 18. 12단째가 착지대
-PlotLayout.STAIR_RISE = 1.5
-PlotLayout.STAIR_RUN = 1.2
+PlotLayout.STAIR_STEPS = 17 -- 1 × 18 = 18. 18단째가 착지대
+PlotLayout.STAIR_RISE = 1
+PlotLayout.STAIR_RUN = 1.5
 -- 착지대 x -5~14 · z -16.5~-10.5. 윗면 y18(LANDING.Y 가 윗면)
 PlotLayout.LANDING = Vector3.new(4.5, PlotLayout.WALL_H, -13.5)
 PlotLayout.LANDING_SIZE = Vector3.new(19, 1, 6)
--- 현관 지붕·강당 바닥에 뚫는 구멍의 북쪽 끝(x STAIR_X0~STAIR_X1)
+-- 현관 지붕·강당 바닥에 뚫는 구멍(x STAIR_X0~STAIR_X1, z STAIRWELL_Z0~STAIRWELL_Z1).
+-- 남쪽 끝 z 0 = 강당 남벽 바깥 면. 그보다 남쪽은 계단 높이 ≤ 9.5 라 지붕 아랫면(17)까지 7.5 이상 남는다
 PlotLayout.STAIRWELL_Z0 = -10.5
-PlotLayout.STAIR_Z_BOTTOM = PlotLayout.STAIRWELL_Z0 + PlotLayout.STAIR_STEPS * PlotLayout.STAIR_RUN -- 2.7
+PlotLayout.STAIRWELL_Z1 = 0
+PlotLayout.STAIR_Z_BOTTOM = PlotLayout.STAIRWELL_Z0 + PlotLayout.STAIR_STEPS * PlotLayout.STAIR_RUN -- 15
 
 -- ── 강당(2층) ────────────────────────────────────────────────────
 PlotLayout.AUDITORIUM_FLOOR_T = 0.2 -- 강당 바닥판 두께. 바닥 윗면 = WALL_H + 0.2 = 18.2
@@ -80,12 +86,12 @@ PlotLayout.STICKER_ZONES = {
 		spots = {
 			Vector2.new(-57.5, 12.5),
 			Vector2.new(-37.5, 12.5),
-			Vector2.new(-2.5, 17.5),
-			Vector2.new(12.5, 17.5),
+			Vector2.new(-12.5, 32.5), -- 현관이 z 29.5 까지 늘어 (-2.5,17.5)·(12.5,17.5)·(2.5,27.5) 에서 옮겼다
+			Vector2.new(12.5, 32.5),
+			Vector2.new(-2.5, 37.5),
 			Vector2.new(27.5, 17.5),
 			Vector2.new(52.5, 12.5),
 			Vector2.new(67.5, 12.5),
-			Vector2.new(2.5, 27.5),
 			Vector2.new(17.5, 27.5),
 			Vector2.new(32.5, 27.5),
 			Vector2.new(7.5, 37.5),
@@ -179,7 +185,7 @@ end
 	건물 14개·패드·스폰·스티커 후보·별·문 앞은 DecorGrid 가 FacilityConfig·위 표에서 따로 계산한다.
 ]]
 do
-	local frontZ = PlotLayout.ENTRANCE.Z + PlotLayout.ENTRANCE_SIZE.Z / 2 -- 7.5. 앞마당 길이 시작하는 곳
+	local frontZ = PlotLayout.ENTRANCE.Z + PlotLayout.ENTRANCE_SIZE.Z / 2 -- 29.5. 앞마당 길이 시작하는 곳
 	local half = PlotLayout.PLOT_HALF
 	local gateHalf = PlotLayout.GATE_PILLAR / 2
 	PlotLayout.DECOR_STATIC = {

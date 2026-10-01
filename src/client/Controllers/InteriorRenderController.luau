@@ -10,10 +10,12 @@
 	  · 방 하나에 MAX_PARTS_PER_ROOM 개 이하. 전부 Anchored·충돌·쿼리·그림자 없음.
 	  · 그림 id(PropAssets.INTERIOR)가 0 이면 그림만 빠지고 파트는 그대로.
 	시설이 새로 지어지면 등장 연출이 끝난 뒤(APPEAR_DELAY) 그린다.
+	음악실 피아노 흰 건반(서버 파트 PianoKeys)을 밟으면 그 건반 소리를 낸다. 밟는 사람 화면에서만 울린다(§7.5).
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
@@ -23,12 +25,21 @@ local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
 
+type SoundApi = { play: (key: string, pitch: number?) -> () }
+local SoundController = (require(script.Parent.SoundController) :: any) :: SoundApi
+
 local InteriorRenderController = {}
 
 local LOD_INTERVAL = 1
 local APPEAR_DELAY = 1.2 -- 시설 등장 연출(부품이 솟아오름)이 끝난 뒤 소품이 보이게
 local MAX_PARTS_PER_ROOM = 15
 local ROOM_FLOOR_T = 0.2 -- 과학실 등 방 바닥 판 두께(Geometry FLOOR_T 와 같다)
+
+-- 피아노 건반 밟기. 흰 건반 10개 = 도레미파솔라시도레미(왼쪽이 낮은 음). 검은 건반은 클라 소품이라 소리가 없다
+local PIANO_KEYS = "PianoKeys" -- Geometry/music.luau 의 흰 건반 판 이름
+local PIANO_WHITE_KEYS = 10
+local PIANO_SEMITONES = { 0, 2, 4, 5, 7, 9, 11, 12, 14, 16 }
+local PIANO_RAY = 4.5 -- 스터드. 루트 파트에서 발밑까지(R15 엉덩이 높이 + 여유)
 
 local C = {
 	pot = Color3.fromRGB(196, 120, 84),
@@ -51,6 +62,8 @@ local C = {
 	pianoDark = Color3.fromRGB(60, 36, 20),
 	pianoKey = Color3.fromRGB(28, 28, 32),
 	gold = Color3.fromRGB(214, 176, 90),
+	net = Color3.fromRGB(245, 245, 245),
+	seam = Color3.fromRGB(40, 28, 22),
 }
 
 -- 소품 하나를 그리는 함수. pos = 부지 로컬 중심, rot = 부지 로컬 회전
@@ -240,12 +253,111 @@ local function music(put: Put)
 	end
 end
 
+-- 체육관: 농구 그물 둘 + 공 무늬. 서버는 기둥·백보드·림(지름 1.8, 높이 바닥 + 8)·공(지름 1.2)만 짓는다(Geometry/gym.luau).
+-- 그물은 림 아래로 좁아지는 육각뿔대: 마름모 그물 텍스처를 깐 투명 판 6장. 막대로 줄을 그으면 막대로만 보인다.
+-- 판은 윗변(림 쪽) 너비라 아래쪽에서 이웃 판과 겹치는데, 겹친 자리가 그물이 오므라든 것처럼 보인다.
+-- 그물 6 × 2 + 공 이음매 3 = 파트 15
+local GYM_HOOP_H = 8
+local GYM_NET_TOP_R, GYM_NET_BOTTOM_R, GYM_NET_H = 0.85, 0.5, 1.3 -- 육각 외접 반지름(림 반지름 0.9 안쪽)
+local function gym(put: Put)
+	local row = FacilityConfig.BY_ID.gym
+	local floorTop = row.center.Y + ROOM_FLOOR_T
+	local cx, cz, d = row.center.X, row.center.Z, row.size.Z
+	local rimY = floorTop + GYM_HOOP_H
+	local id = PropAssets.INTERIOR.HOOP_NET
+	local apTop, apBottom = GYM_NET_TOP_R * math.cos(math.pi / 6), GYM_NET_BOTTOM_R * math.cos(math.pi / 6)
+	for _, hoop in { { z = cz - d / 2 + 2.5, dir = 1 }, { z = cz + d / 2 - 2.5, dir = -1 } } do
+		local rz = hoop.z + hoop.dir * 1.6 -- 림 중심(gym.luau buildHoop)
+		for i = 0, 5 do
+			local a = (i + 0.5) * math.pi / 3 -- 판 바깥 방향
+			local out = Vector3.new(math.cos(a), 0, math.sin(a))
+			local top = Vector3.new(cx, rimY - 0.05, rz) + out * apTop
+			local bottom = Vector3.new(cx, rimY - 0.05 - GYM_NET_H, rz) + out * apBottom
+			local up = top - bottom
+			local tangent = Vector3.new(-out.Z, 0, out.X)
+			local p = put(
+				`Net{hoop.dir}_{i}`,
+				Vector3.new(GYM_NET_TOP_R, up.Magnitude, 0.01), -- 앞뒤 텍스처가 벌어지면 줄이 겹쳐 보인다
+				(top + bottom) / 2,
+				C.net,
+				{ transparency = if id ~= 0 then 1 else 0.6, rot = CFrame.fromMatrix(Vector3.zero, tangent, up.Unit) }
+			)
+			if id ~= 0 then
+				for _, face in { Enum.NormalId.Front, Enum.NormalId.Back } do
+					local t = Instance.new("Texture")
+					t.Face = face
+					t.Texture = "rbxassetid://" .. id
+					t.StudsPerTileU = 0.5 -- 한 장 2칸 = 판 너비에 마름모 약 3.4개
+					t.StudsPerTileV = 0.5
+					t.Parent = p
+				end
+			end
+		end
+	end
+	-- 공 이음매: 공보다 살짝 큰 얇은 원판 셋을 서로 직각으로 끼운다(가장자리만 검은 줄로 보인다)
+	local ball = Vector3.new(cx - 6, floorTop + 0.6, cz + 4)
+	for i, rot in { CFrame.identity, CFrame.Angles(0, math.pi / 2, 0), CFrame.Angles(0, 0, math.pi / 2) } do
+		put(`BallSeam{i}`, Vector3.new(0.05, 1.23, 1.23), ball, C.seam, { shape = Enum.PartType.Cylinder, rot = rot })
+	end
+end
+
+-- 운동장: 축구 골대 그물. 서버는 기둥 둘(Z ±4)·크로스바(높이 4)만 짓는다(Geometry/field.luau).
+-- 골대 뒤(바깥쪽)로 깊이 2.5 의 그물 상자: 뒤판·윗판·옆판 2 = 골대마다 4, 파트 8
+local FIELD_GOAL_W, FIELD_GOAL_H, FIELD_GOAL_INSET, FIELD_NET_DEPTH = 8, 4, 22.5, 2.5
+local function field(put: Put)
+	local row = FacilityConfig.BY_ID.field
+	local groundTop = row.center.Y + ROOM_FLOOR_T
+	local cx, cz = row.center.X, row.center.Z
+	local id = PropAssets.INTERIOR.NET
+	local function panel(name: string, size: Vector3, pos: Vector3, faces: { Enum.NormalId })
+		local p = put(name, size, pos, C.net, { transparency = if id ~= 0 then 1 else 0.7 })
+		if id ~= 0 then
+			for _, face in faces do
+				local t = Instance.new("Texture")
+				t.Face = face
+				t.Texture = "rbxassetid://" .. id
+				t.StudsPerTileU = 2 -- 한 장 4칸 = 칸 0.5 스터드
+				t.StudsPerTileV = 2
+				t.Parent = p
+			end
+		end
+	end
+	local X, Y, Z =
+		{ Enum.NormalId.Right, Enum.NormalId.Left }, { Enum.NormalId.Top, Enum.NormalId.Bottom }, {
+			Enum.NormalId.Front,
+			Enum.NormalId.Back,
+		}
+	for _, side in { -1, 1 } do
+		local gx = cx + side * FIELD_GOAL_INSET
+		local bx = gx + side * FIELD_NET_DEPTH -- 뒤판 x
+		local mx = gx + side * FIELD_NET_DEPTH / 2
+		local midY = groundTop + FIELD_GOAL_H / 2
+		panel(`NetBack{side}`, Vector3.new(0.05, FIELD_GOAL_H, FIELD_GOAL_W), Vector3.new(bx, midY, cz), X)
+		panel(
+			`NetTop{side}`,
+			Vector3.new(FIELD_NET_DEPTH, 0.05, FIELD_GOAL_W),
+			Vector3.new(mx, groundTop + FIELD_GOAL_H - 0.05, cz),
+			Y
+		)
+		for _, s in { -1, 1 } do
+			panel(
+				`NetSide{side}_{s}`,
+				Vector3.new(FIELD_NET_DEPTH, FIELD_GOAL_H, 0.05),
+				Vector3.new(mx, midY, cz + s * FIELD_GOAL_W / 2),
+				Z
+			)
+		end
+	end
+end
+
 -- 시설 id → 소품. SHELL 은 늘 그린다
 local SHELL: { [string]: Recipe } = { class1 = class1 }
 local RECIPES: { [string]: Recipe } = {
 	locker = locker,
 	science = science,
 	music = music,
+	gym = gym,
+	field = field,
 }
 
 -- ── 렌더 ─────────────────────────────────────────────────────────
@@ -411,6 +523,39 @@ local function watchState(state: Instance)
 	end)
 end
 
+-- ── 피아노 건반 밟기 ─────────────────────────────────────────────
+
+local pianoParams = RaycastParams.new()
+pianoParams.FilterType = Enum.RaycastFilterType.Exclude
+local lastPianoKey: BasePart? = nil
+local lastPianoIndex = 0
+
+--- 발밑이 흰 건반 판이면 몇 번째 건반인지(1..10), 아니면 0
+local function pianoKeyUnderFoot(): (BasePart?, number)
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if not (character and root and root:IsA("BasePart")) then
+		return nil, 0
+	end
+	pianoParams.FilterDescendantsInstances = { character }
+	local hit = Workspace:Raycast(root.Position, Vector3.new(0, -PIANO_RAY, 0), pianoParams)
+	local keys = if hit then hit.Instance else nil
+	if not (hit and keys and keys.Name == PIANO_KEYS) then
+		return nil, 0
+	end
+	local x = keys.CFrame:PointToObjectSpace(hit.Position).X + keys.Size.X / 2
+	return keys, math.clamp(math.floor(x / keys.Size.X * PIANO_WHITE_KEYS) + 1, 1, PIANO_WHITE_KEYS)
+end
+
+--- 다른 건반으로 옮겨 가거나 다시 올라설 때만 한 번 울린다(서 있는 동안 반복하지 않는다)
+local function pianoTick()
+	local keys, index = pianoKeyUnderFoot()
+	if keys and (keys ~= lastPianoKey or index ~= lastPianoIndex) then
+		SoundController.play("piano", 2 ^ (PIANO_SEMITONES[index] / 12))
+	end
+	lastPianoKey, lastPianoIndex = keys, index
+end
+
 function InteriorRenderController.Start()
 	if started then
 		return
@@ -421,6 +566,7 @@ function InteriorRenderController.Start()
 	fx.Name = "InteriorFx"
 	fx.Parent = Workspace
 	fxRoot = fx
+	RunService.Heartbeat:Connect(pianoTick)
 
 	-- Plots·PlotState 는 서버 부팅 뒤 온다. Start 를 막지 않게 따로 기다린다
 	task.spawn(function()

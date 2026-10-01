@@ -113,7 +113,6 @@ local COLOR_BROWN = Color3.fromRGB(120, 72, 32)
 local COLOR_CYAN = Color3.fromRGB(34, 211, 238)
 local COLOR_SILVER = Color3.fromRGB(203, 213, 225)
 local COLOR_ORANGE = Color3.fromRGB(249, 115, 22)
-local COLOR_GREEN = Color3.fromRGB(34, 197, 94)
 
 local player = Players.LocalPlayer
 
@@ -205,28 +204,6 @@ local PROPS: { [string]: PropDef } = {
 			return CFrame.new(h.X * 0.35, h.Y * 0.35, -h.Z * 0.1)
 		end,
 	},
-	cap = {
-		on = "head",
-		shape = Enum.PartType.Cylinder,
-		color = COLOR_RED,
-		size = function(h)
-			return Vector3.new(0.25, h.X * 1.15, h.X * 1.15)
-		end,
-		at = function(h)
-			return topOfHead(h, 0.1) * UPRIGHT
-		end,
-	},
-	capBaseball = {
-		on = "head",
-		shape = Enum.PartType.Cylinder,
-		color = COLOR_NAVY,
-		size = function(h)
-			return Vector3.new(0.25, h.X * 1.15, h.X * 1.15)
-		end,
-		at = function(h)
-			return topOfHead(h, 0.1) * UPRIGHT
-		end,
-	},
 	glasses = {
 		on = "head",
 		shape = Enum.PartType.Block,
@@ -258,17 +235,6 @@ local PROPS: { [string]: PropDef } = {
 		end,
 		at = function(h)
 			return faceOfHead(h, 0.28)
-		end,
-	},
-	headband = {
-		on = "head",
-		shape = Enum.PartType.Block,
-		color = COLOR_GREEN,
-		size = function(h)
-			return Vector3.new(h.X * 1.05, 0.2, h.Z * 1.05)
-		end,
-		at = function(h)
-			return CFrame.new(0, h.Y * 0.3, 0)
 		end,
 	},
 	scarf = {

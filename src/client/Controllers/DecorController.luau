@@ -12,7 +12,7 @@
 	조작(주인만. W6 꾸미기 시트가 부른다)
 	  beginPlace(itemId) / beginMove(slot) / cancel() / isActive().
 	  고스트는 캐릭터가 바라보는 방향 앞 2칸(10 스터드)에 격자 스냅해 따라온다. 카메라는 피치 55° 로 고정.
-	  ✓ → PlaceDecor·MoveDecor, ↻ → 90° 회전, ✕ → 끝, ↩(옮기기에서만) → StoreDecor.
+	  ✓ → PlaceDecor·MoveDecor, 🔄 → 90° 회전, X → 끝, ↩(옮기기에서만) → StoreDecor.
 	  ✓ 를 보내면 고스트를 숨기고 서버 확인(DecorPlaced·DecorStored 또는 Decor 어트리뷰트 변화)을 기다린다.
 	  확인이 오면 모드를 끝낸다. 2초 안에 안 오면 고스트를 되살린다. Deny cell·limit·owned 면 0.2초 페이드 후 끝.
 	  꾸미기 모드 안에서 내 부지의 놓인 물건을 탭하면 그 물건 옮기기로 넘어간다(모드 밖 탭은 무시).
@@ -91,8 +91,8 @@ local BAR_W = 168
 local BAR_H = 8
 
 local GLYPH_CONFIRM = "✓"
-local GLYPH_ROTATE = "↻"
-local GLYPH_CANCEL = "✕"
+local GLYPH_ROTATE = "🔄"
+local GLYPH_CANCEL = "X"
 local GLYPH_STORE = "↩"
 
 -- 색(기획서 §8.1). 빨강 없음
@@ -954,7 +954,7 @@ local function buildGui()
 	rootScale = Instance.new("UIScale")
 	rootScale.Parent = root
 
-	-- 오른쪽 아래 1/3(812×375 기준 x ≥ 541, y ≥ 250) 안. 오른쪽부터 ✓ ↻ ✕, ✕ 위에 ↩, ✓·↻ 위에 막대
+	-- 오른쪽 아래 1/3(812×375 기준 x ≥ 541, y ≥ 250) 안. 오른쪽부터 ✓ 🔄 X, X 위에 ↩, ✓·🔄 위에 막대
 	local bottom = -MARGIN
 	local xConfirm = -MARGIN
 	local xRotate = xConfirm - SIZE_CONFIRM - GAP

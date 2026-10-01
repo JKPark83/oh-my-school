@@ -16,7 +16,7 @@ local WAIT_TIMEOUT = 30
 local NAMES = {
 	-- 클라 → 서버
 	"Graduate", -- ()
-	"SetSetting", -- (key: "shake"|"sfx"|"haptic", value: boolean)
+	"SetSetting", -- (key: "shake"|"sfx"|"music"|"haptic", value: boolean)
 	"GoHome", -- ()
 	"BuyDecor", -- (itemId: string)
 	"PlaceDecor", -- (itemId: string, cx, cz, rot)

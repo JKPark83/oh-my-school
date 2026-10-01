@@ -82,7 +82,7 @@ local NEXT_PAD_ALPHA = 0.6
 local PAD_SINK = 0.5 -- 스터드
 local PAD_SINK_SECONDS = 0.2
 -- 밟으면 눌렸다가 내려서면 튀어 오른다(활성 패드, 내 부지만). 판정은 서버가 따로 한다 — 이건 보이기만
-local PAD_PRESS = 0.2 -- 스터드(패드 두께 0.4 의 절반)
+local PAD_PRESS = 0.1 -- 스터드. 0.2 면 눌린 윗면이 방 바닥(두께 0.2) 윗면과 같아져 z-fighting 이 난다
 local PAD_PRESS_SECONDS = 0.08
 local PAD_RELEASE_SECONDS = 0.3
 local PAD_PRESS_MARGIN = 0.5 -- 스터드. 발이 가장자리에 걸쳐도 눌린 것으로

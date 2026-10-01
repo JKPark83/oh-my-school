@@ -1,7 +1,7 @@
 --!strict
 --[[
 	패널 컨트롤러. 기획서 §8.3 의 패널 4개와 꾸미기 시트를 코드로 그린다.
-	  도감(714×330) · 미션(568×300) · 설정(406×150) · 졸업 확인(전체 화면) · 꾸미기(780×340)
+	  도감(714×330) · 미션(568×300) · 설정(532×150) · 졸업 확인(전체 화면) · 꾸미기(780×340)
 
 	  ★ 한 번에 하나만 연다. 열기 0.2s Back Out(0.9→1.0), 닫기 0.12s Quad In.
 	  ★ ScreenGui "Panels" DisplayOrder 5, IgnoreGuiInset. UIScale = clamp(세로/375, 0.9, 1.6).
@@ -61,7 +61,7 @@ local TEXT_MAX = 32
 local SIZES: { [string]: Vector2 } = {
 	codex = Vector2.new(714, 330),
 	missions = Vector2.new(568, 300),
-	settings = Vector2.new(406, 150),
+	settings = Vector2.new(532, 150), -- 토글 4개: 16 + 116×4 + 12×3 + 16
 	graduate = Vector2.new(812, 375), -- 전체 화면 안 내용 영역
 	decor = Vector2.new(780, 340), -- 812×375 안에 들어간다
 }
@@ -85,9 +85,10 @@ local CODEX_COLUMNS = 6
 
 -- 졸업
 local HOLD_TIME = 1.5
+local HINT_TIME = 1.2 -- 초. 일찍 뗐을 때 「끝까지 꾹!」을 보여 주는 시간
 
 -- 꾸미기 시트(글보다 그림)
-local DECOR_GLYPH_TITLE = "🪴"
+local DECOR_GLYPH_TITLE = "🌷"
 local DECOR_GLYPH_INVENTORY = "🎒"
 local DECOR_GLYPH_SHOP = "🛒"
 local DECOR_GLYPH_RETURN = "↩"
@@ -107,6 +108,7 @@ local DECOR_PUNCH = 1.15
 local SETTING_ROWS: { { key: Types.SettingKey, icon: string, text: string } } = {
 	{ key = "shake", icon = "〰", text = "화면 흔들림" },
 	{ key = "sfx", icon = "🔊", text = "효과음" },
+	{ key = "music", icon = "🎵", text = "배경음" },
 	{ key = "haptic", icon = "📳", text = "진동" },
 }
 
@@ -456,16 +458,8 @@ local function openShell(name: PanelName, withClose: boolean): Frame
 	tween(uiScale, OPEN_TIME, { Scale = base }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 	if withClose then
-		local x = button(
-			content,
-			"Close",
-			"✕",
-			UDim2.fromOffset(X_SIZE, X_SIZE),
-			UDim2.new(1, -6, 0, 6),
-			SURFACE,
-			WHITE,
-			28
-		)
+		local x =
+			button(content, "Close", "X", UDim2.fromOffset(X_SIZE, X_SIZE), UDim2.new(1, -6, 0, 6), SURFACE, WHITE, 28)
 		x.AnchorPoint = Vector2.new(1, 0)
 		x.ZIndex = 5
 		x.Activated:Connect(function()
@@ -631,11 +625,11 @@ local function buildCodex(content: Frame)
 		end
 		fill(key)
 	end
-	-- 탭은 그림(🙂 / 🪴) + 작은 글자
+	-- 탭은 그림(🙂 / 🌷) + 작은 글자
 	for i, def in
 		{
 			{ key = "school", glyph = "🙂", text = "학교 친구" },
-			{ key = "friend", glyph = "🪴", text = "함께 오는 친구" },
+			{ key = "friend", glyph = "🌷", text = "함께 오는 친구" },
 		}
 	do
 		local b =
@@ -795,21 +789,22 @@ local function buildGraduate(content: Frame)
 	local graduations = if profile then profile.graduations else 0
 	local nextRound = graduations + 1
 
-	label(content, "Cap", "🎓", UDim2.fromOffset(128, 110), UDim2.fromScale(0.5, 0), 96).AnchorPoint =
+	-- 세로 배치(내용 375): 모자 0~80 · 제목 84~124 · 두 칸 134~246 · 버튼 295~367. 겹치면 제목이 칸에 가린다
+	label(content, "Cap", "🎓", UDim2.fromOffset(96, 80), UDim2.fromScale(0.5, 0), 72).AnchorPoint =
 		Vector2.new(0.5, 0)
 	label(
 		content,
 		"Title",
 		`제 {nextRound}회 졸업식`,
 		UDim2.new(1, 0, 0, 40),
-		UDim2.fromOffset(0, 138),
+		UDim2.fromOffset(0, 84),
 		32,
 		YELLOW,
 		FONT_BOLD
 	)
 
 	local function column(name: string, heading: string, x: number, color: Color3, lines: { string })
-		local col = frame(content, name, UDim2.fromOffset(300, 112), UDim2.fromOffset(x, 154), SURFACE)
+		local col = frame(content, name, UDim2.fromOffset(300, 112), UDim2.fromOffset(x, 134), SURFACE)
 		corner(col, 14)
 		padding(col, 12, 8)
 		listLayout(col, Enum.FillDirection.Vertical, 2, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
@@ -849,7 +844,8 @@ local function buildGraduate(content: Frame)
 	goPad.Parent = go
 	local ring, setRing = makeRing(go, 56, 5, DARK)
 	ring.AnchorPoint = Vector2.new(1, 0.5)
-	ring.Position = UDim2.new(1, -8, 0.5, 0)
+	-- UIPadding 이 자식 자리도 줄이므로 오른쪽 여백만큼 되돌려야 링이 글자 오른쪽 빈칸에 선다
+	ring.Position = UDim2.new(1, goPad.PaddingRight.Offset - 8, 0.5, 0)
 	ring.ZIndex = 2
 
 	local holding = false
@@ -857,15 +853,23 @@ local function buildGraduate(content: Frame)
 	local fired = false
 
 	local function stopHold()
+		local wasHolding = holding
 		holding = false
 		if heartbeat then
 			heartbeat:Disconnect()
 			heartbeat = nil
 		end
-		if not fired then
-			setRing(0)
-			go.Text = "꾹 눌러 시작"
+		if fired or not wasHolding then
+			return
 		end
+		setRing(0)
+		-- 톡 누르고 떼면 아무 일도 없어 보인다. 끝까지 누르라고 잠깐 알려 준 뒤 원래 글자로 돌린다
+		go.Text = "끝까지 꾹!"
+		task.delay(HINT_TIME, function()
+			if not holding and not fired and go.Parent then
+				go.Text = "꾹 눌러 시작"
+			end
+		end)
 	end
 
 	local function startHold()
@@ -972,7 +976,7 @@ local function buildDecor(content: Frame)
 	local myGen = generation
 	padding(content, 16, 10)
 
-	-- 제목 줄: 글자 대신 그림(🪴 = 보관함, 🛒 = 가게)
+	-- 제목 줄: 글자 대신 그림(🌷 = 보관함, 🛒 = 가게)
 	label(content, "Title", DECOR_GLYPH_TITLE, UDim2.fromOffset(40, 36), nil, 30, WHITE, FONT_BOLD)
 
 	label(content, "InvIcon", DECOR_GLYPH_INVENTORY, UDim2.fromOffset(28, 28), UDim2.fromOffset(0, 40), 22)

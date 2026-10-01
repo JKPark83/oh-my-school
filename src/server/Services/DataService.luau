@@ -20,6 +20,7 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Types = require(ReplicatedStorage.Shared.Types)
 local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
+local DecorGrid = require(ReplicatedStorage.Shared.DecorGrid)
 local Migrations = require(script.Parent.Parent.Migrations)
 
 local DataService = {}
@@ -39,7 +40,7 @@ local TEMPLATE: Types.Profile = {
 	buildParts = 0, -- 필드가 없는 옛 프로필은 Reconcile 이 0 으로 채운다
 	students = {},
 	missions = { day = 0, stickers = 0, built = 0, chair = false, done = { false, false, false } },
-	settings = { shake = true, sfx = true, haptic = true },
+	settings = { shake = true, sfx = true, music = true, haptic = true }, -- music 이 없는 옛 프로필은 Reconcile 이 true 로 채운다
 	stats = { totalCoins = 0, totalStickers = 0, playSeconds = 0 },
 	-- 빈 표로 둔다. 중첩 키를 두면 Reconcile 이 0 이 되어 지워진 키를 로드마다 다시 채운다(ProfileStore ReconcileTable)
 	decorOwned = {},
@@ -120,6 +121,18 @@ function DataService.load(player: Player): Types.Profile?
 	profile:AddUserId(player.UserId)
 	profile:Reconcile()
 	migrate(profile.Data)
+	-- 부지 배치가 바뀌어(2026-10-01 현관 확장 등) 정적 장애물에 묻힌 꾸미기는 보관함으로 돌린다. 산 값은 그대로다
+	local placed = profile.Data.decorPlaced
+	for i = #placed, 1, -1 do
+		local p = placed[i]
+		for _, cell in DecorGrid.footprint(p.item, p.cx, p.cz, p.rot) do
+			if DecorGrid.isStaticBlocked(cell.X, cell.Y) then
+				profile.Data.decorOwned[p.item] = (profile.Data.decorOwned[p.item] or 0) + 1
+				table.remove(placed, i)
+				break
+			end
+		end
+	end
 	-- 튜토리얼 ⑤ 화분(새 프로필·옛 프로필 한 번씩). 산 값이 없으니 돌려줘도 0
 	local data = profile.Data
 	if not data.decorStarter then

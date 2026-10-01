@@ -83,6 +83,8 @@ PropAssets.INTERIOR = {
 	WAINSCOT = 92495608817163, -- 벽 아래 걸레받이 띠(흰 그림, Decal.Color3 로 물들인다)
 	BULLETIN = 84095873609622, -- 교실 게시판 "우리 반 게시판"(코르크·그림)
 	CLOCK = 138739129865742, -- 벽시계 10:10(원 밖 투명)
+	NET = 125450629287113, -- 축구 골대 그물 4×4 칸(투명 바탕 흰 줄, Texture 로 깐다. 0 이면 흰 반투명 판)
+	HOOP_NET = 106264961943235, -- 농구 그물 마름모 2×2 칸(투명 바탕 흰 줄, Texture 로 깐다. 0 이면 흰 반투명 판)
 }
 PropAssets.FLOOR_TILE_STUDS = 8
 
@@ -121,6 +123,45 @@ PropAssets.TREE = {
 		},
 	},
 	triangles = 5000,
+} :: PieceAsset
+
+--[[
+	현관 바깥 벽등(2026-10-01 generate_mesh, 게임 소유자 계정). 검은 쇠 육각 등 + 덩굴 받침 + 벽판, 원래 텍스처를 쓴다.
+	생성 상한 3,000 삼각형. offset 은 벽판 뒷면 아래 중심에서 잰다. 등은 +Z 쪽으로 나와 있다(PropLibrary 가 벽 바깥으로 돌린다).
+	크기는 생성물 그대로(1.19 × 2.32 × 1.80), PropLibrary.wallLamp 가 키운다.
+]]
+PropAssets.WALL_LAMP = {
+	pieces = {
+		{
+			name = "Bracket",
+			id = 107380996051748,
+			texture = 137846753139561,
+			size = Vector3.new(0.7948, 1.964, 1.3251),
+			offset = Vector3.new(0.0004, 1.2785, 0.6627),
+		},
+		{
+			name = "Frame",
+			id = 85640793939644,
+			texture = 121813891223357,
+			size = Vector3.new(1.1852, 2.3244, 1.0282),
+			offset = Vector3.new(0, 1.1622, 1.2862),
+		},
+		{
+			name = "Glass",
+			id = 123074667595245,
+			texture = 124379781077536,
+			size = Vector3.new(0.8329, 0.692, 0.741),
+			offset = Vector3.new(0.0005, 0.8626, 1.271),
+		},
+		{
+			name = "Bulb",
+			id = 80820247685502,
+			texture = 74144008261721,
+			size = Vector3.new(0.3442, 0.3525, 0.36),
+			offset = Vector3.new(-0.0046, 0.6943, 1.2559),
+		},
+	},
+	triangles = 3000,
 } :: PieceAsset
 
 --[[

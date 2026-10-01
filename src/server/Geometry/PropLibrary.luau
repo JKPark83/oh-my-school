@@ -5,6 +5,7 @@
 	메시 id(PropAssets)가 있으면 MeshPart 하나로, 없거나 불러오기가 실패하면 파트로 짓는다.
 	  PropLibrary.tree(parent, cframe, seed)      나무. 메시 2파트(줄기·잎, 원래 텍스처), 폴백은 Tree.build(파트 3~5)에 그대로 맡긴다
 	  PropLibrary.flowerbed(parent, cframe, seed) 화단. 메시 1파트, 폴백은 흙판 1 + 꽃 뭉치 3 = 파트 4
+	  PropLibrary.wallLamp(parent, cframe)        벽등. 메시 4파트(받침·틀·유리·전구), 폴백은 벽판·팔·지붕·불빛 = 파트 4. PointLight 1
 	  PropLibrary.storeModel(parent, entry, cframe) Creator Store 모델(광장 전용·비핵심). 실패하면 nil
 	cframe 은 소품 밑면 중심(땅 윗면)의 자리다. 같은 시드면 같은 모양이다.
 
@@ -30,6 +31,11 @@ local SCALE_MIN, SCALE_MAX = 0.85, 1.15 -- 메시 나무 크기 흔들기
 local BED_SIZE = Vector3.new(4, 0.4, 2)
 local BLOOM_D_MIN, BLOOM_D_MAX = 1.1, 1.5
 local BLOOM_SINK = 0.35 -- 꽃 뭉치를 흙에 묻는 깊이(공이 떠 보이지 않게)
+
+-- 벽등: 생성물(높이 2.32)을 문 높이 8 옆에서 보이게 키운다. 빛은 벽과 문 앞만 비춘다(그림자 끔, §12.1)
+local LAMP_SCALE = 1.5
+local LAMP_LIGHT_RANGE = 12
+local LAMP_LIGHT_BRIGHTNESS = 1.5
 
 -- id → 원본 MeshPart. false = 실패(폴백). 요청 중인 id 는 requestedAt 에 시작 시각이 있다
 local meshCache: { [number]: MeshPart | false } = {}
@@ -165,6 +171,81 @@ function PropLibrary.flowerbed(parent: Instance, cframe: CFrame, seed: number): 
 			collide = false,
 		})
 	end
+	model.Parent = parent
+	return model
+end
+
+--- 등 불빛. 부지당 광원 수(§12.1)에 들어간다
+local function lampLight(bulb: BasePart)
+	local light = Instance.new("PointLight")
+	light.Color = WorldPalette.lampGlow
+	light.Range = LAMP_LIGHT_RANGE
+	light.Brightness = LAMP_LIGHT_BRIGHTNESS
+	light.Shadows = false
+	light.Parent = bulb
+end
+
+--[[
+	벽등 하나. cframe = 벽 바깥 면 위 등 밑변 자리, LookVector = 벽 바깥 방향.
+	파트 하나라도 못 불러오면 전체를 파트로 짓는다(받침만 붙은 등이 없게).
+]]
+function PropLibrary.wallLamp(parent: Instance, cframe: CFrame): Model
+	local model = Instance.new("Model")
+	model.Name = "WallLamp"
+	local meshes: { MeshPart } = {}
+	for _, piece in PropAssets.WALL_LAMP.pieces do
+		local mesh = cloneMesh(piece.id)
+		if not mesh then
+			for _, made in meshes do
+				made:Destroy()
+			end
+			table.clear(meshes)
+			break
+		end
+		table.insert(meshes, mesh)
+	end
+
+	if #meshes > 0 then
+		-- 생성물은 등이 +Z 로 나와 있다. 반 바퀴 돌려 cframe 의 앞(-Z)으로 낸다
+		local base = cframe * CFrame.Angles(0, math.pi, 0)
+		for i, piece in PropAssets.WALL_LAMP.pieces do
+			local mesh = meshes[i]
+			mesh.Name = piece.name
+			mesh.Size = piece.size * LAMP_SCALE
+			mesh.CFrame = base * CFrame.new(piece.offset * LAMP_SCALE)
+			mesh.TextureID = if piece.texture ~= 0 then `rbxassetid://{piece.texture}` else ""
+			mesh.Anchored = true
+			mesh.CanCollide = false
+			mesh.CastShadow = false
+			mesh.Parent = model
+		end
+		local bulb = meshes[#meshes]
+		bulb.Material = Enum.Material.Neon
+		bulb.Color = WorldPalette.lampGlow
+		bulb.TextureID = ""
+		lampLight(bulb)
+		model.Parent = parent
+		return model
+	end
+
+	-- 폴백: 벽판 → 팔 → 지붕 아래 매단 불빛 상자. 크기는 메시와 같은 틀(높이 2.3 · 깊이 1.8) × LAMP_SCALE
+	local s = LAMP_SCALE
+	local function add(name: string, size: Vector3, offset: Vector3, color: Color3, material: Enum.Material?): Part
+		local cf = cframe * CFrame.new(offset * s)
+		return BuildKit.part(model, name, size * s, cf.Position, {
+			color = color,
+			material = material,
+			cframe = cf.Rotation,
+			collide = false,
+			cast = false,
+		})
+	end
+	add("Plate", Vector3.new(0.6, 1.8, 0.15), Vector3.new(0, 1.3, -0.075), WorldPalette.lampIron)
+	add("Arm", Vector3.new(0.2, 0.2, 1.1), Vector3.new(0, 1.9, -0.7), WorldPalette.lampIron)
+	add("Cap", Vector3.new(1.1, 0.35, 1.1), Vector3.new(0, 1.7, -1.3), WorldPalette.lampIron)
+	local glow =
+		add("Glow", Vector3.new(0.75, 1.1, 0.75), Vector3.new(0, 0.95, -1.3), WorldPalette.lampGlow, Enum.Material.Neon)
+	lampLight(glow)
 	model.Parent = parent
 	return model
 end

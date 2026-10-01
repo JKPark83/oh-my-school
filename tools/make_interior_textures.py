@@ -223,8 +223,34 @@ def clock():
     im.save(OUT / "clock.png")
 
 
+def net():
+    # 축구 골대 그물. 투명 바탕에 흰 줄 4×4 칸, 위아래·양옆이 이어지게 테두리 줄은 반 두께씩
+    n, cells, line = 256, 4, 8
+    im = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    step = n // cells
+    for i in range(cells + 1):
+        c = i * step
+        d.rectangle([c - line // 2, 0, c + line // 2 - 1, n - 1], fill=(255, 255, 255, 235))
+        d.rectangle([0, c - line // 2, n - 1, c + line // 2 - 1], fill=(255, 255, 255, 235))
+    im.save(OUT / "net.png")
+
+
+def hoop_net():
+    # 농구 그물. 투명 바탕에 흰 마름모 줄(한 장에 2×2 칸). 대각선을 바깥까지 그어 위아래·양옆이 이어진다
+    n, cells, line = 256, 2, 14
+    im = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    step = n // cells
+    for k in range(-cells, 2 * cells + 1):
+        c = k * step
+        d.line([(c - n, -n), (c + 2 * n, 2 * n)], fill=(255, 255, 255, 240), width=line)
+        d.line([(c + n, -n), (c - 2 * n, 2 * n)], fill=(255, 255, 255, 240), width=line)
+    im.save(OUT / "hoop_net.png")
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    for fn in (locker_door, cabinet, reagent_shelf, periodic_poster, floor_tile, wainscot, bulletin, clock):
+    for fn in (locker_door, cabinet, reagent_shelf, periodic_poster, floor_tile, wainscot, bulletin, clock, net, hoop_net):
         fn()
         print("ok", fn.__name__)

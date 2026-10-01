@@ -3,7 +3,7 @@
 	부지 껍데기. 기획서 §7.2, 계획서 §3.5.
 
 	PlotShell.build(plotCFrame, plotId) 가 돌려주는 Model 하나가 Workspace.Plots.PlotNN 이 된다.
-	  Shell (Model)          바닥·담장·교문·화단 2·현판·팻말·접수대·현관·2층 계단·착지대·스티커판·교실1·「공사 중」 실루엣
+	  Shell (Model)          바닥·담장·교문·화단 2·현판·팻말·접수대·현관(바깥 벽등 2)·2층 계단·착지대·스티커판·교실1·「공사 중」 실루엣
 	  Spawn (SpawnLocation)  (0,60). Neutral, Enabled=false — 서버가 RespawnLocation 으로 지정한다
 	  Pads (Folder)          시설 14개 구매 패드. 이름 = facilityId, PadState="hidden" 이라 투명으로 시작
 	  Stickers (Folder)      칭찬스티커 스폰 8개. Collected=true + 투명으로 시작(서버가 리스폰 때 켠다)
@@ -15,8 +15,9 @@
 	★ 바닥 윗면은 y=0 이다(시설 빌더들이 center.Y=0 을 바닥으로 본다). 광장 지면은 면이 겹치지 않게 Plaza 쪽이 0.05 내려가 있다.
 	★ 담장은 두께 0.6 을 부지 경계 바깥으로 0.2 내밀었다(중심 ±74.9). 경계에 붙는 방 벽(교실1·도서관·체육관…)의
 	  바깥 면 x=±75 가 담장 속에 묻혀서 면끼리 겹치지 않는다.
-	★ 2층 계단: 계단 11단(높이 1.5, 너비 1.2)을 x 5~14 · z 2.7 → -10.5 로 두고 12단째를 착지대(y18)로 삼았다.
-	  현관 지붕은 계단 위(x 5~14, z -10.5~6.5)를 뚫어 뒀다.
+	★ 2층 계단: 계단 17단(높이 1, 디딤 1.5)을 x 5~14 · z 15 → -10.5 로 두고 18단째를 착지대(y18)로 삼았다.
+	  단마다 나무 디딤판(앞으로 0.15 내민 코), 서쪽에 옆판·난간 기둥·손잡이, 동쪽 벽에 벽 손잡이가 있다.
+	  현관 지붕은 계단 위(x 5~14, z -10.5~0)를 뚫어 뒀고, 2층에서 그 구멍 서쪽 가장자리에 안전 난간을 둘렀다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -59,7 +60,7 @@ local ROOF_T = 1
 local DOOR_W = 8
 local DOOR_H = 8
 
--- 현관 (0,-5) 30×25. 남문 (0,7.5), 북문 (0,-17.5)
+-- 현관 (0,6) 30×47. 남문 (0,29.5), 북문 (0,-17.5)
 local ENTRANCE = PlotLayout.ENTRANCE
 local ENTRANCE_SIZE = PlotLayout.ENTRANCE_SIZE
 -- 교실1 (-60,-47.5) 30×30. 남문 (-60,-32.5)
@@ -74,11 +75,27 @@ local STAIR_RISE = PlotLayout.STAIR_RISE
 local STAIR_RUN = PlotLayout.STAIR_RUN
 local LANDING = PlotLayout.LANDING
 local LANDING_SIZE = PlotLayout.LANDING_SIZE
-local STAIRWELL_Z0 = PlotLayout.STAIRWELL_Z0 -- 현관 지붕 구멍의 북쪽 끝(남쪽 끝은 현관 남벽)
+local STAIRWELL_Z0 = PlotLayout.STAIRWELL_Z0 -- 현관 지붕 구멍의 북쪽 끝
+local STAIRWELL_Z1 = PlotLayout.STAIRWELL_Z1 -- 남쪽 끝(강당 남벽 바깥 면)
+
+-- 계단 디테일. 손잡이 높이는 디딤판 코 줄에서 잰다
+local TREAD_T = 0.2 -- 디딤판 두께. 단 블록 윗면을 그만큼 낮춰 디딤판 윗면이 단 높이와 같다
+local TREAD_NOSE = 0.15 -- 디딤판이 단 앞으로 나온 길이
+local STRINGER_T = 0.4
+local STRINGER_H = 1.8 -- 코 줄 아래 1.3(디딤판 옆 끝을 가린다) ~ 위 0.5
+local RAIL_H = 3 -- 손잡이 높이
+local RAIL_T = 0.35
+local BALUSTER_T = 0.3
+local BALUSTER_EVERY = 2 -- 난간 기둥을 몇 단마다
+local NEWEL_T = 0.8 -- 첫 단 옆 굵은 기둥
 
 -- 강당 실루엣(2층). FacilityConfig.auditorium 의 center/size 를 쓴다
 local CONSTRUCTION_T = 0.5
 local CONSTRUCTION_ALPHA = 0.7
+
+-- 현관 남쪽 문 양옆 바깥 벽등. 문 가장자리에서 LAMP_GAP 떨어져, 등 밑변이 LAMP_Y
+local LAMP_GAP = 2.5
+local LAMP_Y = 5.5
 
 local STICKER_BOARD = Vector3.new(-13.85, 5, -5) -- 현관 서쪽 벽 안쪽 면(x=-14)에 붙인다
 local STICKER_BOARD_SIZE = Vector3.new(0.3, 5, 8)
@@ -109,6 +126,8 @@ local C = {
 	wall = P.wall,
 	roof = P.roof.classroom,
 	stair = P.stone,
+	tread = P.wood,
+	rail = P.wood,
 	landing = P.stone,
 	post = P.wood,
 	signBoard = P.signBoard,
@@ -200,22 +219,34 @@ end
 
 -- x0~x1 · z0~z1 은 벽 안쪽 면까지다. 지붕이 벽 위까지 덮으면 벽 윗면·바깥면과 같은 평면에서 겹쳐
 -- 카메라가 움직일 때마다 벽색·지붕색이 번갈아 깜빡인다(z-fighting)
-local function roof(parent: Instance, name: string, plotCFrame: CFrame, x0: number, x1: number, z0: number, z1: number)
+--- noLight: 천장등을 달지 않는다(부지당 조명 수를 늘리지 않으려고 같은 방의 지붕 조각 하나는 끈다)
+local function roof(
+	parent: Instance,
+	name: string,
+	plotCFrame: CFrame,
+	x0: number,
+	x1: number,
+	z0: number,
+	z1: number,
+	noLight: boolean?
+)
 	-- 지붕 윗면이 벽 높이(18)와 같다. 2층 바닥과 같은 높이라 강당이 그 위에 앉는다
 	local pos = Vector3.new((x0 + x1) / 2, WALL_H - ROOF_T / 2, (z0 + z1) / 2)
 	put(parent, name, Vector3.new(x1 - x0, ROOF_T, z1 - z0), plotCFrame * CFrame.new(pos), {
 		color = C.roof,
 		material = Enum.Material.Concrete,
 		fade = true,
-		light = true,
+		light = not noLight,
 	})
 end
 
 -- ── Shell 조각들 ──────────────────────────────────────────────────
--- 바닥 4타일. 건물 줄 뒤(z < 현관 남벽)는 흙마당(path), 앞마당은 잔디 둘 사이로 교문 폭 길(path)이 현관까지 간다.
--- 타일끼리 옆면만 맞닿고 윗면(y=0)은 겹치지 않는다
+-- 바닥 7타일. 건물 줄 뒤(z < 7.5)와 앞마당으로 튀어나온 현관 바닥은 흙마당(path), 앞마당은 잔디 둘 사이로
+-- 교문 폭 길(path)이 현관 남문까지 간다. 타일끼리 옆면만 맞닿고 윗면(y=0)은 겹치지 않는다
 local function buildGround(shell: Model, plotCFrame: CFrame)
-	local frontZ = ENTRANCE.Z + ENTRANCE_SIZE.Z / 2 -- 7.5. 현관·교실 줄의 남쪽 끝
+	local rowZ = PlotLayout.ROW_FRONT_Z -- 7.5. 시설 앞줄의 남쪽 끝
+	local frontZ = ENTRANCE.Z + ENTRANCE_SIZE.Z / 2 -- 29.5. 현관 남벽 바깥 면
+	local ex0, ex1 = ENTRANCE.X - ENTRANCE_SIZE.X / 2, ENTRANCE.X + ENTRANCE_SIZE.X / 2
 	local pathHalf = GATE_W / 2
 	local function tile(name: string, x0: number, x1: number, z0: number, z1: number, color: Color3, mat: Enum.Material)
 		put(
@@ -226,10 +257,13 @@ local function buildGround(shell: Model, plotCFrame: CFrame)
 			{ color = color, material = mat }
 		)
 	end
-	tile("FloorBack", -PLOT_HALF, PLOT_HALF, -PLOT_HALF, frontZ, C.path, Enum.Material.Concrete)
-	tile("FloorYardW", -PLOT_HALF, -pathHalf, frontZ, PLOT_HALF, C.lawn, Enum.Material.Grass)
+	tile("FloorBack", -PLOT_HALF, PLOT_HALF, -PLOT_HALF, rowZ, C.path, Enum.Material.Concrete)
+	tile("FloorEntrance", ex0, ex1, rowZ, frontZ, C.path, Enum.Material.Concrete)
+	tile("FloorYardW", -PLOT_HALF, ex0, rowZ, PLOT_HALF, C.lawn, Enum.Material.Grass)
+	tile("FloorYardE", ex1, PLOT_HALF, rowZ, PLOT_HALF, C.lawn, Enum.Material.Grass)
+	tile("FloorYardSW", ex0, -pathHalf, frontZ, PLOT_HALF, C.lawn, Enum.Material.Grass)
 	tile("FloorPath", -pathHalf, pathHalf, frontZ, PLOT_HALF, C.path, Enum.Material.Concrete)
-	tile("FloorYardE", pathHalf, PLOT_HALF, frontZ, PLOT_HALF, C.lawn, Enum.Material.Grass)
+	tile("FloorYardSE", pathHalf, ex1, frontZ, PLOT_HALF, C.lawn, Enum.Material.Grass)
 
 	-- 담장 자리의 생울타리. 치수는 담장 그대로
 	local hedgeOpts = { color = C.hedge, material = Enum.Material.Grass }
@@ -408,6 +442,142 @@ local function buildAdmissionDesk(shell: Model, plotCFrame: CFrame)
 	)
 end
 
+-- 계단 코 줄(i 단 디딤판 앞 끝, 높이 i)을 지나는 직선 위의 점. z 에서의 높이
+local function noseY(z: number): number
+	return STAIR_RISE + (STAIR_Z_BOTTOM - z) * STAIR_RISE / STAIR_RUN
+end
+
+-- 코 줄과 나란한 비스듬한 막대. (x, zFrom) → (x, zTo) 를 잇고 코 줄보다 lift 위
+local function slopedBar(
+	shell: Model,
+	plotCFrame: CFrame,
+	name: string,
+	x: number,
+	zFrom: number,
+	zTo: number,
+	lift: number,
+	size: Vector2,
+	opts: BuildKit.Opts
+)
+	local p0 = Vector3.new(x, noseY(zFrom) + lift, zFrom)
+	local p1 = Vector3.new(x, noseY(zTo) + lift, zTo)
+	local cf = CFrame.lookAt((p0 + p1) / 2, p1)
+	put(shell, name, Vector3.new(size.X, size.Y, (p1 - p0).Magnitude), plotCFrame * cf, opts)
+end
+
+--[[
+	2층 계단. 단은 바닥부터 꽉 찬 블록(옆에서 봐도 계단)이고 위에 나무 디딤판을 얹는다.
+	서쪽(현관 통로 쪽)에 옆판·난간 기둥·손잡이, 동쪽 벽에 벽 손잡이. 2층 구멍 서쪽 가장자리에 안전 난간.
+	파트: 단 17 + 디딤판 17 + 옆판 1 + 첫 기둥 2 + 난간 기둥 8 + 손잡이 2 + 2층 난간 4 = 51
+]]
+local function buildStairs(shell: Model, plotCFrame: CFrame)
+	local stairW = STAIR_X1 - STAIR_X0
+	local midX = (STAIR_X0 + STAIR_X1) / 2
+	local stone = { color = C.stair, material = Enum.Material.Concrete }
+	local function wood(collide: boolean): BuildKit.Opts
+		return { color = C.tread, material = Enum.Material.Wood, collide = collide }
+	end
+
+	for i = 1, STAIR_STEPS do
+		local h = STAIR_RISE * i
+		local zFront = STAIR_Z_BOTTOM - STAIR_RUN * (i - 1)
+		local zMid = zFront - STAIR_RUN / 2
+		put(
+			shell,
+			string.format("Stair%02d", i),
+			Vector3.new(stairW, h - TREAD_T, STAIR_RUN),
+			plotCFrame * CFrame.new(midX, (h - TREAD_T) / 2, zMid),
+			table.clone(stone)
+		)
+		put(
+			shell,
+			string.format("Tread%02d", i),
+			Vector3.new(stairW, TREAD_T, STAIR_RUN + TREAD_NOSE),
+			plotCFrame * CFrame.new(midX, h - TREAD_T / 2, zMid + TREAD_NOSE / 2),
+			wood(true)
+		)
+	end
+
+	-- 서쪽 옆판. 바닥(코 줄이 y 0 인 곳)부터 착지대까지
+	local zFloor = STAIR_Z_BOTTOM + STAIR_RUN
+	local zTop = STAIRWELL_Z0
+	slopedBar(
+		shell,
+		plotCFrame,
+		"StairStringer",
+		STAIR_X0 - STRINGER_T / 2,
+		zFloor,
+		zTop,
+		0.5 - STRINGER_H / 2,
+		Vector2.new(STRINGER_T, STRINGER_H),
+		wood(false)
+	)
+
+	-- 난간. 기둥은 디딤판 서쪽 끝에 서고, 손잡이는 코 줄 + RAIL_H
+	local railX = STAIR_X0 + BALUSTER_T / 2
+	local newelZ = STAIR_Z_BOTTOM - NEWEL_T / 2
+	local newelH = STAIR_RISE + RAIL_H + 0.3
+	put(
+		shell,
+		"StairNewel",
+		Vector3.new(NEWEL_T, newelH, NEWEL_T),
+		plotCFrame * CFrame.new(STAIR_X0 + NEWEL_T / 2, newelH / 2, newelZ),
+		wood(true)
+	)
+	put(
+		shell,
+		"StairNewelCap",
+		Vector3.new(1, 1, 1),
+		plotCFrame * CFrame.new(STAIR_X0 + NEWEL_T / 2, newelH + 0.35, newelZ),
+		{ color = C.tread, material = Enum.Material.Wood, shape = Enum.PartType.Ball, collide = false }
+	)
+	for i = 1 + BALUSTER_EVERY, STAIR_STEPS, BALUSTER_EVERY do
+		local zMid = STAIR_Z_BOTTOM - STAIR_RUN * (i - 1) - STAIR_RUN / 2
+		local h = STAIR_RISE * i
+		local postH = noseY(zMid) + RAIL_H - h
+		put(
+			shell,
+			string.format("StairBaluster%02d", i),
+			Vector3.new(BALUSTER_T, postH, BALUSTER_T),
+			plotCFrame * CFrame.new(railX, h + postH / 2, zMid),
+			wood(false)
+		)
+	end
+	slopedBar(shell, plotCFrame, "StairHandrail", railX, newelZ, zTop, RAIL_H, Vector2.new(RAIL_T, RAIL_T), wood(false))
+	-- 동쪽 벽 손잡이. 벽 안쪽 면(x 14)에서 0.3 떨어진다
+	slopedBar(
+		shell,
+		plotCFrame,
+		"StairWallRail",
+		STAIR_X1 - 0.3 - RAIL_T / 2,
+		STAIR_Z_BOTTOM,
+		zTop,
+		RAIL_H,
+		Vector2.new(RAIL_T, RAIL_T),
+		wood(false)
+	)
+
+	-- 2층 안전 난간: 구멍 서쪽 가장자리(x 5) z -10.5~-1(강당 남벽 앞까지). 지붕 위 y 18 에 선다
+	local guardZ0, guardZ1 = zTop, STAIRWELL_Z1 - 1
+	local guardTop = WALL_H + RAIL_H
+	for k, z in { guardZ0 + BALUSTER_T / 2, (guardZ0 + guardZ1) / 2, guardZ1 - BALUSTER_T / 2 } do
+		put(
+			shell,
+			"StairGuardPost" .. k,
+			Vector3.new(BALUSTER_T, RAIL_H, BALUSTER_T),
+			plotCFrame * CFrame.new(railX, WALL_H + RAIL_H / 2, z),
+			wood(true)
+		)
+	end
+	put(
+		shell,
+		"StairGuardRail",
+		Vector3.new(RAIL_T, RAIL_T, guardZ1 - guardZ0),
+		plotCFrame * CFrame.new(railX, guardTop, (guardZ0 + guardZ1) / 2),
+		wood(true)
+	)
+end
+
 local function buildEntrance(shell: Model, plotCFrame: CFrame)
 	local hx, hz = ENTRANCE_SIZE.X / 2, ENTRANCE_SIZE.Z / 2
 	local x0, x1 = ENTRANCE.X - hx, ENTRANCE.X + hx
@@ -419,27 +589,23 @@ local function buildEntrance(shell: Model, plotCFrame: CFrame)
 	wallWithDoor(shell, "EntranceWallS", plotCFrame, "X", x0, x1, ENTRANCE.X, z1 - inner)
 	wallWithDoor(shell, "EntranceWallN", plotCFrame, "X", x0, x1, ENTRANCE.X, z0 + inner)
 
-	-- 지붕. 계단 위(x 5~14, z -10.5~6.5)는 뚫고, 착지대가 z -16.5~-10.5 의 동쪽을 덮는다
+	-- 바깥 벽등 2(남쪽 문 = 앞마당 쪽). 등은 벽 바깥(+Z)을 본다
+	for _, side in { -1, 1 } do
+		local at = Vector3.new(ENTRANCE.X + side * (DOOR_W / 2 + LAMP_GAP), LAMP_Y, z1)
+		PropLibrary.wallLamp(shell, plotCFrame * CFrame.lookAt(at, at + Vector3.zAxis))
+	end
+
+	-- 지붕. 계단 위(x 5~14, z -10.5~0)는 뚫고, 착지대가 z -16.5~-10.5 의 동쪽을 덮는다
 	local landingX0 = LANDING.X - LANDING_SIZE.X / 2 -- -5
 	roof(shell, "EntranceRoof", plotCFrame, x0 + WALL_T, STAIR_X0, STAIRWELL_Z0, z1 - WALL_T)
 	roof(shell, "EntranceRoofNW", plotCFrame, x0 + WALL_T, landingX0, z0 + WALL_T, STAIRWELL_Z0)
+	roof(shell, "EntranceRoofSE", plotCFrame, STAIR_X0, x1 - WALL_T, STAIRWELL_Z1, z1 - WALL_T, true)
 
-	-- 2층 계단 11단 + 착지대. 단은 바닥부터 꽉 찬 블록이라 옆에서 봐도 계단이다
-	local stairW = STAIR_X1 - STAIR_X0
-	for i = 1, STAIR_STEPS do
-		local h = STAIR_RISE * i
-		local zTop = STAIR_Z_BOTTOM - STAIR_RUN * (i - 1)
-		local pos = Vector3.new((STAIR_X0 + STAIR_X1) / 2, h / 2, zTop - STAIR_RUN / 2)
-		put(shell, string.format("Stair%02d", i), Vector3.new(stairW, h, STAIR_RUN), plotCFrame * CFrame.new(pos), {
-			color = C.stair,
-			material = Enum.Material.Concrete,
-		})
-	end
+	buildStairs(shell, plotCFrame)
 	put(shell, "Landing", LANDING_SIZE, plotCFrame * CFrame.new(LANDING.X, LANDING.Y - LANDING_SIZE.Y / 2, LANDING.Z), {
 		color = C.landing,
 		material = Enum.Material.Concrete,
 	})
-	-- TODO(통합): 강당(auditorium) 바닥은 착지대 윗면 y=18 과 같은 높이여야 하고, 계단 위 x 5~14 · z -10.5~6.5 는 비워 둬야 머리가 안 걸린다
 
 	-- 칭찬스티커판. 서쪽 벽 안쪽 면. 40칸(BOARD_CELLS)은 클라(PadController)가 이 SurfaceGui 에 그린다
 	local board = put(shell, Keys.STICKER_BOARD, STICKER_BOARD_SIZE, plotCFrame * CFrame.new(STICKER_BOARD), {

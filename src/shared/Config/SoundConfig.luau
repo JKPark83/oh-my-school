@@ -1,6 +1,6 @@
 --!strict
 --[[
-	사운드 19종. 기획서 §9.6 표.
+	사운드 18종 + 배경음 플레이리스트. 기획서 §9.6 표.
 
 	★ id 는 두 종류다. rbxassetid:// 는 Creator Store 의 무료 음원이고,
 	  rbxasset://sounds/* 는 로블록스 엔진 내장 음원을 pitch(PlaybackSpeed)와 volume 으로
@@ -24,6 +24,7 @@ export type SoundDef = {
 	speed: number, -- PlaybackSpeed. 1 이 원본
 	looped: boolean,
 	rollOff: number?, -- 3D 사운드일 때만. nil 이면 2D 로 재생한다
+	duck: boolean?, -- true 면 울리는 동안 배경음 그룹을 MUSIC.duck 으로 줄인다(음악끼리 겹치지 않게)
 }
 
 local SoundConfig = {}
@@ -52,11 +53,11 @@ local DEFS: { [string]: SoundDef } = {
 	-- 시설 완공·도장. PSE "Date Stamp Big Office Impact Good Squeak 2" 0.74초
 	build = { id = "rbxassetid://9114026047", volume = 0.7, speed = 1, looped = false },
 	-- 전교1등 등급. APM "Correct Answer 1"(상승하는 신스) 5.4초
-	fanfare = { id = "rbxassetid://1839997916", volume = 0.7, speed = 1, looped = false },
+	fanfare = { id = "rbxassetid://1839997916", volume = 0.7, speed = 1, looped = false, duck = true },
 	-- 전설 등급. APM "Clock Tower (sting)"(반짝이는 첼레스타) 5.4초
-	legend = { id = "rbxassetid://9043507891", volume = 0.8, speed = 1, looped = false },
+	legend = { id = "rbxassetid://9043507891", volume = 0.8, speed = 1, looped = false, duck = true },
 	-- 졸업식. APM "That Summer (sting)" 5.5초
-	graduation = { id = "rbxassetid://9042730932", volume = 0.8, speed = 1, looped = false },
+	graduation = { id = "rbxassetid://9042730932", volume = 0.8, speed = 1, looped = false, duck = true },
 	-- 콤보. speed 는 기준값이고 호출 쪽 pitch 로 단계마다 올린다. PSE "Synth Sparkle Tone High Pitch Bell Tone Ding 3" 1.1초
 	combo = { id = "rbxassetid://9126073064", volume = 0.5, speed = 1, looped = false },
 	-- 선물 받음(선물판 40칸·미션 완료). APM "Correct Answer 2"(윤기 있는 신스) 4.6초
@@ -71,9 +72,29 @@ local DEFS: { [string]: SoundDef } = {
 	sit = { id = "rbxassetid://9120806427", volume = 0.5, speed = 1, looped = false },
 	-- 살 수 있게 됐다는 알림. PSE "Gas Pump Bell Cu Metallic Dinging Muted 4" 1.4초
 	afford_ding = { id = "rbxassetid://9114557074", volume = 0.45, speed = 1, looped = false },
+	-- 음악실 피아노 건반을 밟음(주인·방문객 각자 자기 화면에서만). 호출 쪽 pitch 로 건반마다 반음씩 올린다.
+	-- PSE "Toy Piano Grand Hitting Each Key 1"(건반 하나, 약 1초 감쇠)
+	piano = { id = "rbxassetid://9120218141", volume = 0.9, speed = 1, looped = false },
 }
 
 SoundConfig.DEFS = DEFS
+
+--[[
+	배경음. 곡이 끝나면 다음 곡으로 넘어가고 마지막 곡 뒤에는 처음으로 돌아간다.
+	한 곡만 반복하면 2분마다 같은 곡이 돌아와 금방 질려서 두 곡을 번갈아 튼다.
+	효과음(Game 그룹)과 따로 끄고 켜도록 SoundGroup "Music" 에 묶는다.
+	복도 웅성거림(hallway 0.08)보다 크고 효과음(0.35~0.8)보다는 작게 깐다.
+]]
+SoundConfig.MUSIC = {
+	volume = 0.25,
+	duck = 0.3, -- duck 효과음이 울리는 동안 배경음 그룹 Volume
+	tracks = {
+		-- APM "Play School" 2:01(밝은 동요풍)
+		"rbxassetid://1841060369",
+		-- APM "Happy Daze (b)" 2:21(어쿠스틱 기타 포크, Juice Music)
+		"rbxassetid://1839993539",
+	},
+}
 
 --[[
 	이 게임의 모든 소리가 묶이는 그룹. 음소거는 이 그룹의 Volume 하나만 만지면 끝난다.
@@ -95,6 +116,23 @@ function SoundConfig.master(): SoundGroup
 	group.Volume = 1
 	group.Parent = SoundService
 	master = group
+	return group
+end
+
+local music: SoundGroup? = nil
+
+--- 배경음이 묶이는 그룹. Game 그룹과 형제라 효과음 음소거가 배경음을 끄지 않는다
+function SoundConfig.music(): SoundGroup
+	local existing = music
+	if existing then
+		return existing
+	end
+
+	local group = Instance.new("SoundGroup")
+	group.Name = "Music"
+	group.Volume = 1
+	group.Parent = SoundService
+	music = group
 	return group
 end
 

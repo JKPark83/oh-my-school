@@ -3,10 +3,10 @@
 	운동장(시설 13) 지오메트리 — 계획서 §3.6 규약.
 	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 12개(≤25), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
-	  60×45 땅(primary) + 안쪽 테두리 트랙 띠 넷(secondary) + 축구 골대 둘(동·서). 벽·지붕·문 없음(동쪽이 본관 쪽으로 열림).
+	  60×45 잔디(primary) + 안쪽 테두리 트랙 띠 넷(secondary) + 축구 골대 둘(동·서). 벽·지붕·문 없음(동쪽이 본관 쪽으로 열림).
 	  땅과 트랙은 높이 ≤1 이라 Shell 바닥에서 걸려 넘어지지 않는다. 좌석 없음(Seats 폴더는 비어 있다).
 	  door 가 nil 이라 Door Attachment 는 없다.
-	  부품 4개(PartIndex): (1) 땅 (2) 트랙 띠 넷+하프 라인 (3) 서쪽 골대 (4) 동쪽 골대.
+	  부품 4개(PartIndex): (1) 잔디 (2) 트랙 띠 넷+하프 라인 (3) 서쪽 골대 (4) 동쪽 골대.
 	  스티커 3개(§7.2, (-60,25)(-45,37.5)(-30,50)) 는 PlotShell 이 놓으므로 여기서는 손대지 않는다.
 ]]
 
@@ -18,9 +18,11 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 
 local field = {}
 
-local COLOR_PRIMARY = Color3.fromRGB(170, 130, 90)
-local COLOR_SECONDARY = Color3.fromRGB(130, 100, 60)
-local MATERIAL = Enum.Material.Sand
+-- 잔디 구장 + 붉은 우레탄 트랙. 흙(Sand)은 모래밭처럼 보여서 바꿨다. 잔디는 부지 잔디(WorldPalette.lawn)보다 진하게 해 경계가 보이게
+local COLOR_PRIMARY = Color3.fromRGB(78, 150, 64)
+local MATERIAL_PRIMARY = Enum.Material.Grass
+local COLOR_SECONDARY = Color3.fromRGB(196, 92, 72)
+local MATERIAL_SECONDARY = Enum.Material.Fabric
 
 local GROUND_T = 0.2
 local TRACK_W = 3
@@ -89,19 +91,19 @@ function field.build(plotCFrame: CFrame): Model
 	seats.Name = Keys.SEATS_FOLDER
 	seats.Parent = model
 
-	-- 부품 1. 땅(primary)
+	-- 부품 1. 잔디(primary)
 	partIndex = 1
 	local ground =
 		part(model, "Ground", Vector3.new(w, GROUND_T, d), at(plotCFrame, cx, row.center.Y + GROUND_T / 2, cz), {
 			color = COLOR_PRIMARY,
-			material = MATERIAL,
+			material = MATERIAL_PRIMARY,
 		})
 	model.PrimaryPart = ground
 
 	-- 부품 2. 트랙 띠 넷(secondary): 땅 가장자리 안쪽을 한 바퀴 두른다
 	partIndex = 2
 	local trackOpts = function(): BuildKit.Opts
-		return { color = COLOR_SECONDARY, material = MATERIAL, collide = false, cast = false }
+		return { color = COLOR_SECONDARY, material = MATERIAL_SECONDARY, collide = false, cast = false }
 	end
 	local half = TRACK_W / 2
 	local strips: { { name: string, size: Vector3, x: number, z: number } } = {

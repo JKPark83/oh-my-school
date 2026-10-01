@@ -95,7 +95,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 	local southZ = cz + d / 2 - WALL_T / 2
 	local segW = (w - DOOR_W) / 2
 
-	-- 바닥은 세 조각. PlotShell 의 계단(x 5~14, z 2.7→-10.5)이 올라오는 남동쪽 x 5~14·z -10.5~0 을 비워 둔다.
+	-- 바닥은 세 조각. PlotShell 의 계단(x 5~14, z 15→-10.5)이 올라오는 남동쪽 x 5~14·z -10.5~0 을 비워 둔다.
 	-- 벽·지붕처럼 fade: 1층에서 카메라와 캐릭터 사이를 가리면 흐려진다(§3.6 #3)
 	local floorY = row.center.Y + FLOOR_T / 2
 	local floorOpts = { color = COLOR_FLOOR, material = Enum.Material.Fabric, fade = true }

@@ -7,6 +7,7 @@
 	  ★ 좌표는 812×375 기준 px Offset 이고 UIScale = clamp(viewportHeight / 375, 0.9, 1.6) 로만 키운다(§8.1).
 	    루트 프레임 Size 를 1/scale 로 두어 Scale 1 = 화면 끝이 되게 한다 — 오른쪽 열은 (1, -12) 로 붙는다.
 	  ★ 첫 시설 전에는 용돈 칩과 「다음 시설」 카드만 보인다(§2.2 0:00). 나머지는 프로필이 조건을 채울 때 나타난다.
+	    배경음 버튼만 예외다. 배경음은 0:00 부터 울려서 끄는 곳도 처음부터 보여야 한다.
 	  ★ 링 게이지는 원형 UIStroke 대신 얇은 진행바다(모바일 성능 우선). 매 초(Heartbeat 누적) 캐시로 다시 계산한다.
 ]]
 
@@ -83,6 +84,7 @@ local PANEL_CODEX = "codex"
 local PANEL_MISSIONS = "missions"
 local PANEL_DECOR = "decor"
 local SOUND_AFFORD = "afford_ding"
+local SOUND_TICK = "tick"
 
 -- 사용자에게 보이는 문구(≤12자)
 local TEXT_NEXT_CAPTION = "다음 시설"
@@ -97,13 +99,14 @@ local TEXT_GO_HOME_SUB = "탭하면 돌아가요"
 local GLYPH_COINS = "💰"
 local GLYPH_HOME = "🏠"
 local GLYPH_SETTINGS = "⚙️"
+local GLYPH_MUSIC = "🎵"
 local GLYPH_CODEX = "📖"
 local GLYPH_MISSIONS = "📋"
-local GLYPH_DECOR = "🪴"
+local GLYPH_DECOR = "🌷"
 local GLYPH_GIFT = "🎁"
 -- 선물 아이템이 꾸미기 버튼으로 날아갈 때의 글리프(DecorConfig.Kind 별). 없으면 GLYPH_DECOR
 local GLYPH_BY_KIND: { [string]: string } = {
-	general = "🪴",
+	general = "🌷",
 	friend = "🙂",
 	gift = "🎈",
 }
@@ -169,6 +172,9 @@ local multChip: Frame
 local multLabel: TextLabel
 local multScale: UIScale
 local settingsButton: TextButton
+local musicButton: TextButton
+local musicGlyph: TextLabel
+local musicSlash: Frame
 local codexButton: TextButton
 local codexDot: Frame
 local missionButton: TextButton
@@ -554,7 +560,14 @@ local function renderMultiplier(profile: Profile, prev: Profile?)
 	end
 end
 
+--- 배경음 버튼 모양. 끄면 글리프를 흐리게 하고 흰 사선을 긋는다(빨강 금지 §12.2)
+local function showMusic(on: boolean)
+	musicGlyph.TextTransparency = if on then 0 else 0.55
+	musicSlash.Visible = not on
+end
+
 local function renderButtons(profile: Profile)
+	showMusic(profile.settings.music ~= false)
 	local visible = unlocked(profile)
 	settingsButton.Visible = visible
 	codexButton.Visible = visible
@@ -862,6 +875,41 @@ local function buildGui()
 	multLabel.Position = UDim2.fromOffset(6, 3)
 	multLabel.Size = UDim2.fromOffset(84, 18)
 	multChip.Visible = false
+
+	-- 배경음 버튼 (676, 12) 56×56 = 설정 버튼 왼쪽. 설정 패널 「배경음」 토글과 같은 값을 바꾼다
+	musicButton = makeButton(root, "Music", UDim2.new(1, -80, 0, 12), UDim2.fromOffset(56, 56))
+	musicButton.AnchorPoint = Vector2.new(1, 0)
+	musicGlyph = makeLabel(musicButton, "Glyph", Enum.Font.GothamBold, WHITE)
+	musicGlyph.Position = UDim2.fromOffset(12, 12)
+	musicGlyph.Size = UDim2.fromOffset(32, 32)
+	musicGlyph.Text = GLYPH_MUSIC
+	musicSlash = Instance.new("Frame")
+	musicSlash.Name = "Slash"
+	musicSlash.AnchorPoint = Vector2.new(0.5, 0.5)
+	musicSlash.Position = UDim2.fromScale(0.5, 0.5)
+	musicSlash.Size = UDim2.fromOffset(40, 4)
+	musicSlash.Rotation = -45
+	musicSlash.BackgroundColor3 = WHITE
+	musicSlash.BorderSizePixel = 0
+	musicSlash.Visible = false
+	musicSlash.Parent = musicButton
+	corner(musicSlash, 2)
+	musicButton.Activated:Connect(function()
+		local profile = cached
+		if not profile then
+			return
+		end
+		local value = profile.settings.music == false
+		Remotes.SetSetting:FireServer("music", value)
+		-- 서버 확인(ProfileSync) 전에도 소리와 모양을 바로 바꾼다. 캐시도 바꿔 둬야 1초 안에 두 번 눌러도 번갈아 간다.
+		-- ProfileSync 가 서버 값으로 다시 덮는다
+		profile.settings.music = value
+		showMusic(value)
+		if Sound then
+			pcall(Sound.setMusicEnabled, value)
+			pcall(Sound.play, SOUND_TICK)
+		end
+	end)
 
 	-- 오른쪽 버튼 열 (744, 12/80/148) 56×56 — 우하 예약 영역(y ≥ 263)을 넘지 않는다
 	settingsButton = makeButton(root, "Settings", UDim2.new(1, -12, 0, 12), UDim2.fromOffset(56, 56))

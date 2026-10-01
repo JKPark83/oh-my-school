@@ -99,7 +99,7 @@ start(InteriorRenderController, "InteriorRenderController")
 -- CameraController.setShakeEnabled / SoundController.setEnabled / FeedbackController.setHapticEnabled 는
 -- 구현계획 §3.4 계약 밖이다. 없으면 SoundController.setMuted 로만 대신한다
 
-local lastSettings: { shake: boolean?, sfx: boolean?, haptic: boolean? } = {}
+local lastSettings: { shake: boolean?, sfx: boolean?, music: boolean?, haptic: boolean? } = {}
 
 local function applySettings(profile: Profile)
 	local settings = profile.settings
@@ -116,10 +116,13 @@ local function applySettings(profile: Profile)
 			call(SoundController, "SoundController", "setMuted", not settings.sfx)
 		end
 	end
+	if settings.music ~= lastSettings.music then
+		call(SoundController, "SoundController", "setMusicEnabled", settings.music ~= false)
+	end
 	if settings.haptic ~= lastSettings.haptic then
 		call(FeedbackController, "FeedbackController", "setHapticEnabled", settings.haptic)
 	end
-	lastSettings = { shake = settings.shake, sfx = settings.sfx, haptic = settings.haptic }
+	lastSettings = { shake = settings.shake, sfx = settings.sfx, music = settings.music, haptic = settings.haptic }
 end
 
 -- ── 리모트 배선 ──

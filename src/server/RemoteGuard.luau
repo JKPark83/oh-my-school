@@ -147,6 +147,8 @@ function RemoteGuard.Start()
 				profile.settings.shake = value
 			elseif key == "sfx" then
 				profile.settings.sfx = value
+			elseif key == "music" then
+				profile.settings.music = value
 			elseif key == "haptic" then
 				profile.settings.haptic = value
 			else

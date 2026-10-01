@@ -22,6 +22,7 @@ export type Missions = {
 export type Settings = {
 	shake: boolean,
 	sfx: boolean,
+	music: boolean,
 	haptic: boolean,
 }
 
@@ -113,6 +114,6 @@ export type DecorReturned = {
 
 export type DenyReason = "coins" | "cooldown" | "owner" | "cell" | "limit" | "owned" | "locked"
 
-export type SettingKey = "shake" | "sfx" | "haptic"
+export type SettingKey = "shake" | "sfx" | "music" | "haptic"
 
 return Types
