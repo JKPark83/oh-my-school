@@ -90,8 +90,8 @@ local SOUND_TICK = "tick"
 local TEXT_NEXT_CAPTION = "다음 시설"
 local TEXT_AFFORD = "살 수 있어요!"
 local TEXT_NO_INCOME = "스티커를 줍자!"
-local TEXT_GRADUATE = "졸업식을 열자!"
-local TEXT_GRADUATE_SUB = "강당 종을 치자!"
+local TEXT_ALL_BUILT = "학교 완성!"
+local TEXT_ALL_BUILT_SUB = "꾸미고 스티커 모으자"
 local TEXT_GO_HOME = "우리 학교로"
 local TEXT_GO_HOME_SUB = "탭하면 돌아가요"
 
@@ -132,7 +132,7 @@ local decorNew = false -- 선물로 받은 꾸미기가 있다. 꾸미기 시트
 local giftToken = 0
 local plotCenters: { [number]: Vector3 } = {}
 local pulses: { [UIStroke]: Tween } = {}
-local held = false -- 졸업식 동안 숨기고 새 프로필을 그리지 않는다(§9.5)
+local held = false -- 층 완공 축하 동안 숨기고 새 프로필을 그리지 않는다(§9.5)
 local heldFrom: Profile? = nil -- 숨기기 직전 프로필. 풀 때 이것과 비교해 롤·펀치를 낸다
 
 local toastToken = 0
@@ -425,12 +425,6 @@ local function padPosition(plotId: number, facilityId: string): Vector3?
 	return if pad and pad:IsA("BasePart") then pad.Position else nil
 end
 
-local function partPosition(plotId: number, partName: string): Vector3?
-	local plot = plotModel(plotId)
-	local part = if plot then plot:FindFirstChild(partName, true) else nil
-	return if part and part:IsA("BasePart") then part.Position else nil
-end
-
 local function panTo(position: Vector3?)
 	if position and Camera and Camera.panTo then
 		pcall(Camera.panTo, position, PAN_SECONDS)
@@ -451,9 +445,9 @@ local function facilityCount(profile: Profile): number
 	return FacilityConfig.count(profile.facilities)
 end
 
---- 첫 시설을 지었거나 졸업한 적이 있으면 HUD 전체가 열린다
+--- 첫 시설을 지었으면 HUD 전체가 열린다
 local function unlocked(profile: Profile): boolean
-	return facilityCount(profile) > 0 or profile.graduations > 0
+	return facilityCount(profile) > 0
 end
 
 local function missionsDone(profile: Profile): number
@@ -476,7 +470,7 @@ local function newlyBuilt(prev: Profile?, now: Profile): string?
 	return nil
 end
 
---- prev → now 사이에 산 부품 하나의 가격. 산 부품이 없으면 nil(졸업으로 줄어든 것도 nil)
+--- prev → now 사이에 산 부품 하나의 가격. 산 부품이 없으면 nil
 local function boughtPartPrice(prev: Profile?, now: Profile): number?
 	if not prev then
 		return nil
@@ -489,11 +483,11 @@ local function boughtPartPrice(prev: Profile?, now: Profile): number?
 	-- 방금 완공이면 그 시설의 마지막 부품, 아니면 다음 시설의 buildParts 번째 부품
 	local builtId = newlyBuilt(prev, now)
 	if builtId then
-		return FacilityConfig.partPriceOf(builtId, FacilityConfig.partCount(builtId), now.graduations)
+		return FacilityConfig.partPriceOf(builtId, FacilityConfig.partCount(builtId))
 	end
 	local nextRow = FacilityConfig.nextOf(now.facilities)
 	if nextRow and now.buildParts > 0 then
-		return FacilityConfig.partPriceOf(nextRow.id, now.buildParts, now.graduations)
+		return FacilityConfig.partPriceOf(nextRow.id, now.buildParts)
 	end
 	return nil
 end
@@ -620,15 +614,16 @@ local function renderCard(profile: Profile)
 		cardBar.Visible = false
 		pulse(cardStroke, false)
 	elseif nextPart == nil then
-		key = "graduate"
+		-- 14개를 다 지었다. 층 쌓기 유도는 P2 에서 넣는다
+		key = "allBuilt"
 		cardCaption.Text = `{facilityCount(profile)}/{FacilityConfig.COUNT}`
-		cardName.Text = TEXT_GRADUATE
+		cardName.Text = TEXT_ALL_BUILT
 		cardPrice.Text = ""
-		cardSub.Text = TEXT_GRADUATE_SUB
+		cardSub.Text = TEXT_ALL_BUILT_SUB
 		cardBar.Visible = true
 		cardFill.Size = UDim2.fromScale(1, 1)
 		cardFill.BackgroundColor3 = GOLD
-		pulse(cardStroke, true)
+		pulse(cardStroke, false)
 	else
 		-- 키는 시설 단위라 카드는 시설이 바뀔 때만 미끄러진다(부품마다 흔들지 않는다)
 		local facility = nextPart.facility
@@ -637,7 +632,7 @@ local function renderCard(profile: Profile)
 			profile,
 			TEXT_NEXT_CAPTION,
 			`{facility.name} {nextPart.index}/{nextPart.count}`,
-			FacilityConfig.partPriceOf(facility.id, nextPart.index, profile.graduations)
+			FacilityConfig.partPriceOf(facility.id, nextPart.index)
 		)
 	end
 
@@ -683,8 +678,6 @@ local function onCardTap()
 	local nextRow = FacilityConfig.nextOf(profile.facilities)
 	if nextRow then
 		panTo(padPosition(plotId, nextRow.id))
-	else
-		panTo(partPosition(plotId, Keys.GRADUATION_BELL))
 	end
 end
 
@@ -977,7 +970,7 @@ local function buildGui()
 	toastPadding.PaddingRight = UDim.new(0, 12)
 	toastPadding.Parent = toastLabel
 
-	-- 배너(미션·졸업) 카드 아래 가운데, 4초
+	-- 배너(미션) 카드 아래 가운데, 4초
 	bannerLabel = makeLabel(root, "Banner", Enum.Font.GothamBold, YELLOW)
 	bannerLabel.AnchorPoint = Vector2.new(0.5, 0)
 	bannerLabel.Position = UDim2.new(0.5, 0, 0, 120)
@@ -1064,8 +1057,7 @@ function HudController.refresh()
 	end
 end
 
---- 졸업식(§9.5) 동안 HUD 를 숨긴다. 서버는 0초에 프로필을 초기화하지만, 용돈 14·배율 펀치·「책상 세트」 카드는
---- 9.0초 교실1 컷에서 보여야 한다. 풀 때 식 전 프로필과 비교해 한 번에 그린다
+--- 층 완공 축하(§5.5) 동안 HUD 를 숨긴다. 풀 때 축하 전 프로필과 비교해 한 번에 그린다(수입 펀치)
 function HudController.hold(on: boolean)
 	if on == held then
 		return
@@ -1090,7 +1082,7 @@ function HudController.hold(on: boolean)
 end
 
 --- 서버 GiftOpened(본인에게만). 판 칩 위에서 🎁 가 열리고, 아이템이면 「꾸미기」 버튼으로, 용돈이면 용돈 칩으로 날아간다.
---- 글자는 하나도 띄우지 않는다. 판 칩이 안 보이거나 졸업식 중(HUD 숨김)이면 건너뛴다
+--- 글자는 하나도 띄우지 않는다. 판 칩이 안 보이거나 축하 중(HUD 숨김)이면 건너뛴다
 function HudController.onGift(payload: any)
 	if not built or held or not boardChip.Visible then
 		return
@@ -1137,7 +1129,7 @@ function HudController.toast(text: string)
 	end)
 end
 
---- 4초 배너(미션·졸업). 떠 있는 배너가 있으면 뒤에 줄을 선다
+--- 4초 배너(미션). 떠 있는 배너가 있으면 뒤에 줄을 선다
 -- TODO(통합): 도감 카드(FeedbackController)가 떠 있으면 그 뒤로 큐잉(§2.2 0:12)
 function HudController.banner(text: string)
 	if not built then

@@ -3,13 +3,13 @@
 	FeedbackController — 손맛(기획서 §9)
 
 	이벤트 하나에 작은 반응 5~8개를 100ms 안에 겹쳐 쏜다: 소리·파티클·흔들림·플래시·「+N」·햅틱.
-	play(kind, payload) 하나로 받고 kind 별 타임라인(§9.2)을 그대로 따른다. 졸업식은 §9.5 의 12초 타임라인.
+	play(kind, payload) 하나로 받고 kind 별 타임라인(§9.2)을 그대로 따른다. 층 완공 축하는 개선계획 §5.5 의 4초 오빗.
 
 	★ 부정 피드백은 없다(§9.1). 「부족」은 링 밝힘 + 실루엣 깜빡임 + 낮은 틱뿐이고 글자·빨강·흔들림이 없다.
 	★ 카메라는 CameraController 가 굴린다(트라우마 모델). 여기서는 shake(t)·fovPunch()·orbit·cutTo·restore 만 부른다.
 	★ 히트스톱은 카메라·UI 만 잠깐 멈춘다(cutTo 로 현재 프레임에 고정 → restore). 월드는 멈추지 않는다.
 	★ 플래시 한도(§8.4): α ≤ 0.7, ≤ 0.08초, 초당 1회. 설정 「흔들림 끔」이면 흔들림·FOV·플래시·히트스톱을 모두 끈다.
-	★ 파티클은 Rate 0 + Emit(n). 동시 살아 있는 입자 ≤ 120(졸업식 ≤ 200). 예산을 넘는 요청은 깎는다.
+	★ 파티클은 Rate 0 + Emit(n). 동시 살아 있는 입자 ≤ 120. 예산을 넘는 요청은 깎는다.
 	★ 모듈 최상위 부작용 없음. Start() 에서 ScreenGui·폴더를 만든다.
 	★ 완공 지붕 아이콘(W8, 개선계획 §3.1 #8): FacilityBuilt 가 내 부지일 때만 그 시설 모델 윗면 위에 ★ 빌보드 하나가
 	  ROOF_ICON_SECONDS 동안 떠올랐다 사라진다. 파트·파티클 없음, 흔들림·빨강 없음. 방문객 화면에는 없다(§7.5).
@@ -22,10 +22,10 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local CharacterBuilder = require(ReplicatedStorage.Shared.CharacterBuilder)
-local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local MissionConfig = require(ReplicatedStorage.Shared.Config.MissionConfig)
+local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local Seats = require(ReplicatedStorage.Shared.Seats)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
@@ -45,9 +45,6 @@ type CameraApi = {
 	cutTo: (cframe: CFrame) -> (),
 	restore: () -> (),
 }
-type TransitionApi = {
-	fadeTo: (alpha: number, seconds: number) -> (),
-}
 type SoundApi = {
 	play: (key: string, pitch: number?) -> (), -- pitch 두 번째 인자는 계약 밖(SoundController 가 받는다)
 }
@@ -61,10 +58,9 @@ type PadApi = {
 }
 local HudController = (require(script.Parent.HudController) :: any) :: HudApi
 local CameraController = (require(script.Parent.CameraController) :: any) :: CameraApi
-local TransitionController = (require(script.Parent.TransitionController) :: any) :: TransitionApi
 local SoundController = (require(script.Parent.SoundController) :: any) :: SoundApi
 local PadController = (require(script.Parent.PadController) :: any) :: PadApi
--- StudentRenderController.ceremony(plotId, on)·isLowSpec() 은 계약 밖이라 any 로 받는다
+-- StudentRenderController.isLowSpec() 은 계약 밖이라 any 로 받는다
 local StudentRenderController = require(script.Parent.StudentRenderController) :: any
 
 local FeedbackController = {}
@@ -73,11 +69,10 @@ local FeedbackController = {}
 local SOUND_TICK = "tick"
 local SOUND_GOLD = "goldPop"
 local SOUND_PAD = "pad"
-local SOUND_BELL = "bell"
 local SOUND_BUILD = "build" -- 도장 소리도 이걸 쓴다
 local SOUND_FANFARE = "fanfare"
 local SOUND_LEGEND = "legend"
-local SOUND_GRADUATION = "graduation"
+local SOUND_CELEBRATE = "celebrate"
 local SOUND_COMBO = "combo"
 local SOUND_REWARD = "reward"
 
@@ -99,12 +94,10 @@ local COLOR_PURPLE = Color3.fromRGB(167, 139, 250)
 local COLOR_GOLD = Color3.fromRGB(245, 158, 11)
 local COLOR_WHITE = Color3.new(1, 1, 1)
 local COLOR_DUST = Color3.fromRGB(226, 220, 205)
-local COLOR_CAP = Color3.fromRGB(30, 30, 40)
 
 -- 수치(기획서 §9). 클라 전용 연출 수치라 공용 Config 에 없다
 local TRAUMA_GOLD = 0.15
 local TRAUMA_PURCHASE = 0.30
-local TRAUMA_GRADUATION = 0.60
 local HITSTOP_SECONDS = 0.15
 -- 전학 「짠」(StudentRender POP_SECONDS 0.45)이 끝나 자리 잡는 때와 도감 카드가 뜨는 때
 local ARRIVE_SETTLE_SECONDS = 0.45
@@ -114,7 +107,6 @@ local FLASH_SECONDS = 0.08
 local FLASH_INTERVAL = 1
 local PARTICLE_BUDGET = 120
 local PARTICLE_BUDGET_LOW = 80 -- 저사양 다이얼(§12.1)
-local PARTICLE_BUDGET_CEREMONY = 200
 local COMBO_TOAST_EVERY = 5
 local DENY_PITCH = 0.9
 local POPUP_RISE = 3 -- 스터드
@@ -126,10 +118,14 @@ local STAMP_IN = 0.25
 local STAMP_FROM = 1.3
 local STAR_HIDE_SECONDS = 60
 local POP_SECONDS = 0.12
-local ORBIT_RADIUS = 24
-local ORBIT_PITCH = 30
-local ORBIT_SECONDS = 4
-local CLASSROOM_CAMERA = Vector3.new(0, 17.5, 27.5) -- 교실1 을 내려다보는 카메라 오프셋(부지 로컬)
+-- 층 완공 축하(개선계획 §5.5). 학교 높이에 맞춰 물러나 한 바퀴 돈다. 좌표는 부지 로컬(PlotLayout)
+local CELEBRATE_SECONDS = 4
+local CELEBRATE_PITCH = 20
+local CELEBRATE_RADIUS = 60 -- 높이 0 일 때 거리. 높이 1 스터드마다 CELEBRATE_RADIUS_PER_Y 만큼 더 물러난다
+local CELEBRATE_RADIUS_PER_Y = 1.2
+local TOWER_BASE_Y = PlotLayout.TOWER_BASE_Y
+local FLOOR_STEP = PlotLayout.FLOOR_STEP
+local TOWER_CENTER_Z = (PlotLayout.TOWER_FOOTPRINT.z0 + PlotLayout.TOWER_FOOTPRINT.z1) / 2
 -- 부품 하나(PartBuilt): 부품 번호 1..4 → build 음정. 한 시설 안에서 올라가다 마지막에 완공 연출로 끝난다
 local PART_PITCH = { 1.0, 1.12, 1.26, 1.41 }
 local PART_DUST = 6
@@ -191,13 +187,12 @@ local PRESET_CONFETTI = preset(
 	-12,
 	0
 )
-local PRESET_CAP = preset(ColorSequence.new(COLOR_CAP), 0.9, 18, 26, 2.4, -10, 0)
 
 local player = Players.LocalPlayer
 local started = false
 local shakeEnabled = true
 local hapticEnabled = true
-local ceremonyActive = false
+local celebrating = false
 local screenGui: ScreenGui? = nil
 local flashFrame: Frame? = nil
 local popupFolder: Folder? = nil -- PlayerGui 아래, 「+N」 빌보드
@@ -277,9 +272,9 @@ local function flash()
 		:Play()
 end
 
---- 히트스톱: 카메라를 현재 프레임에 고정했다가 푼다. 월드는 그대로. 졸업식 오빗 중엔 카메라를 건드리지 않는다
+--- 히트스톱: 카메라를 현재 프레임에 고정했다가 푼다. 월드는 그대로. 축하 오빗 중엔 카메라를 건드리지 않는다
 local function hitstop(seconds: number)
-	if not shakeEnabled or ceremonyActive then
+	if not shakeEnabled or celebrating then
 		return
 	end
 	local camera = Workspace.CurrentCamera
@@ -314,10 +309,7 @@ end
 --- 임시 파트에 파티클 하나 달아 count 개만 뿜고 치운다(Rate 0 + Emit). 예산을 넘는 만큼 깎는다
 local function burst(position: Vector3, style: Preset, count: number)
 	local now = os.clock()
-	local cap = if ceremonyActive
-		then PARTICLE_BUDGET_CEREMONY
-		elseif StudentRenderController.isLowSpec() then PARTICLE_BUDGET_LOW
-		else PARTICLE_BUDGET
+	local cap = if StudentRenderController.isLowSpec() then PARTICLE_BUDGET_LOW else PARTICLE_BUDGET
 	local allowed = math.min(count, cap - liveParticleCount(now))
 	if allowed <= 0 then
 		return
@@ -888,113 +880,41 @@ handlers.mission = function()
 	haptic("small")
 end
 
---- 졸업식 §9.5. 12초. 입력 잠금은 서버 graduating 플래그가 맡는다
-local function ceremony(payload: any)
-	local plotId = payload.plot :: number
-	local graduations = if type(payload.graduations) == "number" then payload.graduations else 0
-	local newStudentId = if type(payload.newStudentId) == "string" then payload.newStudentId else nil
-	local auditoriumId = FacilityConfig.ORDER[FacilityConfig.COUNT]
-	local classroomId = FacilityConfig.ORDER[1]
-	ceremonyActive = true
-	-- 바로 뒤에 오는 ProfileSync(졸업 후 프로필)를 9.0초까지 그리지 않게, spawn 전에 잡는다
+--- 층 완공 축하(개선계획 §5.5). 약 4초. 카메라가 학교 중심을 한 바퀴 돌고 끝나면 원래 카메라로 돌아온다.
+--- floors = 완공 층 수. 맨 위 지붕 y = TOWER_BASE_Y + floors × FLOOR_STEP(층 0 이면 강당 지붕)
+local function celebrate(plotId: number, floor: number, floors: number)
+	local plot = PadController.plotModel(plotId)
+	if not plot then
+		return
+	end
+	celebrating = true
 	HudController.hold(true)
-	task.spawn(function()
-		-- 0.0 검정 0.5초 + 종. 학생들은 강당 좌석으로(StudentRender)
-		TransitionController.fadeTo(1, 0.5)
-		sound(SOUND_BELL)
-		pcall(function()
-			StudentRenderController.ceremony(plotId, true)
-		end)
-		task.wait(0.5)
-
-		-- 0.5 강당 단상 오빗 4초, graduation 음악
-		local plot = PadController.plotModel(plotId)
-		local center = PadController.facilityPosition(plotId, auditoriumId)
-			or (if plot then plot:GetPivot().Position else rootPosition())
-			or Vector3.zero
-		CameraController.orbit(center, ORBIT_RADIUS, ORBIT_PITCH, ORBIT_SECONDS)
-		TransitionController.fadeTo(0, 0.4)
-		sound(SOUND_GRADUATION)
-		task.wait(2.5)
-
-		-- 3.0 학사모 60 + 색종이 100 + 히트스톱(오빗 중이라 플래시만) + 트라우마 0.60 + 햅틱 대
-		burst(center + Vector3.new(0, 6, 0), PRESET_CAP, 60)
-		burst(center + Vector3.new(0, 8, 0), PRESET_CONFETTI, 100)
-		hitstop(HITSTOP_SECONDS)
-		flash()
-		shake(TRAUMA_GRADUATION)
-		haptic("large")
-		task.wait(1.5)
-
-		-- 4.5 「졸업 N회!」 도장
-		stamp(`졸업 {graduations}회!`, COLOR_GOLD, 1.3)
-		sound(SOUND_BUILD)
-		task.wait(1.5)
-
-		-- 6.0 「이제 새 친구가 와요」 카드
-		local newRow = if newStudentId then StudentConfig.BY_ID[newStudentId] else nil
-		if newRow then
-			local style = tierStyle(newRow.tier)
-			card("이제 새 친구가 와요", newRow.name, style.color, style.stroke, 1.2, newStudentId)
-		else
-			card("이제 새 친구가 와요", "???", COLOR_PURPLE, 3, 1.2, nil)
-		end
-		task.wait(1.5)
-
-		-- 7.5 검정 0.5초. 8.0 서버가 부지를 초기화한다
-		TransitionController.fadeTo(1, 0.5)
-		task.wait(1.5)
-
-		-- 9.0 교실1 컷 + 「친구들은 그대로!」
-		pcall(function()
-			StudentRenderController.ceremony(plotId, false)
-		end)
-		local classroom = PadController.facilityPosition(plotId, classroomId)
-		local pivot = if plot then plot:GetPivot() else CFrame.new(center)
-		local lookAt = classroom or pivot.Position
-		local eye = lookAt + pivot.Rotation:VectorToWorldSpace(CLASSROOM_CAMERA)
-		CameraController.cutTo(CFrame.lookAt(eye, lookAt))
-		TransitionController.fadeTo(0, 0.3)
-		HudController.hold(false) -- 용돈 14 롤·배율 펀치·「책상 세트」 카드
-		card("친구들은 그대로!", "학교는 새로 시작해요", COLOR_GREEN, 3, 1.5, nil)
-		task.wait(1.5)
-
-		-- 10.5 책상 패드 링 펄스 + 앞마당 스티커 반짝
-		PadController.hintShortfall()
-		for i = 1, 3 do
-			local at = PadController.stickerPosition(i)
-			if at then
-				burst(at, PRESET_STAR, 6)
-			end
-		end
-		task.wait(1.5)
-
-		-- 12.0 끝. 카메라 복귀
+	local top = TOWER_BASE_Y + floors * FLOOR_STEP
+	local pivot = plot:GetPivot()
+	local center = pivot:PointToWorldSpace(Vector3.new(0, top * 0.5, TOWER_CENTER_Z))
+	local roof = pivot:PointToWorldSpace(Vector3.new(0, top + 4, TOWER_CENTER_Z))
+	CameraController.orbit(center, CELEBRATE_RADIUS + top * CELEBRATE_RADIUS_PER_Y, CELEBRATE_PITCH, CELEBRATE_SECONDS)
+	sound(SOUND_CELEBRATE)
+	burst(roof, PRESET_CONFETTI, 60)
+	haptic("large")
+	-- 옥상 방 이름은 P2 의 RoomConfig 가 생기면 「{방 이름} 완공!」으로 바꾼다
+	stamp(if floor == 0 then "옥상 완공!" else `{floor}층 완공!`, COLOR_GOLD, CELEBRATE_SECONDS - 1)
+	task.delay(CELEBRATE_SECONDS, function()
 		CameraController.restore()
-		ceremonyActive = false
+		HudController.hold(false)
+		celebrating = false
 	end)
 end
 
--- 졸업: 내 부지면 졸업식, 남의 부지면 그 강당 위 색종이·학사모만
-handlers.graduated = function(payload: any)
+-- 층 완공: 연출은 주인 화면에서만(§7.5). 남의 부지는 아무것도 없다
+handlers.floorBuilt = function(payload: any)
 	local plotId = if type(payload.plot) == "number" then payload.plot else nil
-	if not plotId then
+	if plotId == nil or plotId ~= PadController.myPlot() or celebrating then
 		return
 	end
-	if plotId == PadController.myPlot() then
-		if not ceremonyActive then
-			ceremony(payload)
-		end
-		return
-	end
-	local auditoriumId = FacilityConfig.ORDER[FacilityConfig.COUNT]
-	local plot = PadController.plotModel(plotId)
-	local center = PadController.facilityPosition(plotId, auditoriumId)
-		or (if plot then plot:GetPivot().Position else nil)
-	if center then
-		burst(center + Vector3.new(0, 8, 0), PRESET_CONFETTI, 40)
-		burst(center + Vector3.new(0, 6, 0), PRESET_CAP, 20)
-	end
+	local floor = if type(payload.floor) == "number" then payload.floor else 0
+	local floors = if type(payload.floors) == "number" then payload.floors else 0
+	celebrate(plotId, floor, floors)
 end
 
 -- ── 공개 API ─────────────────────────────────────────────────────

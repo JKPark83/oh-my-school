@@ -1,10 +1,10 @@
 --!strict
 --[[
-	광장 「졸업왕」 리더보드. 기획서 §6.4·§12.2.
-	  OrderedDataStore "Graduations" TOP 10 을 60초마다 읽어 Workspace.Plaza.Leaderboard 의 SurfaceGui 에 그린다.
+	광장 「높은 학교」 리더보드. 기획서 §6.4·§12.2, 개선계획(2026-10-01) §6.1.
+	  OrderedDataStore "SchoolFloors"(값 = 완공 층 수) TOP 10 을 60초마다 읽어 Workspace.Plaza.Leaderboard 의 SurfaceGui 에 그린다.
 	  이름은 UserService:GetUserInfosByUserIdsAsync 의 DisplayName(60초 캐시). 실패하면 「교장 #끝4자리」.
-	  Username 은 어디에도 쓰지 않는다. submit 은 졸업 저장 성공 뒤에만 부른다(GraduationService).
-	Studio 에서는 "Graduations_Dev" 를 쓰고, DataStore 호출이 실패해도 조용히 넘어간다.
+	  Username 은 어디에도 쓰지 않는다. submit 은 층을 완공할 때 부른다(P2).
+	Studio 에서는 "SchoolFloors_Dev" 를 쓰고, DataStore 호출이 실패해도 조용히 넘어간다.
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -18,10 +18,10 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local LeaderboardService = {}
 
 -- 기획서 §6.4 수치·이름
-local STORE_NAME = "Graduations"
+local STORE_NAME = "SchoolFloors"
 local TOP_N = 10
 local REFRESH_INTERVAL = 60 -- 초
-local TITLE_TEXT = "졸업왕"
+local TITLE_TEXT = "높은 학교"
 local FALLBACK_PREFIX = "교장 #"
 
 type Row = { userId: number, value: number }
@@ -145,7 +145,7 @@ end
 local function render(rows: { Row })
 	for i, label in rowLabels do
 		local row = rows[i]
-		label.Text = if row then `{i}. {nameOf(row.userId)}  {row.value}회` else ""
+		label.Text = if row then `{i}. {nameOf(row.userId)}  {row.value}층` else ""
 	end
 end
 
@@ -158,8 +158,8 @@ local function refresh()
 	render(rows)
 end
 
---- 졸업 횟수 제출. 저장 성공 뒤에만 부른다. yield 하지 않는다
-function LeaderboardService.submit(player: Player, graduations: number)
+--- 완공 층 수 제출. yield 하지 않는다
+function LeaderboardService.submit(player: Player, floors: number)
 	local activeStore = store
 	if not activeStore then
 		return
@@ -167,7 +167,7 @@ function LeaderboardService.submit(player: Player, graduations: number)
 	local key = tostring(player.UserId)
 	task.spawn(function()
 		local ok, err = pcall(function()
-			activeStore:SetAsync(key, graduations)
+			activeStore:SetAsync(key, floors)
 		end)
 		if not ok then
 			quietWarn(`[LeaderboardService] 제출 실패 {key}: {err}`)

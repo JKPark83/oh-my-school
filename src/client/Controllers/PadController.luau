@@ -10,7 +10,6 @@
 	- 칭찬스티커판: 내 부지 현관 벽 판의 SurfaceGui 에 BOARD_CELLS(40)칸을 그리고 프로필 stickerBoard 만큼 채운다
 	- 시설 등장: 부품을 살 때마다 시설 모델에 새로 붙는 파트(PartIndex)만 땅에서 솟게 한다(§9.2 구매 50ms 뒤 등장).
 	  DescendantAdded 로 모아 한 프레임에 한 번 올린다. 스트리밍으로 다시 들어온 옛 부품은 올리지 않는다
-	- 졸업 종(졸업하기) → PanelController.open
 	- 「우리 학교로」 팻말 프롬프트는 내 부지에서만 끈다. 접수대 건물은 남지만 프롬프트는 W4 에서 없앴다
 	- 방문객 별(하늘색)도 히트박스 + 로컬 표시판이다. 남의 부지에서만 판을 그린다(내 별은 안 보임, §7.5)
 
@@ -40,11 +39,7 @@ type HudApi = {
 	profile: () -> Types.Profile?,
 	onProfile: (fn: (Types.Profile) -> ()) -> (),
 }
-type PanelApi = {
-	open: (name: string, payload: any?) -> (),
-}
 local HudController = (require(script.Parent.HudController) :: any) :: HudApi
-local PanelController = (require(script.Parent.PanelController) :: any) :: PanelApi
 local SoundController = require(script.Parent.SoundController)
 -- isLowSpec() 만 쓴다. FeedbackController 와 같이 any 로 받는다(순환 없음: 그쪽은 SoundController 만 require)
 local StudentRenderController = require(script.Parent.StudentRenderController) :: any
@@ -55,9 +50,6 @@ local PadController = {}
 local PAD_ACTIVE = "active"
 local PAD_NEXT = "next"
 local PAD_BUILT = "built"
-
--- 패널 이름(계획 §3.4 PanelController.open)
-local PANEL_GRADUATE = "graduate"
 
 -- 색(기획서 §8.1)
 local COLOR_PANEL = Color3.fromRGB(31, 41, 55)
@@ -77,7 +69,6 @@ local RING_RADIUS = 34 -- px
 local RING_REFRESH = 1 -- 초
 local PRICE_TEXT = 28 -- pt (§8.2)
 local NAME_TEXT = 20
-local TAP_SIZE = 56 -- px (§8.1 터치 최소)
 local NEXT_PAD_ALPHA = 0.6
 local PAD_SINK = 0.5 -- 스터드
 local PAD_SINK_SECONDS = 0.2
@@ -184,7 +175,6 @@ type FacilityEntry = {
 	model: Model,
 	plotId: number,
 	facilityId: string,
-	bell: BillboardGui?,
 	conns: { RBXScriptConnection },
 	appearedAt: { [number]: number }, -- 부품 번호 → 등장을 시작한 os.clock()(-inf 면 처음부터 있던 부품)
 	pending: { BasePart }, -- 이번 프레임에 새로 붙어 올릴 파트
@@ -237,10 +227,6 @@ local function plotIdOfModel(model: Instance): number?
 	return Keys.plotIdOf(model.Name)
 end
 
-local function isComplete(profile: Types.Profile?): boolean
-	return profile ~= nil and FacilityConfig.count(profile.facilities) >= FacilityConfig.COUNT
-end
-
 local function newBillboard(name: string, adornee: Instance, width: number, height: number, lift: number): BillboardGui
 	local gui = Instance.new("BillboardGui")
 	gui.Name = name
@@ -265,34 +251,6 @@ local function newLabel(parent: Instance, text: string, size: number, color: Col
 	label.TextStrokeTransparency = 0.6
 	label.Parent = parent
 	return label
-end
-
---- 56px 원형 탭 버튼 빌보드. 졸업 종에 쓴다
-local function newTapButton(
-	name: string,
-	adornee: Instance,
-	text: string,
-	width: number,
-	color: Color3
-): (BillboardGui, TextButton)
-	local gui = newBillboard(name, adornee, width, TAP_SIZE, 0)
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.fromScale(1, 1)
-	button.BackgroundColor3 = color
-	button.AutoButtonColor = true
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 22
-	button.TextColor3 = COLOR_WHITE
-	button.Text = text
-	button.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, TAP_SIZE / 2)
-	corner.Parent = button
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = COLOR_WHITE
-	stroke.Thickness = 2
-	stroke.Parent = button
-	return gui, button
 end
 
 local function newLocalPart(name: string, size: Vector3, cframe: CFrame, color: Color3): Part
@@ -391,10 +349,9 @@ local function updateRing(entry: PadEntry)
 		return
 	end
 	local profile = HudController.profile()
-	local graduations = if profile then profile.graduations else 0
 	local coins = if profile then profile.coins else 0
 	local nextIndex = if profile then profile.buildParts + 1 else 1
-	local price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex, graduations)
+	local price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex)
 	local ratio = if price > 0 then math.clamp(coins / price, 0, 1) else 1
 	ring.price.Text = Format.coins(price)
 	local lit = math.floor(ratio * RING_DOTS + 1e-6)
@@ -485,7 +442,7 @@ local function applyPad(entry: PadEntry)
 
 	destroyRing(entry)
 	if previous == PAD_ACTIVE and state ~= PAD_BUILT then
-		-- 눌린 채 비활성이 되면(졸업 철거 등) 원래 자리로 돌려 둔다
+		-- 눌린 채 비활성이 되면 원래 자리로 돌려 둔다
 		stopPress(entry)
 		part.CFrame = entry.base
 	end
@@ -1115,39 +1072,12 @@ local function queueAppear(entry: FacilityEntry, inst: Instance)
 	end
 end
 
-local function refreshFacility(entry: FacilityEntry)
-	local mine = entry.plotId == myPlotId
-	local model = entry.model
-
-	-- 졸업 종: GraduationBell 파트가 있는 모델(강당)에, 14/14 일 때만
-	local bellPart = model:FindFirstChild(Keys.GRADUATION_BELL, true)
-	if mine and bellPart and bellPart:IsA("BasePart") and isComplete(HudController.profile()) then
-		if not entry.bell then
-			local gui, button =
-				newTapButton("Bell_" .. entry.facilityId, bellPart, "🔔 졸업하기", 160, COLOR_GOLD)
-			gui.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
-			entry.bell = gui
-			button.Activated:Connect(function()
-				PanelController.open(PANEL_GRADUATE)
-			end)
-		elseif entry.bell.Adornee ~= bellPart then
-			entry.bell.Adornee = bellPart
-		end
-	elseif entry.bell then
-		entry.bell:Destroy()
-		entry.bell = nil
-	end
-end
-
 local function unwatchFacility(model: Instance)
 	local entry = facilities[model :: any]
 	if not entry then
 		return
 	end
 	disconnectAll(entry.conns)
-	if entry.bell then
-		entry.bell:Destroy()
-	end
 	facilities[model :: any] = nil
 end
 
@@ -1159,7 +1089,6 @@ local function watchFacility(model: Instance, plotId: number, animate: boolean)
 		model = model,
 		plotId = plotId,
 		facilityId = model.Name,
-		bell = nil,
 		conns = {},
 		appearedAt = {},
 		pending = {},
@@ -1193,7 +1122,6 @@ local function watchFacility(model: Instance, plotId: number, animate: boolean)
 			queueAppear(entry, inst)
 		end)
 	)
-	refreshFacility(entry)
 end
 
 -- ── 프롬프트 ─────────────────────────────────────────────────────
@@ -1217,21 +1145,6 @@ local function onPlotDescendantAdded(inst: Instance, plotId: number)
 		if plotId == myPlotId then
 			refreshBoard()
 		end
-		return
-	end
-	local late = inst:IsA("BasePart") and inst.Name == Keys.GRADUATION_BELL
-	if not late then
-		return
-	end
-	-- 스트리밍으로 늦게 온 종 → 소속 시설 모델을 찾아 다시 붙인다
-	local node = inst.Parent
-	while node do
-		local entry = facilities[node :: any]
-		if entry then
-			refreshFacility(entry)
-			return
-		end
-		node = node.Parent
 	end
 end
 
@@ -1349,9 +1262,6 @@ local function refreshAll()
 	end
 	for _, entry in stars do
 		applyStar(entry)
-	end
-	for _, entry in facilities do
-		refreshFacility(entry)
 	end
 	for plotId, model in plotModels do
 		for _, inst in model:GetDescendants() do

@@ -1,13 +1,13 @@
 --!strict
 --[[
 	패널 컨트롤러. 기획서 §8.3 의 패널 4개와 꾸미기 시트를 코드로 그린다.
-	  도감(714×330) · 미션(568×300) · 설정(532×150) · 졸업 확인(전체 화면) · 꾸미기(780×340)
+	  도감(714×330) · 미션(568×300) · 설정(532×150) · 꾸미기(780×340)
 
 	  ★ 한 번에 하나만 연다. 열기 0.2s Back Out(0.9→1.0), 닫기 0.12s Quad In.
 	  ★ ScreenGui "Panels" DisplayOrder 5, IgnoreGuiInset. UIScale = clamp(세로/375, 0.9, 1.6).
 	  ★ X 버튼 56×56, 바깥 탭, 안드로이드 뒤로가기(ButtonB) 로 닫는다.
 	  ★ 프로필은 HudController.profile() / onProfile() 로만 읽는다(구현계획 §3.4).
-	  ★ 서버 호출은 Graduate / SetSetting / BuyDecor / ReturnDecor. 사고 돌려주는 판정은 서버가 한다.
+	  ★ 서버 호출은 SetSetting / BuyDecor / ReturnDecor. 사고 돌려주는 판정은 서버가 한다.
 	  ★ 꾸미기 시트: 위 줄 보관함(탭 = 놓기), 아래 줄 가게(탭 = 큰 확인 카드). 돈이 모자라면 ✓ 가 흐린 회색이다(글자 없음).
 	  ★ 도감 ViewportFrame 은 열 때 만들고 닫을 때 지운다(모바일 메모리).
 	  ★ 아이콘 이미지는 아직 없어 이모지·글자로 대신한다. -- TODO(통합): 아이콘 이미지
@@ -25,7 +25,7 @@ local Types = require(Shared.Types)
 local Remotes = require(Shared.Remotes)
 local Format = require(Shared.Format)
 local CharacterBuilder = require(Shared.CharacterBuilder)
-local EconomyConfig = require(Shared.Config.EconomyConfig)
+local FacilityConfig = require(Shared.Config.FacilityConfig)
 local StudentConfig = require(Shared.Config.StudentConfig)
 local MissionConfig = require(Shared.Config.MissionConfig)
 local DecorConfig = require(Shared.Config.DecorConfig)
@@ -43,7 +43,7 @@ type Profile = Types.Profile
 
 local PanelController = {}
 
-export type PanelName = "codex" | "missions" | "settings" | "graduate" | "decor"
+export type PanelName = "codex" | "missions" | "settings" | "decor"
 
 -- ── 상수 ──
 
@@ -57,12 +57,12 @@ local GAP = 12
 local RADIUS = 16
 local TEXT_MIN = 14
 local TEXT_MAX = 32
+local DESIGN_WIDTH = 812 -- 가로 기준 화면 폭. 패널이 이보다 넓은 화면을 가정하지 않는다
 
 local SIZES: { [string]: Vector2 } = {
 	codex = Vector2.new(714, 330),
 	missions = Vector2.new(568, 300),
 	settings = Vector2.new(532, 150), -- 토글 4개: 16 + 116×4 + 12×3 + 16
-	graduate = Vector2.new(812, 375), -- 전체 화면 안 내용 영역
 	decor = Vector2.new(780, 340), -- 812×375 안에 들어간다
 }
 
@@ -82,10 +82,6 @@ local FONT_MEDIUM = Enum.Font.GothamMedium
 -- 도감
 local CODEX_CELL = Vector2.new(96, 120)
 local CODEX_COLUMNS = 6
-
--- 졸업
-local HOLD_TIME = 1.5
-local HINT_TIME = 1.2 -- 초. 일찍 뗐을 때 「끝까지 꾹!」을 보여 주는 시간
 
 -- 꾸미기 시트(글보다 그림)
 local DECOR_GLYPH_TITLE = "🌷"
@@ -130,10 +126,10 @@ local generation = 0 -- 열 때마다 +1. 늦게 도착한 코루틴이 옛 패�
 
 local function responsiveScale(): number
 	local camera = Workspace.CurrentCamera
-	local size = if camera then camera.ViewportSize else Vector2.new(SIZES.graduate.X, DESIGN_HEIGHT)
+	local size = if camera then camera.ViewportSize else Vector2.new(DESIGN_WIDTH, DESIGN_HEIGHT)
 	local byHeight = math.clamp(size.Y / DESIGN_HEIGHT, SCALE_MIN, SCALE_MAX)
-	-- 세로 기준(§8.1)이되, 제일 넓은 패널(812)이 가로를 넘지 않게 막는다
-	return math.min(byHeight, size.X / SIZES.graduate.X)
+	-- 세로 기준(§8.1)이되, 기준 폭(812)이 가로를 넘지 않게 막는다
+	return math.min(byHeight, size.X / DESIGN_WIDTH)
 end
 
 local function tween(
@@ -411,55 +407,33 @@ local function destroyCurrent()
 	currentName = nil
 end
 
---- 패널 틀을 만들어 내용 영역을 돌려준다. fullscreen 이면 화면을 덮고 안에 812×375 내용 영역을 둔다
+--- 패널 틀을 만들어 내용 영역을 돌려준다
 local function openShell(name: PanelName, withClose: boolean): Frame
 	local g, b = ensureGui()
 	generation += 1
 	local size = SIZES[name]
-	local isFull = name == "graduate"
 
 	local shell = Instance.new("Frame")
 	shell.Name = name
-	shell.BackgroundColor3 = if isFull then DARK else PANEL_BG
-	shell.BackgroundTransparency = if isFull then 0.05 else PANEL_ALPHA
+	shell.BackgroundColor3 = PANEL_BG
+	shell.BackgroundTransparency = PANEL_ALPHA
 	shell.BorderSizePixel = 0
 	shell.Active = true -- 패널 안 탭이 바깥(backdrop) 으로 새지 않게
-	if isFull then
-		shell.AnchorPoint = Vector2.new(0.5, 0.5)
-		shell.Position = UDim2.fromScale(0.5, 0.5)
-		shell.Size = UDim2.fromScale(1, 1)
-	else
-		shell.AnchorPoint = Vector2.new(0.5, 0.5)
-		shell.Position = UDim2.fromScale(0.5, 0.5)
-		shell.Size = UDim2.fromOffset(size.X, size.Y)
-	end
-	if not isFull then
-		corner(shell, RADIUS)
-	end
+	shell.AnchorPoint = Vector2.new(0.5, 0.5)
+	shell.Position = UDim2.fromScale(0.5, 0.5)
+	shell.Size = UDim2.fromOffset(size.X, size.Y)
+	corner(shell, RADIUS)
 
-	local content: Frame = shell
-	local scaleHost: Instance = shell
-	if isFull then
-		content = frame(shell, "Content", UDim2.fromOffset(size.X, size.Y), UDim2.fromScale(0.5, 0.5))
-		content.AnchorPoint = Vector2.new(0.5, 0.5)
-		scaleHost = content
-	end
-
-	-- 반응형 배율 + 열기 팝을 하나의 UIScale 로. 전체 화면은 내용 영역만 배율을 먹는다
+	-- 반응형 배율 + 열기 팝을 하나의 UIScale 로
 	local base = responsiveScale()
 	local uiScale = Instance.new("UIScale")
 	uiScale.Scale = base * 0.9
-	uiScale.Parent = scaleHost
-	if isFull then
-		-- 껍데기(전체 화면)는 투명도로만 등장한다
-		shell.BackgroundTransparency = 1
-		tween(shell, OPEN_TIME, { BackgroundTransparency = 0.05 })
-	end
+	uiScale.Parent = shell
 	tween(uiScale, OPEN_TIME, { Scale = base }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 	if withClose then
 		local x =
-			button(content, "Close", "X", UDim2.fromOffset(X_SIZE, X_SIZE), UDim2.new(1, -6, 0, 6), SURFACE, WHITE, 28)
+			button(shell, "Close", "X", UDim2.fromOffset(X_SIZE, X_SIZE), UDim2.new(1, -6, 0, 6), SURFACE, WHITE, 28)
 		x.AnchorPoint = Vector2.new(1, 0)
 		x.ZIndex = 5
 		x.Activated:Connect(function()
@@ -469,16 +443,40 @@ local function openShell(name: PanelName, withClose: boolean): Frame
 
 	shell.Parent = g
 	b.BackgroundTransparency = 1
-	tween(b, OPEN_TIME, { BackgroundTransparency = if isFull then 0.2 else 0.5 })
+	tween(b, OPEN_TIME, { BackgroundTransparency = 0.5 })
 	g.Enabled = true
 
 	currentFrame = shell
 	currentScale = uiScale
 	currentName = name
-	return content
+	return shell
 end
 
 -- ── 도감 ──
+
+--- 받침이 있으면 「을」, 없으면 「를」. 한글이 아니면 「을」
+local function objectParticle(word: string): string
+	local last = utf8.codepoint(word, utf8.offset(word, -1) :: number)
+	if last >= 0xAC00 and last <= 0xD7A3 and (last - 0xAC00) % 28 == 0 then
+		return "를"
+	end
+	return "을"
+end
+
+--- 미보유 학생 칸 아래 힌트. 방 이름은 P3 에서 RoomConfig 로 바꾼다
+local function unlockHint(unlock: StudentConfig.Unlock): string
+	if unlock.kind == "facility" then
+		local facility = FacilityConfig.BY_ID[unlock.value :: string]
+		if facility then
+			return `{facility.name}{objectParticle(facility.name)} 지으면`
+		end
+	elseif unlock.kind == "room" then
+		return "방을 지으면"
+	elseif unlock.kind == "friend" then
+		return "친구 아이템을 사면"
+	end
+	return "?"
+end
 
 local function buildCodex(content: Frame)
 	local profile = profileOrNil()
@@ -536,7 +534,7 @@ local function buildCodex(content: Frame)
 		label(card, "Unknown", text, UDim2.new(1, 0, 0, 28), UDim2.new(0, 0, 1, -32), maxText, GREY, FONT_BOLD)
 	end
 
-	--- tab = "school"(학교 친구: 시설·졸업 해금) | "friend"(함께 오는 친구: 꾸미기로 만난다)
+	--- tab = "school"(학교 친구: 시설·방 해금) | "friend"(함께 오는 친구: 꾸미기로 만난다)
 	local function fill(tab: string)
 		tabGen += 1
 		local myTab = tabGen
@@ -582,20 +580,10 @@ local function buildCodex(content: Frame)
 						badge.TextXAlignment = Enum.TextXAlignment.Right
 					end
 					table.insert(views, { id = id, card = card })
-				elseif isFriend then
-					lockedCell(order, id, "꾸미기로 만나요", 14)
 				else
-					lockedCell(order, id, "?", 26)
+					lockedCell(order, id, unlockHint(row.unlock), 14)
 				end
 			end
-		end
-
-		if tab == "school" then
-			-- 예약석
-			local reserved = cell(order + 1, "Reserved")
-			stroke(reserved, GREY, 2)
-			silhouette(reserved, UDim2.new(1, -24, 0, 80), UDim2.fromOffset(12, 8), DARK)
-			label(reserved, "Soon", "곧 와요", UDim2.new(1, 0, 0, 28), UDim2.new(0, 0, 1, -32), 18, GREY)
 		end
 
 		-- 뷰포트는 프레임 뒤에 나눠 만든다. 닫히거나 탭이 바뀌면(세대 바뀜) 남은 건 안 만든다
@@ -782,122 +770,6 @@ local function buildSettings(content: Frame)
 	currentRefresh = refresh
 end
 
--- ── 졸업 확인(전체 화면) ──
-
-local function buildGraduate(content: Frame)
-	local profile = profileOrNil()
-	local graduations = if profile then profile.graduations else 0
-	local nextRound = graduations + 1
-
-	-- 세로 배치(내용 375): 모자 0~80 · 제목 84~124 · 두 칸 134~246 · 버튼 295~367. 겹치면 제목이 칸에 가린다
-	label(content, "Cap", "🎓", UDim2.fromOffset(96, 80), UDim2.fromScale(0.5, 0), 72).AnchorPoint =
-		Vector2.new(0.5, 0)
-	label(
-		content,
-		"Title",
-		`제 {nextRound}회 졸업식`,
-		UDim2.new(1, 0, 0, 40),
-		UDim2.fromOffset(0, 84),
-		32,
-		YELLOW,
-		FONT_BOLD
-	)
-
-	local function column(name: string, heading: string, x: number, color: Color3, lines: { string })
-		local col = frame(content, name, UDim2.fromOffset(300, 112), UDim2.fromOffset(x, 134), SURFACE)
-		corner(col, 14)
-		padding(col, 12, 8)
-		listLayout(col, Enum.FillDirection.Vertical, 2, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
-		local h = label(col, "Heading", heading, UDim2.new(1, 0, 0, 26), nil, 20, color, FONT_BOLD)
-		h.LayoutOrder = 0
-		h.TextXAlignment = Enum.TextXAlignment.Left
-		for i, text in lines do
-			local l = label(col, `Line{i}`, text, UDim2.new(1, 0, 0, 22), nil, 16, WHITE)
-			l.LayoutOrder = i
-			l.TextXAlignment = Enum.TextXAlignment.Left
-		end
-	end
-	local nextMult = Format.multiplier(1 + EconomyConfig.GRAD_STEP * nextRound)
-	column("Keep", "남아요", 96, GREEN, { "도감 · 꾸미기", "스티커판", `졸업 배율 {nextMult}` })
-	column("Reset", "새로 지어요", 416, YELLOW, { "시설 (전부 새로)", "용돈 0" })
-
-	local no =
-		button(content, "No", "아니요", UDim2.fromOffset(160, 56), UDim2.new(0.5, -90, 1, -8), SURFACE, WHITE, 24)
-	no.AnchorPoint = Vector2.new(1, 1)
-	no.Activated:Connect(function()
-		PanelController.close()
-	end)
-
-	local go = button(
-		content,
-		"Go",
-		"꾹 눌러 시작",
-		UDim2.fromOffset(260, 72),
-		UDim2.new(0.5, -70, 1, -8),
-		YELLOW,
-		DARK,
-		26
-	)
-	go.AnchorPoint = Vector2.new(0, 1)
-	local goPad = Instance.new("UIPadding")
-	goPad.PaddingRight = UDim.new(0, 64)
-	goPad.Parent = go
-	local ring, setRing = makeRing(go, 56, 5, DARK)
-	ring.AnchorPoint = Vector2.new(1, 0.5)
-	-- UIPadding 이 자식 자리도 줄이므로 오른쪽 여백만큼 되돌려야 링이 글자 오른쪽 빈칸에 선다
-	ring.Position = UDim2.new(1, goPad.PaddingRight.Offset - 8, 0.5, 0)
-	ring.ZIndex = 2
-
-	local holding = false
-	local heartbeat: RBXScriptConnection? = nil
-	local fired = false
-
-	local function stopHold()
-		local wasHolding = holding
-		holding = false
-		if heartbeat then
-			heartbeat:Disconnect()
-			heartbeat = nil
-		end
-		if fired or not wasHolding then
-			return
-		end
-		setRing(0)
-		-- 톡 누르고 떼면 아무 일도 없어 보인다. 끝까지 누르라고 잠깐 알려 준 뒤 원래 글자로 돌린다
-		go.Text = "끝까지 꾹!"
-		task.delay(HINT_TIME, function()
-			if not holding and not fired and go.Parent then
-				go.Text = "꾹 눌러 시작"
-			end
-		end)
-	end
-
-	local function startHold()
-		if holding or fired then
-			return
-		end
-		holding = true
-		go.Text = "졸업식 시작"
-		local t0 = os.clock()
-		heartbeat = RunService.Heartbeat:Connect(function()
-			local p = (os.clock() - t0) / HOLD_TIME
-			setRing(p)
-			if p >= 1 then
-				fired = true
-				stopHold()
-				Remotes.Graduate:FireServer()
-				SoundController.play("bell")
-				PanelController.close()
-			end
-		end)
-	end
-
-	go.MouseButton1Down:Connect(startHold)
-	go.MouseButton1Up:Connect(stopHold)
-	go.MouseLeave:Connect(stopHold)
-	table.insert(currentCleanup, stopHold)
-end
-
 -- ── 꾸미기 시트 ──
 
 --- 꾸미기 아이템 뷰포트. 모델을 비스듬히 위에서 본다
@@ -1006,8 +878,7 @@ local function buildDecor(content: Frame)
 	end
 
 	-- 줄마다 카드 참조. 코인만 바뀌면 링·어둡게만 다시 칠한다
-	local invKey = ""
-	local shopKey = ""
+	local invKey: string? = nil -- nil 이면 아직 안 그렸다
 	local invCards: { [string]: { card: TextButton, count: TextLabel } } = {}
 	local shopCards: { [string]: { card: TextButton, set: (number) -> (), dim: Frame } } = {}
 
@@ -1034,7 +905,7 @@ local function buildDecor(content: Frame)
 		if not (id and set and ok) then
 			return
 		end
-		local price = DecorConfig.priceOf(id, p.graduations)
+		local price = DecorConfig.priceOf(id)
 		local full = DecorConfig.heldCount(p.decorOwned, placedNow(), id) >= DecorConfig.MAX_OWNED
 		local can = p.coins >= price and not full
 		set(if price > 0 then p.coins / price else 1)
@@ -1092,7 +963,7 @@ local function buildDecor(content: Frame)
 			local price = label(
 				box,
 				"Price",
-				`💰{Format.coins(DecorConfig.priceOf(id, p.graduations))}`,
+				`💰{Format.coins(DecorConfig.priceOf(id))}`,
 				UDim2.fromOffset(190, 28),
 				UDim2.fromOffset(250, 24 + DECOR_CONFIRM_RING + 6),
 				22,
@@ -1132,7 +1003,7 @@ local function buildDecor(content: Frame)
 				closeConfirm()
 				return
 			end
-			local cost = DecorConfig.priceOf(id, now.graduations)
+			local cost = DecorConfig.priceOf(id)
 			local full = DecorConfig.heldCount(now.decorOwned, placedNow(), id) >= DecorConfig.MAX_OWNED
 			if now.coins < cost or full then
 				return -- 흐린 ✓ 는 눌러도 아무 일 없다
@@ -1215,12 +1086,12 @@ local function buildDecor(content: Frame)
 	end
 
 	--- 가게 줄(진열 대상, 선물 제외, 가격순). 탭 = 큰 확인 카드
-	local function buildShop(p: Profile)
+	local function buildShop()
 		clearRow(shop)
 		shopCards = {}
 		local rows: { DecorConfig.Item } = {}
 		for _, item in DecorConfig.LIST do
-			if DecorConfig.isShown(item, p.graduations) then
+			if DecorConfig.isShown(item) then
 				table.insert(rows, item)
 			end
 		end
@@ -1237,7 +1108,7 @@ local function buildDecor(content: Frame)
 			local price = label(
 				card,
 				"Price",
-				Format.coins(DecorConfig.priceOf(item.id, p.graduations)),
+				Format.coins(DecorConfig.priceOf(item.id)),
 				UDim2.new(1, -DECOR_SHOP_RING - 14, 0, 20),
 				UDim2.new(0, DECOR_SHOP_RING + 10, 1, -DECOR_SHOP_RING / 2 - 16),
 				16,
@@ -1270,7 +1141,7 @@ local function buildDecor(content: Frame)
 	end
 
 	local function refresh(p: Profile)
-		-- 보관함 아이디 목록 또는 진열 목록이 바뀔 때만 줄을 다시 만든다
+		-- 보관함 아이디 목록이 바뀔 때만 줄을 다시 만든다(진열 목록은 고정이다)
 		local inv: { string } = {}
 		for _, item in DecorConfig.LIST do
 			if (p.decorOwned[item.id] or 0) > 0 then
@@ -1278,21 +1149,19 @@ local function buildDecor(content: Frame)
 			end
 		end
 		local nextInv = table.concat(inv, ",")
-		local nextShop = tostring(p.graduations)
-		if nextInv ~= invKey or nextShop ~= shopKey then
-			-- 두 줄의 그림 작업이 같은 rowGen 을 쓰므로 하나라도 바뀌면 둘 다 새로 만든다
+		if nextInv ~= invKey then
+			-- 두 줄의 그림 작업이 같은 rowGen 을 쓰므로 둘 다 새로 만든다
 			invKey = nextInv
-			shopKey = nextShop
 			rowGen += 1
 			buildInventory(p)
-			buildShop(p)
+			buildShop()
 		end
 		for id, ui in invCards do
 			ui.count.Text = `×{p.decorOwned[id] or 0}`
 		end
 		local placed = placedNow() -- 카드마다 Decor 어트리뷰트를 다시 풀지 않게 한 번만
 		for id, ui in shopCards do
-			local cost = DecorConfig.priceOf(id, p.graduations)
+			local cost = DecorConfig.priceOf(id)
 			ui.set(if cost > 0 then p.coins / cost else 1)
 			ui.dim.Visible = DecorConfig.heldCount(p.decorOwned, placed, id) >= DecorConfig.MAX_OWNED
 		end
@@ -1327,9 +1196,6 @@ local BUILDERS: { [string]: (Frame, any) -> () } = {
 	end,
 	settings = function(c, _)
 		buildSettings(c)
-	end,
-	graduate = function(c, _)
-		buildGraduate(c)
 	end,
 	decor = function(c, _)
 		buildDecor(c)

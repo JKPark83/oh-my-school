@@ -60,7 +60,7 @@ end
 --- 부품 1개 구매. 돈은 호출자가 확인했다. 마지막 부품이면 시설 완공(수입·전학생은 완공 때만)
 local function buy(player: Player, profile: Types.Profile, nextPart: FacilityConfig.NextPart)
 	local row = nextPart.facility
-	local price = FacilityConfig.partPriceOf(row.id, nextPart.index, profile.graduations)
+	local price = FacilityConfig.partPriceOf(row.id, nextPart.index)
 	local done = nextPart.index >= nextPart.count
 	profile.coins -= price
 	-- 프로필을 먼저 바꾼다. buildPart 가 이 값으로 패드·실루엣·스티커를 갱신한다
@@ -95,7 +95,7 @@ local function buy(player: Player, profile: Types.Profile, nextPart: FacilityCon
 			Remotes.event(nil, "StudentJoined", { plot = plotId, studentId = studentId, walk = true })
 		end
 	end
-	-- 이미 데리고 있는 학생(2회차 이후)은 위에서 나타났다. 다시 주면 도감에 중복(×2)으로 잡힌다
+	-- 이미 데리고 있는 학생은 위에서 나타났다. 다시 주면 도감에 중복(×2)으로 잡힌다
 	if row.student and (profile.students[row.student] or 0) == 0 then
 		StudentService.grant(player, row.student, true)
 	end
@@ -111,9 +111,6 @@ local function tick()
 			continue
 		end
 		profile.stats.playSeconds += EconomyConfig.TICK
-		if PlotService.isLocked(player) then
-			continue
-		end
 		local income = EconomyConfig.incomePerSecond(profile) * EconomyConfig.TICK
 		if income > 0 then
 			addCoins(profile, income)
@@ -126,14 +123,14 @@ end
 local function padTick()
 	for _, player in Players:GetPlayers() do
 		local profile: Types.Profile? = DataService.get(player)
-		if not profile or PlotService.isLocked(player) or not PlotService.plotOf(player) then
+		if not profile or not PlotService.plotOf(player) then
 			continue
 		end
 		-- 틱당 부품 1개. nil 이면 14개 완공이라 살 것이 없다
 		local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
 		if nextPart then
 			local id = nextPart.facility.id
-			local price = FacilityConfig.partPriceOf(id, nextPart.index, profile.graduations)
+			local price = FacilityConfig.partPriceOf(id, nextPart.index)
 			if profile.coins >= price and PlotService.occupants(player)[id] then
 				buy(player, profile, nextPart)
 			end
@@ -174,7 +171,7 @@ end
 local function onSticker(player: Player, part: BasePart)
 	local plotId = PlotService.plotOf(player)
 	local profile: Types.Profile? = DataService.get(player)
-	if not plotId or not profile or PlotService.isLocked(player) then
+	if not plotId or not profile then
 		return
 	end
 	local folder = part.Parent
@@ -246,7 +243,7 @@ end
 
 local function onStar(player: Player, plotId: number, part: BasePart)
 	local profile: Types.Profile? = DataService.get(player)
-	if not profile or PlotService.isLocked(player) then
+	if not profile then
 		return
 	end
 	if PlotService.plotOf(player) == plotId or PlotService.ownerOf(plotId) == nil then

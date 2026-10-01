@@ -2,7 +2,7 @@
 --[[
 	전학생 지급. 기획서 §4·§11.5, 계획서 §3.2.
 	  grant  프로필 students[id] += 1 → Students 어트리뷰트 → 자리가 있으면 StudentJoined 전체 방송
-	전학생은 시설 완공(EconomyService)과 졸업 확정(GraduationService)으로만 온다.
+	전학생은 시설 완공(EconomyService)·방 완공(층 쌓기, P2)·친구 아이템(DecorService)으로 온다.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

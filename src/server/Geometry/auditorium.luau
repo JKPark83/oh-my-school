@@ -4,12 +4,12 @@
 	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 26개(바닥을 계단 구멍 때문에 3조각으로 나눠 한도 25 를 1 넘김), 전부 BuildKit.part.
 	  치수·위치는 FacilityConfig 행(center (0,18,-17.5) / size 50×18×35, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  바닥 판은 y=18 위에 얹히므로 방 바닥 높이 = 18 + FLOOR_T. 벽·지붕은 fade. 문은 남쪽(+Z) 폭 8 → 층계참 쪽.
-	  무대는 북쪽 끝(부지 로컬 z -32.5 근처). 무대 위 Part "GraduationBell"(금색 공) 을 HUD 가 이름으로 찾는다.
+	  무대는 북쪽 끝(부지 로컬 z -32.5 근처). 무대 위 금색 종(Bell)은 장식이다.
 	  좌석 S01…S25: 5줄 × 5 열, 모두 무대(-Z) 를 본다. 파트 25개 한도 때문에 의자 대신 줄마다 긴 벤치 하나(5개) 를 두고
 	  Attachment 만 25개 둔다. Attachment 위치 = 벤치 아래 바닥 중심(방 바닥 높이). 벤치는 층계참(x 5~14, z -16.5~-10.5 부근) 을
 	  피해 서쪽에 몰아 놓았다.
 	  Door = 남문 중심 바닥(LookVector 가 안쪽 -Z).
-	  부품 4개(PartIndex): (1) 바닥 3조각+벽 (2) 상인방(이름판)+지붕 (3) 무대·커튼·벤치 (4) 졸업 종·연단.
+	  부품 4개(PartIndex): (1) 바닥 3조각+벽 (2) 상인방(이름판)+지붕 (3) 무대·커튼·벤치 (4) 종·연단.
 	  Attachment 들은 BasePart 아래가 아니므로 CFrame 에 월드 CFrame 을 그대로 넣는다.
 ]]
 
@@ -210,7 +210,7 @@ function auditorium.build(plotCFrame: CFrame): Model
 		}
 	)
 
-	-- 커튼: 뒤 막(secondary) · 좌우 커튼(primary) · 상단 발(primary, "졸업식" 글자)
+	-- 커튼: 뒤 막(secondary) · 좌우 커튼(primary) · 상단 발(primary, "강당" 글자)
 	local curtainH = ceiling - stageTop
 	local curtainY = stageTop + curtainH / 2
 	part(
@@ -248,7 +248,7 @@ function auditorium.build(plotCFrame: CFrame): Model
 			collide = false,
 		}
 	)
-	BuildKit.surfaceText(valance, Enum.NormalId.Back, "졸업식", COLOR_BANNER, 1.6)
+	BuildKit.surfaceText(valance, Enum.NormalId.Back, "강당", COLOR_BANNER, 1.6)
 
 	-- 벤치 5줄 + 좌석 Attachment 25개. 모두 무대(-Z) 를 본다
 	local benchX = (SEAT_COLS[1] + SEAT_COLS[#SEAT_COLS]) / 2
@@ -268,7 +268,7 @@ function auditorium.build(plotCFrame: CFrame): Model
 		end
 	end
 
-	-- 부품 4. 졸업 종: 기둥 둘 + 가로대 + 금색 공. 무대 뒤쪽 가운데(§3.6 (0, -32.5))
+	-- 부품 4. 종(장식): 기둥 둘 + 가로대 + 금색 공. 무대 뒤쪽 가운데(§3.6 (0, -32.5))
 	partIndex = 4
 	local bellZ = STAGE_Z
 	local frameH = 5
@@ -290,7 +290,7 @@ function auditorium.build(plotCFrame: CFrame): Model
 	})
 	part(
 		model,
-		Keys.GRADUATION_BELL,
+		"Bell",
 		Vector3.new(BELL_R * 2, BELL_R * 2, BELL_R * 2),
 		at(plotCFrame, cx, stageTop + frameH - 1.2, bellZ),
 		{

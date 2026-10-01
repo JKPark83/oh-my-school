@@ -1,12 +1,12 @@
 --!strict
 --[[
 	W7·W9 아이 테스트 로그. 기획서 §13.1 7·8주차·§13.3·§2.4, 개선계획 §5 W9. 저장하지 않는 세션 표와 서버 print("[Metrics] …") 뿐이다.
-	세션은 프로필 로드·부지 할당 직후(begin)부터 퇴장(finish)까지다. 졸업해도 끊기지 않는다.
+	세션은 프로필 로드·부지 할당 직후(begin)부터 퇴장(finish)까지다.
 	  회수율        주운 스티커 / 기회. 기회 = Σ(켜진 스폰 수 × 초) / RESPAWN.
 	                sim-final.py COLLECT_RATE 와 같은 뜻이다(스폰마다 다시 뜨자마자 주우면 100%).
 	                "뜬 횟수"로 나누지 않는다. 안 주운 스티커는 다시 뜨지 않아 분모가 분자를 따라가기 때문이다.
 	  5분 완료      5:00 에 부품·시설·미션·선물·꾸미기를 찍고 §2.4·개선계획 §13.1 기준으로 판정(꾸미기는 옛 뽑기 자리)
-	  30분 시설     30:00 의 시설 수 + 누적 졸업. 이번 세션에 졸업했으면 14/14 를 이미 지난 것으로 본다
+	  30분 시설     30:00 의 시설 수
 	  패드 3초 미만 활성 패드 Touched 로 관찰을 시작해 0.25초마다 구매 판정과 같은 기준(PlotService.standsOn)으로 본다.
 	                위에 올라섰다가 3초 안에 내려왔고 그 사이 구매가 없으면 +1. 그중 내려올 때 살 돈이 있던 횟수도 센다
 	미션·선물은 이번 세션에서 센 값, 부품·시설 수는 그 순간의 프로필 값이다.
@@ -49,7 +49,6 @@ type Session = {
 	spawnSeconds: number, -- Σ 스폰 수 × 초
 	missions: number,
 	gifts: number, -- 이번 세션에 연 선물판 선물
-	graduations: number,
 	passedFive: boolean?, -- nil = 5분 전
 	atThirty: string?, -- nil = 30분 전
 	shortStays: number,
@@ -149,7 +148,7 @@ local function canAfford(player: Player): boolean
 	if nextPart == nil then
 		return false
 	end
-	return profile.coins >= FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index, profile.graduations)
+	return profile.coins >= FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index)
 end
 
 local function snapshotFive(player: Player, session: Session)
@@ -180,14 +179,9 @@ local function snapshotThirty(player: Player, session: Session)
 		return
 	end
 	local facilities = FacilityConfig.count(profile.facilities)
-	local passed = facilities >= FacilityConfig.COUNT or session.graduations > 0
-	local suffix = if session.graduations > 0 then `(졸업 {session.graduations}회)` else ""
-	session.atThirty = `{facilities}/{FacilityConfig.COUNT}{suffix}`
-	local grads = `누적 졸업 {profile.graduations}회(이번 세션 {session.graduations})`
-	log(
-		player,
-		`30분 · 시설 {facilities}/{FacilityConfig.COUNT} · {grads} → {verdict(passed)} · {kind(session)}`
-	)
+	local passed = facilities >= FacilityConfig.COUNT
+	session.atThirty = `{facilities}/{FacilityConfig.COUNT}`
+	log(player, `30분 · 시설 {facilities}/{FacilityConfig.COUNT} → {verdict(passed)} · {kind(session)}`)
 end
 
 --- 패드 위에 있는 동안만 돈다. 세션이 바뀌거나 내려오면 끝
@@ -238,14 +232,13 @@ function Metrics.begin(player: Player)
 	local parts = FacilityConfig.partsBuilt(profile.facilities, profile.buildParts)
 	local session: Session = {
 		startedAt = now,
-		isNew = profile.graduations == 0 and parts == 0,
+		isNew = parts == 0,
 		collected = 0,
 		spawns = EconomyConfig.spawnCount(profile.facilities, profile.buildParts),
 		spawnSince = now,
 		spawnSeconds = 0,
 		missions = 0,
 		gifts = 0,
-		graduations = 0,
 		passedFive = nil,
 		atThirty = nil,
 		shortStays = 0,
@@ -270,8 +263,7 @@ function Metrics.begin(player: Player)
 	if session.isNew then
 		log(player, "세션 시작 · 새 계정")
 	else
-		local state =
-			`졸업 {profile.graduations} · 시설 {facilities}/{FacilityConfig.COUNT} · 누적 선물 {profile.giftIndex}`
+		local state = `시설 {facilities}/{FacilityConfig.COUNT} · 누적 선물 {profile.giftIndex}`
 		log(player, `세션 시작 · 기존 계정({state})`)
 	end
 end
@@ -389,18 +381,6 @@ function Metrics.missionDone(player: Player)
 	if session then
 		session.missions += 1
 	end
-end
-
---- 졸업. 시설이 비어 스폰도 0 이 된다(철거까지 8초는 잠금이라 어차피 못 줍는다)
-function Metrics.graduated(player: Player)
-	local session = sessions[player]
-	if not session then
-		return
-	end
-	session.graduations += 1
-	setSpawns(session, 0)
-	-- 철거로 꺼진 스폰의 기록을 버린다. 다시 지어 새로 켜진 스폰은 세지 않고 다시 뜰 때(stickerSpawned)부터 센다
-	table.clear(session.stickerSince)
 end
 
 --- 꾸미기 1개 배치(DecorService place 성공. 옮기기는 안 센다)

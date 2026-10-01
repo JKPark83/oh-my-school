@@ -3,7 +3,7 @@
 	사람 모델 생성기. 학생 NPC(클라이언트 렌더)와 장식 선생님이 같은 함수를 쓴다. 기획서 §10.
 
 	Humanoid 를 넣지 않는다. 앵커된 MeshPart 조립체다.
-	  - 학생 24명 × 12부지에 Humanoid 를 달면 서버든 클라든 버틸 수 없다.
+	  - 학생 28명 × 12부지에 Humanoid 를 달면 서버든 클라든 버틸 수 없다.
 	  - 위치는 렌더 컨트롤러가 PivotTo/BulkMoveTo 로 직접 옮긴다.
 
 	★ 몸은 CharacterAssets 의 메시(AI 생성, 계정에 업로드됨)다.
@@ -304,7 +304,7 @@ function CharacterBuilder.studentConfig(studentId: string): PersonConfig
 		scale = if row.tier == "전설" then CharacterBuilder.LEGEND_SCALE else 1,
 		sitting = true,
 		collide = false,
-		shadow = false, -- 24명 × 4부지 그림자는 모바일에서 그대로 프레임이 된다
+		shadow = false, -- 28명 × 4부지 그림자는 모바일에서 그대로 프레임이 된다
 		tint = row.tint,
 		headScale = CharacterBuilder.STUDENT_HEAD_SCALE,
 	}

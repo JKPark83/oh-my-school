@@ -66,6 +66,12 @@ PlotLayout.AUDITORIUM_SEAT_ROWS = { -23, -20, -17, -14, -11 }
 PlotLayout.AUDITORIUM_BENCH_W = 12.4
 PlotLayout.AUDITORIUM_BENCH_D = 1.6
 
+-- ── 층 쌓기(개선계획 2026-10-01 §5.1) ─────────────────────────────
+-- n층 바닥 윗면 y = TOWER_BASE_Y + (n-3) × FLOOR_STEP
+PlotLayout.TOWER_BASE_Y = 37.2 -- 강당 지붕 윗면(바닥 18 + 바닥판 0.2 + 벽 18 + 지붕 1) = 3층 바닥
+PlotLayout.FLOOR_STEP = 19
+PlotLayout.TOWER_FOOTPRINT = { x0 = -20, x1 = 20, z0 = -35, z1 = -5 } -- 40×30
+
 -- ── 스티커(§3.2 #4·#5·#10) ───────────────────────────────────────
 PlotLayout.MIN_GAP = 8 -- 다른 활성 스티커와 최소 거리
 PlotLayout.AVOID_OWNER = 10 -- 주인에게서 최소 거리

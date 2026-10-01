@@ -3,7 +3,7 @@
 	플레이어 프로필. ProfileStore 위에 얇게 얹었다. 기획서 §11.6.
 	  - 프로필 형태는 TEMPLATE 하나뿐이다. 필드를 추가하면 Reconcile 이 채운다.
 	  - 형태가 바뀌면 SCHEMA_VERSION 을 올리고 MIGRATIONS[이전 버전] 에 변환을 적는다.
-	  - 저장 시점: 졸업·미션 완료·퇴장은 save(), 구매·스티커는 saveDebounced(player, 30).
+	  - 저장 시점: 미션 완료·퇴장은 save(), 구매·스티커는 saveDebounced(player, 30).
 	  - ProfileSync: markDirty() 로 예약하면 1초 틱이 모아서 보낸다(≤1Hz, seq 단조 증가). syncNow() 는 즉시.
 	    decorPlaced 는 빼고 보낸다. 40개면 1.6KB 라 2KB 예산을 넘고, 클라는 PlotState Decor 어트리뷰트로 읽는다.
 	Studio 에서는 "_Dev" 스토어 + Mock 이다. 실제 DataStore 를 쓰려면
@@ -20,33 +20,39 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Types = require(ReplicatedStorage.Shared.Types)
 local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
+local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local DecorGrid = require(ReplicatedStorage.Shared.DecorGrid)
 local Migrations = require(script.Parent.Parent.Migrations)
 
 local DataService = {}
 
-local STORE_NAME = "PrincipalProfile"
-local SCHEMA_VERSION = 3
+-- 2026-10-01 졸업 폐기로 새 스토어에서 버전 1 부터 다시 센다(옛 데이터는 옮기지 않는다)
+local STORE_NAME = "PrincipalSchool"
+local SCHEMA_VERSION = 1
 local SYNC_INTERVAL = 1
 
--- 색 바꾸기 필드 두 개를 지우며 버전을 올리지 않았다. 실 데이터가 없고 Reconcile 은 남는 키를 건드리지 않는다
 local TEMPLATE: Types.Profile = {
 	version = SCHEMA_VERSION,
-	coins = 10,
+	coins = EconomyConfig.START_COINS,
 	stickerBoard = 0,
 	giftIndex = 0,
-	graduations = 0,
 	facilities = {},
-	buildParts = 0, -- 필드가 없는 옛 프로필은 Reconcile 이 0 으로 채운다
+	buildParts = 0,
 	students = {},
 	missions = { day = 0, stickers = 0, built = 0, chair = false, done = { false, false, false } },
-	settings = { shake = true, sfx = true, music = true, haptic = true }, -- music 이 없는 옛 프로필은 Reconcile 이 true 로 채운다
+	settings = { shake = true, sfx = true, music = true, haptic = true },
 	stats = { totalCoins = 0, totalStickers = 0, playSeconds = 0 },
 	-- 빈 표로 둔다. 중첩 키를 두면 Reconcile 이 0 이 되어 지워진 키를 로드마다 다시 채운다(ProfileStore ReconcileTable)
 	decorOwned = {},
 	decorPlaced = {},
 	decorPaid = {},
 	decorStarter = false, -- load 가 false 면 튜토리얼 화분을 넣고 true 로 바꾼다
+	-- 층 쌓기(개선계획 2026-10-01 §2.1). 쓰는 곳은 P2
+	floors = {},
+	rooftop = {},
+	towerRoom = "",
+	towerParts = 0,
+	likes = 0,
 }
 
 -- [이전 버전] = 그 버전의 데이터를 다음 버전으로 바꾸는 함수. version 증가는 루프가 한다. 규칙은 Migrations.luau 머리말

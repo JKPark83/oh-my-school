@@ -186,9 +186,10 @@ local dispatch: { [string]: { Handler } } = {
 			call(HudController, "HudController", "refresh")
 		end,
 	},
-	Graduated = {
+	-- 층 완공(전원에게 온다. 축하 연출은 주인 화면만, 개선계획 §5.5). 서버는 P2 부터 보낸다
+	FloorBuilt = {
 		function(payload)
-			call(FeedbackController, "FeedbackController", "play", "graduated", payload)
+			call(FeedbackController, "FeedbackController", "play", "floorBuilt", payload)
 		end,
 	},
 	StickerCollected = {

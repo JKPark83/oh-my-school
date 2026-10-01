@@ -5,7 +5,7 @@
 	  setMuted / setEnabled / isMuted   SoundGroup "Game" 의 Volume 하나로 끈다.
 	  setMusicEnabled   배경음(SoundGroup "Music") 켜기·끄기. 끄면 멈춘 자리에서 다시 이어 튼다.
 	복도 웅성거림은 Start() 에서 항상 작게(0.08) 깔아 둔다.
-	배경음은 SoundConfig.MUSIC.tracks 를 차례로 돌린다. duck 효과음(졸업·팡파르)이 울리는 동안 줄인다.
+	배경음은 SoundConfig.MUSIC.tracks 를 차례로 돌린다. duck 효과음(팡파르 등)이 울리는 동안 줄인다.
 
 	★ 키 하나에 Sound 하나(풀). 같은 키가 겹쳐 울려야 하는 경우(콤보 연타)는 짧은 소리라
 	  다시 Play() 로 처음부터 재생해도 티가 안 난다. 인스턴스를 매번 만들지 않는다.

@@ -1,7 +1,7 @@
 --!nonstrict
 --[[
 	부지 12개 + 광장. 기획서 §7.1·§7.5·§11.4, 계획서 §3.2·§3.5.
-	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 8개)를 만든다.
+	  - 부팅 때 Plaza 와 PlotShell 12개를 짓고 ReplicatedStorage.PlotState 폴더(어트리뷰트 12개)를 만든다.
 	  - 접속 순서로 번호가 가장 작은 빈 부지를 준다. 나가면 즉시 비운다.
 	  - 시설 모델은 buildPart 가 부품 단위로 넣는다(개선계획 §3.4). Geometry/<id>.build 로 전체를 임시로 짓고
 	    PartIndex == k 인 파트만 실제 모델로 옮긴다. 어트리뷰트 FacilityId/Parts/BuiltAt, 마지막 부품이면 Built.
@@ -61,7 +61,6 @@ local plotModels: { Model } = {}
 local stateFolders: { Folder } = {}
 local owners: { [number]: Player } = {}
 local plotOf: { [Player]: number } = {}
-local locked: { [Player]: boolean } = {}
 local characterConns: { [Player]: RBXScriptConnection } = {}
 local stickerRngs: { [number]: Random } = {} -- 부지마다 스티커 자리 추첨용 하나
 
@@ -160,11 +159,16 @@ local function resetState(plotId: number)
 	local folder = stateFolders[plotId]
 	folder:SetAttribute(Keys.ATTR_OWNER_ID, 0)
 	folder:SetAttribute(Keys.ATTR_OWNER_NAME, "")
-	folder:SetAttribute(Keys.ATTR_GRADUATIONS, 0)
 	folder:SetAttribute(Keys.ATTR_FACILITIES, "")
 	folder:SetAttribute(Keys.ATTR_STUDENTS, "")
 	folder:SetAttribute(Keys.ATTR_INCOME, 0)
 	folder:SetAttribute(Keys.ATTR_DECOR, "")
+	folder:SetAttribute(Keys.ATTR_FLOORS, "")
+	folder:SetAttribute(Keys.ATTR_ROOFTOP, "")
+	folder:SetAttribute(Keys.ATTR_TOWER_ROOM, "")
+	folder:SetAttribute(Keys.ATTR_TOWER_PARTS, 0)
+	folder:SetAttribute(Keys.ATTR_LIKES, 0)
+	folder:SetAttribute(Keys.ATTR_RANK, 0)
 	setGateSign(plotId, "")
 end
 
@@ -583,7 +587,6 @@ function PlotService.assign(player: Player): number?
 	end
 	owners[plotId] = player
 	plotOf[player] = plotId
-	locked[player] = false
 	player:SetAttribute(Keys.ATTR_PLOT, plotId)
 
 	local spawn = plotModels[plotId]:FindFirstChild(Keys.SPAWN)
@@ -631,7 +634,6 @@ function PlotService.release(player: Player)
 		characterConns[player] = nil
 	end
 	plotOf[player] = nil
-	locked[player] = nil
 	if not plotId then
 		return
 	end
@@ -668,26 +670,32 @@ function PlotService.state(plotId: number): Folder
 	return stateFolders[plotId]
 end
 
---- 프로필 → PlotState 어트리뷰트 8개 + 교문 현판. 꾸미기(Decor)는 졸업과 상관없어 DecorService 가 잠금 중에도 따로 쓴다
+--- 프로필 → PlotState 어트리뷰트 + 교문 현판. Rank 는 순위 계산(P4)이 따로 쓴다
 function PlotService.syncAttributes(player: Player)
 	local plotId = plotOf[player]
 	local profile: Types.Profile? = DataService.get(player)
 	if not plotId or not profile then
 		return
 	end
-	-- 졸업 잠금 동안은 그대로 둔다. 클라 졸업식이 지금 학생으로 강당을 채우기 때문이다.
-	-- 8.0초 철거(GraduationService.finish)가 잠금을 푼 뒤 한 번에 바꾼다(§6.1)
-	if locked[player] then
-		return
+	local rooftop = {}
+	for id, built in profile.rooftop do
+		if built then
+			table.insert(rooftop, id)
+		end
 	end
+	table.sort(rooftop)
 	local folder = stateFolders[plotId]
 	folder:SetAttribute(Keys.ATTR_OWNER_ID, player.UserId)
 	folder:SetAttribute(Keys.ATTR_OWNER_NAME, player.DisplayName)
-	folder:SetAttribute(Keys.ATTR_GRADUATIONS, profile.graduations)
 	folder:SetAttribute(Keys.ATTR_FACILITIES, FacilityConfig.toCsv(profile.facilities))
 	folder:SetAttribute(Keys.ATTR_STUDENTS, StudentConfig.toCsv(profile.students))
 	folder:SetAttribute(Keys.ATTR_INCOME, math.floor(EconomyConfig.incomePerSecond(profile)))
 	folder:SetAttribute(Keys.ATTR_DECOR, DecorCodec.encode(profile.decorPlaced))
+	folder:SetAttribute(Keys.ATTR_FLOORS, table.concat(profile.floors, ","))
+	folder:SetAttribute(Keys.ATTR_ROOFTOP, table.concat(rooftop, ","))
+	folder:SetAttribute(Keys.ATTR_TOWER_ROOM, profile.towerRoom)
+	folder:SetAttribute(Keys.ATTR_TOWER_PARTS, profile.towerParts)
+	folder:SetAttribute(Keys.ATTR_LIKES, profile.likes)
 	setGateSign(plotId, player.DisplayName)
 end
 
@@ -715,22 +723,6 @@ function PlotService.refreshWorld(player: Player)
 	PlotService.syncAttributes(player)
 end
 
---- 졸업: 시설 모델 전부 제거, 스폰 0(책상 첫 부품을 다시 사면 3), 실루엣. 프로필(facilities·buildParts)은 이미 비워져 있다
-function PlotService.teardown(player: Player)
-	local plotId = plotOf[player]
-	local profile = DataService.get(player)
-	if not plotId then
-		return
-	end
-	removeFacilities(plotId)
-	if profile then
-		refreshWorld(plotId, profile.facilities, profile.buildParts)
-	else
-		refreshWorld(plotId, {}, 0)
-	end
-	PlotService.syncAttributes(player)
-end
-
 --- 자기 부지 스폰으로 옮긴다. 도착지 스트리밍을 기다리므로 멈춘다(호출자가 멈추면 안 되면 task.spawn)
 function PlotService.goHome(player: Player)
 	local plotId = plotOf[player]
@@ -746,7 +738,7 @@ end
 --[[
 	서버 순간이동 공통 경로(개선계획 §3.6 #1). cf 위 4스터드로 옮기고 Teleported 를 쏜다.
 	waitStream 이 false 가 아니면 도착지 스트리밍을 기다리므로 멈춘다(호출자가 멈추면 안 되면 task.spawn).
-	false 면 기다리지 않고 바로 옮긴다(졸업 대피처럼 즉시 옮겨야 할 때).
+	false 면 기다리지 않고 바로 옮긴다(즉시 옮겨야 할 때).
 ]]
 function PlotService.teleport(player: Player, cf: CFrame, waitStream: boolean?)
 	local character = player.Character
@@ -762,16 +754,6 @@ function PlotService.teleport(player: Player, cf: CFrame, waitStream: boolean?)
 	end
 	character:PivotTo(cf + Vector3.new(0, 4, 0))
 	teleported:Fire(player)
-end
-
-function PlotService.lock(player: Player, isLocked: boolean)
-	if plotOf[player] then
-		locked[player] = isLocked
-	end
-end
-
-function PlotService.isLocked(player: Player): boolean
-	return locked[player] == true
 end
 
 --- HRP 가 패드 위에 있나(수평 PAD_RADIUS, 높이 -1 ~ PAD_HEIGHT)

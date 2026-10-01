@@ -42,8 +42,6 @@ local DEFS: { [string]: SoundDef } = {
 	pad = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.4, speed = 1.4, looped = false },
 	-- 전학생 도착
 	arrive = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.7, speed = 1.45, looped = false },
-	-- 종(졸업식·수업 시작). 옛 bell 음원을 낮게
-	bell = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.7, speed = 0.7, looped = false },
 	-- 꾸미기가 겹쳐 옆 칸으로 밀림·놓을 수 없는 칸(부정 소리 대신 작고 가벼운 톡). 짧은 핑을 빠르게(≤0.3초)
 	nudge = { id = "rbxasset://sounds/electronicpingshort.wav", volume = 0.3, speed = 1.8, looped = false },
 	-- 복도 웅성거림 배경음(루프). 항상 아주 작게 깔린다
@@ -56,8 +54,8 @@ local DEFS: { [string]: SoundDef } = {
 	fanfare = { id = "rbxassetid://1839997916", volume = 0.7, speed = 1, looped = false, duck = true },
 	-- 전설 등급. APM "Clock Tower (sting)"(반짝이는 첼레스타) 5.4초
 	legend = { id = "rbxassetid://9043507891", volume = 0.8, speed = 1, looped = false, duck = true },
-	-- 졸업식. APM "That Summer (sting)" 5.5초
-	graduation = { id = "rbxassetid://9042730932", volume = 0.8, speed = 1, looped = false, duck = true },
+	-- 층 완공 축하(P4). APM "That Summer (sting)" 5.5초
+	celebrate = { id = "rbxassetid://9042730932", volume = 0.8, speed = 1, looped = false, duck = true },
 	-- 콤보. speed 는 기준값이고 호출 쪽 pitch 로 단계마다 올린다. PSE "Synth Sparkle Tone High Pitch Bell Tone Ding 3" 1.1초
 	combo = { id = "rbxassetid://9126073064", volume = 0.5, speed = 1, looped = false },
 	-- 선물 받음(선물판 40칸·미션 완료). APM "Correct Answer 2"(윤기 있는 신스) 4.6초

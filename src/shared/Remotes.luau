@@ -1,6 +1,6 @@
 --!nonstrict
 --[[
-	RemoteEvent 11개(클라→서버 9 + 서버→클라 2). 기획서 §11.5.
+	RemoteEvent 13개(클라→서버 11 + 서버→클라 2). 기획서 §11.5, 개선계획(2026-10-01) §2.3.
 	  서버: Remotes.init() 을 부팅 첫 줄에서 부른다. 폴더와 이벤트를 만든다.
 	  클라: Remotes.wait() 가 30초까지 기다린다. 못 찾으면 warn 하고 다시 기다린다(assert 없음).
 	  이후 Remotes.GoHome 처럼 이름으로 꺼내 쓴다.
@@ -15,7 +15,6 @@ local WAIT_TIMEOUT = 30
 
 local NAMES = {
 	-- 클라 → 서버
-	"Graduate", -- ()
 	"SetSetting", -- (key: "shake"|"sfx"|"music"|"haptic", value: boolean)
 	"GoHome", -- ()
 	"BuyDecor", -- (itemId: string)
@@ -24,6 +23,9 @@ local NAMES = {
 	"StoreDecor", -- (slot)
 	"ReturnDecor", -- (itemId: string). 보관함 1개를 산 값으로 돌려받는다(무료로 받은 것은 0)
 	"UiMark", -- (key: "decorTap"). W9 지표용 UI 표시. Metrics 가 받는다
+	"ChooseRoom", -- (roomId: string). 층 쌓기 방 고르기
+	"RideElevator", -- (plotId: number, floor: number)
+	"Like", -- (plotId: number). 「멋져요」
 	-- 서버 → 클라
 	"ProfileSync", -- { seq, profile }
 	"GameEvent", -- { kind, ... }
@@ -93,7 +95,7 @@ function Remotes.event(player: Player?, kind: string, payload: { [string]: any }
 end
 
 --- 서버 전용. Deny 이벤트 단축
-function Remotes.deny(player: Player, reason: "coins" | "cooldown" | "owner" | "cell" | "limit" | "owned" | "locked")
+function Remotes.deny(player: Player, reason: "coins" | "cooldown" | "owner" | "cell" | "limit" | "owned")
 	Remotes.event(player, "Deny", { reason = reason })
 end
 

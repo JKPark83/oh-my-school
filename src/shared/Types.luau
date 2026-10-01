@@ -7,7 +7,7 @@
 local Types = {}
 
 export type FacilityId = string -- "desk" … "auditorium"
-export type StudentId = string -- "s01" … "s24"
+export type StudentId = string -- "s01" … "s28"
 export type PlotId = number -- 1 … 12
 export type Tier = "평범" | "반장" | "전교1등" | "전설"
 
@@ -45,7 +45,6 @@ export type Profile = {
 	coins: number,
 	stickerBoard: number, -- 0 … 39
 	giftIndex: number, -- 받은 선물 수
-	graduations: number,
 	facilities: { [FacilityId]: boolean },
 	buildParts: number, -- 다음 시설에 이미 산 부품 수(0..부품 수-1). 시설이 완공되면 0
 	students: { [StudentId]: number }, -- 보유 수(중복 포함). 0 이면 키 없음
@@ -56,10 +55,16 @@ export type Profile = {
 	decorPlaced: { DecorPlacement },
 	decorPaid: { [string]: { number } }, -- 아이템 id → 산 값 스택(돌려주기는 맨 뒤 값). 비면 키 없음. 무료로 받은 것은 없다
 	decorStarter: boolean, -- 튜토리얼 화분을 받았는지(한 번만 준다)
+	-- 층 쌓기(개선계획 2026-10-01 §2.1)
+	floors: { string }, -- 완공한 층의 방 id. floors[i] = (i+2)층
+	rooftop: { [string]: boolean }, -- 완공한 옥상 방(garden·observatory)
+	towerRoom: string, -- 지금 짓는 방 id. "" = 아직 안 골랐다
+	towerParts: number, -- 지금 짓는 방에 산 부품 수(0..3). 완공되면 0
+	likes: number, -- 받은 「멋져요」 수
 }
 
 export type Seat = {
-	facilityId: FacilityId,
+	facilityId: FacilityId, -- 시설 id 또는 방 id(둘은 겹치지 않는다)
 	index: number, -- Seats/S0n 의 n
 }
 
@@ -68,7 +73,6 @@ export type GameEventKind =
 	| "FacilityBuilt"
 	| "StudentJoined"
 	| "MissionDone"
-	| "Graduated"
 	| "StickerCollected"
 	| "GiftOpened"
 	| "Deny"
@@ -76,6 +80,11 @@ export type GameEventKind =
 	| "DecorStored"
 	| "DecorBought"
 	| "DecorReturned"
+	| "RoomChosen" -- { plot, room }. 주인
+	| "FloorPart" -- { plot, room, partIndex, floor }. floor = 층 번호, 옥상 방이면 0. 전원
+	| "FloorBuilt" -- { plot, room, floor, floors }. 전원(연출은 주인 화면만)
+	| "Liked" -- { plot, name }. name = 보낸 사람 DisplayName. 주인
+	| "LikeSent" -- { plot }. 보낸 사람
 
 -- 선물판 40칸이 차서 선물 1개를 받음. 본인에게만
 export type GiftOpened = {
@@ -112,7 +121,7 @@ export type DecorReturned = {
 	coins: number, -- 돌려받은 코인
 }
 
-export type DenyReason = "coins" | "cooldown" | "owner" | "cell" | "limit" | "owned" | "locked"
+export type DenyReason = "coins" | "cooldown" | "owner" | "cell" | "limit" | "owned"
 
 export type SettingKey = "shake" | "sfx" | "music" | "haptic"
 

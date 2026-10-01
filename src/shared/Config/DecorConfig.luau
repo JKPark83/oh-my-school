@@ -1,9 +1,10 @@
 --!strict
 --[[
 	꾸미기 아이템 27개. 개선계획 §3.5 #3·#5, §7 질문 7·9.
-	  일반 12(상점, 처음부터) · 선물 6(상점에 없음. 선물판 순번으로만 받는다) · 친구 9(사면 그 학생이 함께 온다)
-	가격(price)은 1회차 기준이고 docs/sim/sim-parts.py 의 DECOR_PRICES 와 같아야 한다(check-config.py 가 대조).
-	졸업 N회면 priceOf 가 × PRICE_SCALE^N 한다. 가격 계산은 서버가 한다(클라는 무엇을 살지만 보낸다).
+	  일반 18(상점, 처음부터) · 선물 6(상점에 없음. 선물판 순번으로만 받는다) · 친구 3(사면 그 학생이 함께 온다)
+	  2026-10-01 졸업 폐기로 졸업 횟수로 열리던 친구 아이템 6개는 학생 없는 일반 아이템이 됐다.
+	가격(price)은 docs/sim/sim-parts.py 의 DECOR_PRICES 와 같아야 한다(check-config.py 가 대조).
+	가격 계산은 서버가 한다(클라는 무엇을 살지만 보낸다).
 
 	모양(parts)은 클라가 DecorBuilder 로 그리는 로컬 파트다. 서버 파트는 0 이다.
 	  offset 은 아이템 발자국(w×d 칸) 가운데 · 바닥 윗면 y0 기준 파트 중심. rot 은 이 가운데를 축으로 돈다.
@@ -11,7 +12,6 @@
 	  아이템당 6개 이하(질문 9: 배치 40 × 6 = 240 클라 파트 상한). 빨강 계열 색은 쓰지 않는다(기획서 §12.2).
 ]]
 
-local FacilityConfig = require(script.Parent.FacilityConfig)
 local PlotLayout = require(script.Parent.Parent.PlotLayout)
 local StudentConfig = require(script.Parent.StudentConfig)
 local Types = require(script.Parent.Parent.Types)
@@ -33,8 +33,7 @@ export type Item = {
 	id: string, -- 영문 ≤10자. DecorCodec 은 id 대신 LIST 순번을 쓴다
 	name: string, -- 물건 이름 ≤6자
 	kind: Kind,
-	price: number, -- 1회차 기준. gift 는 0(상점에 없음)
-	unlock: number, -- 이 졸업 횟수부터 상점 진열. general·gift 는 0
+	price: number, -- gift 는 0(상점에 없음)
 	student: string?, -- friend 만. 사면 이 학생이 온다
 	w: number, -- x 칸 수(rot 0·2). rot 1·3 이면 d 와 바뀐다
 	d: number, -- z 칸 수
@@ -134,8 +133,7 @@ local LIST: { Item } = {
 		id = "planter",
 		name = "화분",
 		kind = "general",
-		price = 2500,
-		unlock = 0,
+		price = 3300,
 		w = 1,
 		d = 1,
 		parts = {
@@ -147,8 +145,7 @@ local LIST: { Item } = {
 		id = "bench",
 		name = "벤치",
 		kind = "general",
-		price = 23000,
-		unlock = 0,
+		price = 34000,
 		w = 2,
 		d = 1,
 		parts = {
@@ -162,8 +159,7 @@ local LIST: { Item } = {
 		id = "lamp",
 		name = "가로등",
 		kind = "general",
-		price = 23000,
-		unlock = 0,
+		price = 34000,
 		w = 1,
 		d = 1,
 		parts = {
@@ -176,8 +172,7 @@ local LIST: { Item } = {
 		id = "mailbox",
 		name = "우체통",
 		kind = "general",
-		price = 2500,
-		unlock = 0,
+		price = 3300,
 		w = 1,
 		d = 1,
 		parts = {
@@ -190,8 +185,7 @@ local LIST: { Item } = {
 		id = "fountain",
 		name = "분수",
 		kind = "general",
-		price = 100000,
-		unlock = 0,
+		price = 160000,
 		w = 2,
 		d = 2,
 		parts = {
@@ -206,8 +200,7 @@ local LIST: { Item } = {
 		id = "tree",
 		name = "나무",
 		kind = "general",
-		price = 23000,
-		unlock = 0,
+		price = 34000,
 		w = 1,
 		d = 1,
 		parts = {
@@ -220,8 +213,7 @@ local LIST: { Item } = {
 		id = "flowerbed",
 		name = "꽃밭",
 		kind = "general",
-		price = 2500,
-		unlock = 0,
+		price = 3300,
 		w = 2,
 		d = 1,
 		parts = {
@@ -237,8 +229,7 @@ local LIST: { Item } = {
 		id = "signpost",
 		name = "표지판",
 		kind = "general",
-		price = 2500,
-		unlock = 0,
+		price = 3300,
 		w = 1,
 		d = 1,
 		parts = {
@@ -250,8 +241,7 @@ local LIST: { Item } = {
 		id = "bikerack",
 		name = "자전거대",
 		kind = "general",
-		price = 23000,
-		unlock = 0,
+		price = 34000,
 		w = 2,
 		d = 1,
 		parts = {
@@ -266,8 +256,7 @@ local LIST: { Item } = {
 		id = "swing",
 		name = "그네",
 		kind = "general",
-		price = 100000,
-		unlock = 0,
+		price = 160000,
 		w = 2,
 		d = 1,
 		parts = {
@@ -283,8 +272,7 @@ local LIST: { Item } = {
 		id = "slide",
 		name = "미끄럼틀",
 		kind = "general",
-		price = 100000,
-		unlock = 0,
+		price = 160000,
 		w = 2,
 		d = 1,
 		parts = {
@@ -297,8 +285,7 @@ local LIST: { Item } = {
 		id = "pond",
 		name = "연못",
 		kind = "general",
-		price = 100000,
-		unlock = 0,
+		price = 160000,
 		w = 2,
 		d = 2,
 		parts = {
@@ -316,7 +303,6 @@ local LIST: { Item } = {
 		name = "풍선",
 		kind = "gift",
 		price = 0,
-		unlock = 0,
 		w = 1,
 		d = 1,
 		parts = {
@@ -332,7 +318,6 @@ local LIST: { Item } = {
 		name = "트로피",
 		kind = "gift",
 		price = 0,
-		unlock = 0,
 		w = 1,
 		d = 1,
 		parts = {
@@ -348,7 +333,6 @@ local LIST: { Item } = {
 		name = "곰인형",
 		kind = "gift",
 		price = 0,
-		unlock = 0,
 		w = 1,
 		d = 1,
 		parts = {
@@ -364,7 +348,6 @@ local LIST: { Item } = {
 		name = "무지개깃발",
 		kind = "gift",
 		price = 0,
-		unlock = 0,
 		w = 1,
 		d = 1,
 		parts = {
@@ -381,7 +364,6 @@ local LIST: { Item } = {
 		name = "별조명",
 		kind = "gift",
 		price = 0,
-		unlock = 0,
 		w = 1,
 		d = 1,
 		parts = {
@@ -396,7 +378,6 @@ local LIST: { Item } = {
 		name = "케이크",
 		kind = "gift",
 		price = 0,
-		unlock = 0,
 		w = 1,
 		d = 1,
 		parts = {
@@ -408,13 +389,12 @@ local LIST: { Item } = {
 		},
 	},
 
-	-- ── 친구 9(§3.5 친구 아이템 표. 학생 이름은 쓰지 않는다) ──
+	-- ── 친구 3(§3.5 친구 아이템 표. 학생 이름은 쓰지 않는다) ──
 	{
 		id = "bookcart",
 		name = "책수레",
 		kind = "friend",
-		price = 79000,
-		unlock = 0,
+		price = 120000,
 		student = "s14",
 		w = 1,
 		d = 1,
@@ -431,8 +411,7 @@ local LIST: { Item } = {
 		id = "telescope",
 		name = "망원경",
 		kind = "friend",
-		price = 79000,
-		unlock = 0,
+		price = 120000,
 		student = "s17",
 		w = 1,
 		d = 1,
@@ -448,8 +427,7 @@ local LIST: { Item } = {
 		id = "rocket",
 		name = "로켓모형",
 		kind = "friend",
-		price = 79000,
-		unlock = 0,
+		price = 120000,
 		student = "s22",
 		w = 1,
 		d = 2,
@@ -462,13 +440,13 @@ local LIST: { Item } = {
 			ball(0.8, V(0, 4.4, 0.8), C.sky, M.Glass),
 		},
 	},
+
+	-- ── 일반 6(옛 친구 아이템. 학생 없이 처음부터 진열) ──
 	{
 		id = "ballbin",
 		name = "공바구니",
-		kind = "friend",
-		price = 1100000,
-		unlock = 2,
-		student = "s15",
+		kind = "general",
+		price = 450000,
 		w = 1,
 		d = 1,
 		parts = {
@@ -482,10 +460,8 @@ local LIST: { Item } = {
 	{
 		id = "easel",
 		name = "이젤",
-		kind = "friend",
-		price = 1100000,
-		unlock = 3,
-		student = "s16",
+		kind = "general",
+		price = 450000,
 		w = 1,
 		d = 1,
 		parts = {
@@ -499,10 +475,8 @@ local LIST: { Item } = {
 	{
 		id = "globe",
 		name = "지구본",
-		kind = "friend",
-		price = 1000000,
-		unlock = 4,
-		student = "s19",
+		kind = "general",
+		price = 790000,
 		w = 1,
 		d = 1,
 		parts = {
@@ -515,10 +489,8 @@ local LIST: { Item } = {
 	{
 		id = "piano",
 		name = "피아노",
-		kind = "friend",
-		price = 780000,
-		unlock = 6,
-		student = "s20",
+		kind = "general",
+		price = 790000,
 		w = 2,
 		d = 1,
 		parts = {
@@ -532,10 +504,8 @@ local LIST: { Item } = {
 	{
 		id = "labtable",
 		name = "실험탁자",
-		kind = "friend",
-		price = 660000,
-		unlock = 7,
-		student = "s21",
+		kind = "general",
+		price = 1800000,
 		w = 2,
 		d = 1,
 		parts = {
@@ -549,10 +519,8 @@ local LIST: { Item } = {
 	{
 		id = "tiger",
 		name = "호랑이석상",
-		kind = "friend",
-		price = 550000,
-		unlock = 8,
-		student = "s24",
+		kind = "general",
+		price = 2700000,
 		w = 2,
 		d = 2,
 		parts = {
@@ -601,12 +569,11 @@ do
 			local student = StudentConfig.BY_ID[studentId]
 			assert(student, `DecorConfig: StudentConfig 에 없는 학생 {studentId}`)
 			assert(
-				student.unlock.kind == "friend" and student.unlock.value == item.unlock,
-				`DecorConfig: {item.id} 의 unlock 이 StudentConfig {studentId} 친구 해금값과 다르다`
+				student.unlock.kind == "friend",
+				`DecorConfig: {item.id} 의 학생 {studentId} 가 StudentConfig 에서 friend 해금이 아니다`
 			)
 		else
 			assert(item.student == nil, `DecorConfig: friend 가 아닌데 student 가 있다 {item.id}`)
-			assert(item.unlock == 0, `DecorConfig: {item.id} unlock 은 0 이어야 한다`)
 		end
 		if item.kind == "gift" then
 			assert(item.price == 0, `DecorConfig: gift 가격은 0 {item.id}`)
@@ -617,8 +584,19 @@ do
 		INDEX[item.id] = i
 	end
 	assert(
-		counts.general == 12 and counts.gift == 6 and counts.friend == 9,
-		`DecorConfig: 종류별 개수가 12/6/9 가 아니다 ({counts.general}/{counts.gift}/{counts.friend})`
+		counts.general == 18 and counts.gift == 6 and counts.friend == 3,
+		`DecorConfig: 종류별 개수가 18/6/3 이 아니다 ({counts.general}/{counts.gift}/{counts.friend})`
+	)
+	-- friend 해금 학생과 friend 아이템이 1:1 이어야 한다
+	local friendStudents = 0
+	for _, student in StudentConfig.LIST do
+		if student.unlock.kind == "friend" then
+			friendStudents += 1
+		end
+	end
+	assert(
+		friendStudents == counts.friend,
+		`DecorConfig: friend 학생 {friendStudents}명과 friend 아이템 수가 다르다`
 	)
 	for n, id in GIFT_ORDER do
 		local item = BY_ID[id]
@@ -645,18 +623,15 @@ function DecorConfig.giftAt(giftIndex: number): string?
 	return GIFT_ORDER[giftIndex]
 end
 
---- 졸업 graduations 회 기준 가격(서버가 계산). gift 는 0
-function DecorConfig.priceOf(id: string, graduations: number): number
+--- 가격(서버가 계산). gift 는 0
+function DecorConfig.priceOf(id: string): number
 	local item = BY_ID[id]
-	if not item then
-		return 0
-	end
-	return math.floor(item.price * FacilityConfig.PRICE_SCALE ^ graduations + 0.5)
+	return if item then item.price else 0
 end
 
 --- 상점에 진열되나. gift 는 상점에 없다
-function DecorConfig.isShown(item: Item, graduations: number): boolean
-	return item.kind ~= "gift" and graduations >= item.unlock
+function DecorConfig.isShown(item: Item): boolean
+	return item.kind ~= "gift"
 end
 
 --- 아이템 id 의 보관함 + 배치 합(MAX_OWNED 와 비교한다)

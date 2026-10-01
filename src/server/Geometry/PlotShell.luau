@@ -343,7 +343,7 @@ local function buildGate(shell: Model, plotCFrame: CFrame)
 		}
 	)
 
-	-- 현판. 글자는 PlotService 가 채운다(「{이름}의 학교」 + 졸업 횟수 + 재학생 수)
+	-- 현판. 글자는 PlotService 가 채운다(「{이름}의 학교」)
 	local signH = 3
 	local sign = put(
 		shell,

@@ -447,13 +447,9 @@ local function computeStage(profile: Types.Profile): number
 		return STAGE_STICKERS
 	end
 	if built == 0 then
-		-- 졸업 뒤에는 totalStickers 가 남아 있어 위 분기를 지나친다. 다음 부품 살 돈이 없으면 스티커로 보낸다
+		-- 스티커를 다 주웠어도 다음 부품 살 돈이 없으면 스티커로 보낸다
 		local nextPart = FacilityConfig.nextPartOf(profile.facilities, profile.buildParts)
-		if
-			nextPart
-			and profile.coins
-				< FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index, profile.graduations)
-		then
+		if nextPart and profile.coins < FacilityConfig.partPriceOf(nextPart.facility.id, nextPart.index) then
 			return STAGE_STICKERS
 		end
 		return STAGE_DESK -- 책상 마저 짓기

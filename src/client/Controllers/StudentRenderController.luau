@@ -37,7 +37,6 @@ local PART_ARM_LEFT = "ArmLeft"
 
 local FACILITY_DESK = "desk"
 local FACILITY_PRINCIPAL = "principal"
-local FACILITY_AUDITORIUM = "auditorium"
 local FACILITY_CAFETERIA = "cafeteria"
 local FACILITY_LIBRARY = "library"
 local FACILITY_MUSIC = "music"
@@ -95,10 +94,6 @@ local POP_SPARKLE_LIFE = 1.2
 local ARRIVE_HAND_DELAY = 0.5
 local FADE_SECONDS = 0.3
 
--- §9.5 졸업식
-local CEREMONY_HAND_DELAY = 2
-local CEREMONY_HAND_SECONDS = 3
-
 -- 장식 선생님
 local TEACHER_F_DISTANCE = 8 -- 책상 평균 위치에서 학생이 보는 방향으로 이만큼 앞(교탁 옆)
 local TEACHER_M_SIDE = 3.5 -- 교장실 손님 의자 오른쪽으로 이만큼
@@ -129,8 +124,8 @@ type Person = {
 	studentId: string,
 	facilityId: string, -- 자리 시설
 	seatIndex: number,
-	room: string, -- 행동 기준 시설. 졸업식이면 auditorium
-	index: number, -- 도감 순서 1..24. 위상·강당 좌석 번호
+	room: string, -- 행동 기준 시설
+	index: number, -- 도감 순서. 위상
 	phase: number,
 	seat: CFrame, -- 지금 자리(Attachment WorldCFrame)
 	home: CFrame, -- 원래 자리
@@ -161,7 +156,6 @@ type Plot = {
 	folder: Folder?,
 	teachers: { [string]: Model },
 	rendered: boolean,
-	ceremony: boolean,
 	distance: number,
 	waiting: { [string]: boolean },
 	watched: boolean,
@@ -395,7 +389,6 @@ local function ensurePlot(plotId: number): Plot
 			folder = nil,
 			teachers = {},
 			rendered = false,
-			ceremony = false,
 			distance = math.huge,
 			waiting = {},
 			watched = false,
@@ -1290,60 +1283,6 @@ function StudentRenderController.onStudentJoined(payload: { plot: number, studen
 		end
 	end
 	markDirty(plotId)
-end
-
---- 졸업식(§9.5). true 면 그 부지 학생 전원을 강당 S01~S24 로 옮기고 2초 뒤 손을 든다. false 면 제자리
-function StudentRenderController.ceremony(plotId: number, active: boolean)
-	local plot = plots[plotId]
-	if not plot then
-		return
-	end
-	plot.ceremony = active
-	local auditorium = if active then facilityModel(plot, FACILITY_AUDITORIUM) else nil
-	if active and not auditorium then
-		warn(`[StudentRender] Plot{plotId} 에 강당 모델이 없어 졸업식 좌석 이동을 건너뛴다`)
-	end
-
-	for _, person in plot.persons do
-		if person.arrive then
-			continue
-		end
-		if active then
-			local cf = if auditorium then seatCFrame(auditorium, person.index) else nil
-			if cf then
-				person.seat = cf
-				person.room = FACILITY_AUDITORIUM
-			end
-		else
-			person.seat = person.home
-			person.room = person.facilityId
-		end
-		person.pivotBase = person.seat * person.sitOffset
-		local model = person.model
-		if model then
-			model:PivotTo(person.pivotBase)
-			if not active and person.handRaised then
-				setHand(person, false)
-			end
-		end
-	end
-
-	if active then
-		task.delay(CEREMONY_HAND_DELAY, function()
-			if not plot.ceremony then
-				return
-			end
-			local now = os.clock()
-			for _, person in plot.persons do
-				person.handFrom = now
-				person.handUntil = now + CEREMONY_HAND_SECONDS
-				if person.model and not person.handRaised then
-					setHand(person, true)
-				end
-			end
-		end)
-	end
-	lodAccum = LOD_INTERVAL
 end
 
 --- 한 학생이 seconds 동안 손을 든다

@@ -9,7 +9,6 @@
 	판정은 전부 서버가 DecorGrid·DecorConfig 로 한다. 가격도 서버가 계산한다(클라는 무엇을 할지만 보낸다).
 	실패는 Remotes.deny 만 보낸다(위반 카운트 없음. 정상 클라도 겹침·상한은 낼 수 있다).
 	성공하면 PlotState "Decor" 어트리뷰트(DecorCodec) → 클라가 모든 부지를 그린다. 서버 파트는 없다.
-	졸업 잠금 중에도 Decor 는 바로 쓴다(졸업은 꾸미기를 건드리지 않는다).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -78,11 +77,10 @@ local function buy(player: Player, itemId: string)
 	if not profile or not item then
 		return
 	end
-	if not DecorConfig.isShown(item, profile.graduations) then
-		Remotes.deny(player, "locked")
-		return
+	if not DecorConfig.isShown(item) then
+		return -- gift 는 상점에 없다. 정상 클라는 보내지 않는다
 	end
-	local price = DecorConfig.priceOf(itemId, profile.graduations)
+	local price = DecorConfig.priceOf(itemId)
 	if profile.coins < price then
 		Remotes.deny(player, "coins")
 		return
@@ -94,7 +92,7 @@ local function buy(player: Player, itemId: string)
 	-- 쓰기만 한다. totalCoins(번 돈 누계)는 건드리지 않는다
 	profile.coins -= price
 	profile.decorOwned[itemId] = (profile.decorOwned[itemId] or 0) + 1
-	-- 산 값을 쌓아 둔다. 졸업 뒤 가격이 올라도 돌려받는 값은 이 값이다
+	-- 산 값을 쌓아 둔다. 가격표가 바뀌어도 돌려받는 값은 이 값이다
 	local paid = profile.decorPaid[itemId] or {}
 	table.insert(paid, price)
 	profile.decorPaid[itemId] = paid

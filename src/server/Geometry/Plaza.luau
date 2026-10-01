@@ -240,7 +240,7 @@ local function buildNoticeBoard(model: Model)
 		cell.BorderSizePixel = 0
 		cell.Parent = gui
 	end
-	-- TODO(통합): 4칸 그림문자(구매·수집·졸업·꾸미기)는 클라가 ImageLabel 로 채우거나 파트로 그린다
+	-- TODO(통합): 4칸 그림문자(구매·수집·층 쌓기·꾸미기)는 클라가 ImageLabel 로 채우거나 파트로 그린다
 end
 
 local function buildBench(model: Model, index: number, x: number, z: number)

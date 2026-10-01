@@ -1,11 +1,11 @@
 --!strict
 --[[
-	전학생 24명. 기획서 §4.1·§4.2·§4.4 를 그대로 옮겼다.
+	전학생 28명. 기획서 §4.1·§4.2·§4.4, 개선계획(2026-10-01 층 쌓기) §3.1·§3.4.
 	  mesh            CharacterAssets.VARIANTS 키. 없으면(아직 안 만든 희귀 메시) fallbackVariant + tint 로 그린다
 	  tint            fallbackVariant 로 그릴 때 몸 전체에 곱하는 색. nil 이면 원본 텍스처
 	  prop            fallbackVariant 로 그릴 때 붙이는 소품 하나(≤1. 전용 메시엔 이미 있다). 등급 표식(완장·메달·파티클)은 tier 가 정하므로 여기 없다
-	  seat            정해진 자리. 그 시설이 없으면 자리 없음(Seats.seatOf)
-	  unlock          kind = "facility" (시설을 지으면) | "graduation" (n회 졸업 확정) | "friend" (졸업 n회부터 친구 아이템이 상점에 진열)
+	  seat            정해진 자리. facilityId 는 시설 id 또는 방 id. 그 시설·방이 없으면 자리 없음(Seats.seatOf)
+	  unlock          kind = "facility" (시설을 지으면) | "room" (그 방을 처음 완공하면) | "friend" (처음부터 진열된 친구 아이템을 사면)
 ]]
 
 local Types = require(script.Parent.Parent.Types)
@@ -13,8 +13,8 @@ local Types = require(script.Parent.Parent.Types)
 local StudentConfig = {}
 
 export type Unlock = {
-	kind: "facility" | "graduation" | "friend",
-	value: string | number, -- facility → 시설 id, graduation/friend → 졸업 횟수
+	kind: "facility" | "room" | "friend",
+	value: string, -- facility → 시설 id, room → 방 id, friend → ""
 }
 
 export type Student = {
@@ -62,12 +62,12 @@ local function byFacility(id: string): Unlock
 	return { kind = "facility", value = id }
 end
 
-local function byGraduation(n: number): Unlock
-	return { kind = "graduation", value = n }
+local function byRoom(roomId: string): Unlock
+	return { kind = "room", value = roomId }
 end
 
-local function byFriend(fromGraduation: number): Unlock
-	return { kind = "friend", value = fromGraduation }
+local function byFriend(): Unlock
+	return { kind = "friend", value = "" }
 end
 
 local LIST: { Student } = {
@@ -225,7 +225,7 @@ local LIST: { Student } = {
 		tint = C(200, 245, 205),
 		prop = nil,
 		seat = seat("desk", 5),
-		unlock = byFriend(0),
+		unlock = byFriend(),
 	},
 	{
 		id = "s15",
@@ -235,8 +235,8 @@ local LIST: { Student } = {
 		fallbackVariant = "BOY_D",
 		tint = C(225, 205, 250),
 		prop = nil,
-		seat = seat("class2", 4),
-		unlock = byFriend(2),
+		seat = seat("computer", 1),
+		unlock = byRoom("computer"),
 	},
 	{
 		id = "s16",
@@ -246,8 +246,8 @@ local LIST: { Student } = {
 		fallbackVariant = "GIRL_D",
 		tint = C(250, 215, 180),
 		prop = nil,
-		seat = seat("class2", 5),
-		unlock = byFriend(3),
+		seat = seat("art", 1),
+		unlock = byRoom("art"),
 	},
 	-- 전교1등
 	{
@@ -259,7 +259,7 @@ local LIST: { Student } = {
 		tint = C(215, 195, 245),
 		prop = "goldGlasses",
 		seat = seat("desk", 6),
-		unlock = byFriend(0),
+		unlock = byFriend(),
 	},
 	{
 		id = "s18",
@@ -269,8 +269,8 @@ local LIST: { Student } = {
 		fallbackVariant = "BOY_B",
 		tint = C(180, 190, 230),
 		prop = "trophy",
-		seat = seat("class2", 3),
-		unlock = byGraduation(1),
+		seat = seat("staff", 1),
+		unlock = byRoom("staff"),
 	},
 	{
 		id = "s19",
@@ -280,8 +280,8 @@ local LIST: { Student } = {
 		fallbackVariant = "GIRL_D",
 		tint = C(195, 225, 250),
 		prop = "books",
-		seat = seat("cafeteria", 2),
-		unlock = byFriend(4),
+		seat = seat("english", 1),
+		unlock = byRoom("english"),
 	},
 	{
 		id = "s20",
@@ -291,8 +291,8 @@ local LIST: { Student } = {
 		fallbackVariant = "BOY_A",
 		tint = C(195, 240, 200),
 		prop = "goggles",
-		seat = seat("cafeteria", 3),
-		unlock = byFriend(6),
+		seat = seat("robot", 1),
+		unlock = byRoom("robot"),
 	},
 	{
 		id = "s21",
@@ -302,8 +302,8 @@ local LIST: { Student } = {
 		fallbackVariant = "GIRL_A",
 		tint = C(250, 205, 225),
 		prop = "violin",
-		seat = seat("cafeteria", 4),
-		unlock = byFriend(7),
+		seat = seat("broadcast", 1),
+		unlock = byRoom("broadcast"),
 	},
 	-- 전설
 	{
@@ -315,7 +315,7 @@ local LIST: { Student } = {
 		tint = C(215, 220, 230),
 		prop = "helmet",
 		seat = seat("class2", 1),
-		unlock = byFriend(0),
+		unlock = byFriend(),
 	},
 	{
 		id = "s23",
@@ -325,8 +325,8 @@ local LIST: { Student } = {
 		fallbackVariant = "GIRL_E",
 		tint = C(250, 215, 120),
 		prop = "crown",
-		seat = seat("class2", 6),
-		unlock = byGraduation(5),
+		seat = seat("exhibit", 1),
+		unlock = byRoom("exhibit"),
 	},
 	{
 		id = "s24",
@@ -336,8 +336,53 @@ local LIST: { Student } = {
 		fallbackVariant = "BOY_D",
 		tint = C(245, 245, 245),
 		prop = "tigerEars",
-		seat = seat("library", 2),
-		unlock = byFriend(8),
+		seat = seat("garden", 1),
+		unlock = byRoom("garden"),
+	},
+	-- 새 방 학생(2026-10-01 층 쌓기). 전용 메시 없이 fallbackVariant + tint
+	{
+		id = "s25",
+		name = "다온",
+		tier = "평범",
+		mesh = "GIRL_B",
+		fallbackVariant = "GIRL_B",
+		tint = C(250, 230, 200),
+		prop = nil,
+		seat = seat("cooking", 1),
+		unlock = byRoom("cooking"),
+	},
+	{
+		id = "s26",
+		name = "시온",
+		tier = "반장",
+		mesh = "BOY_A",
+		fallbackVariant = "BOY_A",
+		tint = C(250, 210, 240),
+		prop = nil,
+		seat = seat("dance", 1),
+		unlock = byRoom("dance"),
+	},
+	{
+		id = "s27",
+		name = "새봄",
+		tier = "평범",
+		mesh = "GIRL_E",
+		fallbackVariant = "GIRL_E",
+		tint = C(215, 245, 225),
+		prop = "bag",
+		seat = seat("care", 1),
+		unlock = byRoom("care"),
+	},
+	{
+		id = "s28",
+		name = "별하",
+		tier = "반장",
+		mesh = "BOY_C",
+		fallbackVariant = "BOY_C",
+		tint = C(200, 205, 245),
+		prop = "glasses",
+		seat = seat("observatory", 1),
+		unlock = byRoom("observatory"),
 	},
 }
 
@@ -350,9 +395,9 @@ end
 
 StudentConfig.LIST = LIST
 StudentConfig.BY_ID = BY_ID
-StudentConfig.ORDER = ORDER -- 도감 순서(s01 → s24)
+StudentConfig.ORDER = ORDER -- 도감 순서(s01 → s28)
 StudentConfig.COUNT = #LIST
-StudentConfig.RESERVED_SEAT = seat("library", 3) -- s25 예약석. 비워 둔다
+assert(StudentConfig.COUNT == 28, `StudentConfig: 학생이 28명이 아니다({StudentConfig.COUNT})`)
 
 --- 시설을 지을 때 오는 학생. 없으면 nil
 function StudentConfig.byFacility(facilityId: Types.FacilityId): Student?
@@ -364,10 +409,10 @@ function StudentConfig.byFacility(facilityId: Types.FacilityId): Student?
 	return nil
 end
 
---- n회 졸업 때 확정으로 오는 학생. 없으면 nil
-function StudentConfig.byGraduation(n: number): Student?
+--- 방을 처음 완공할 때 오는 학생. 없으면 nil
+function StudentConfig.byRoom(roomId: string): Student?
 	for _, row in LIST do
-		if row.unlock.kind == "graduation" and row.unlock.value == n then
+		if row.unlock.kind == "room" and row.unlock.value == roomId then
 			return row
 		end
 	end

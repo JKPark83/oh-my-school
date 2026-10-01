@@ -14,7 +14,7 @@ local FacilityConfig = {}
 export type Facility = {
 	id: Types.FacilityId,
 	name: string,
-	parts: { number }, -- 부품 가격(졸업 0회 기준, 구매 순서). partPriceOf 로 배율 적용. 길이 3 또는 4
+	parts: { number }, -- 부품 가격(구매 순서). 길이 3 또는 4
 	income: number, -- 초당
 	student: Types.StudentId?, -- 지으면 전학 오는 학생
 	center: Vector3, -- 부지 로컬
@@ -26,8 +26,6 @@ export type Facility = {
 	spawns: number, -- 이 시설이 여는 칭찬스티커 스폰 수
 	floor: number, -- 1 | 2
 }
-
-FacilityConfig.PRICE_SCALE = 1.35 -- 졸업 1회마다 가격 ×1.35
 
 local function V(x: number, y: number, z: number): Vector3
 	return Vector3.new(x, y, z)
@@ -52,7 +50,7 @@ local LIST: { Facility } = {
 	{
 		id = "board",
 		name = "칠판",
-		parts = { 14, 14, 15 },
+		parts = { 14, 15, 16 },
 		income = 3,
 		student = "s02",
 		center = V(-60, 0, -61.5),
@@ -67,7 +65,7 @@ local LIST: { Facility } = {
 	{
 		id = "locker",
 		name = "사물함",
-		parts = { 35, 37, 39 },
+		parts = { 38, 41, 43 },
 		income = 6,
 		student = "s03",
 		center = V(-46, 0, -47.5),
@@ -82,7 +80,7 @@ local LIST: { Facility } = {
 	{
 		id = "hall",
 		name = "복도",
-		parts = { 88, 92, 97 },
+		parts = { 100, 110, 120 },
 		income = 12,
 		student = "s04",
 		center = V(0, 0, -25),
@@ -97,7 +95,7 @@ local LIST: { Facility } = {
 	{
 		id = "class2",
 		name = "교실2",
-		parts = { 250, 260, 270 },
+		parts = { 310, 330, 350 },
 		income = 25,
 		student = "s05",
 		center = V(-20, 0, -47.5),
@@ -112,7 +110,7 @@ local LIST: { Facility } = {
 	{
 		id = "cafeteria",
 		name = "급식실",
-		parts = { 610, 640, 680 },
+		parts = { 810, 860, 910 },
 		income = 50,
 		student = "s06",
 		center = V(20, 0, -47.5),
@@ -127,7 +125,7 @@ local LIST: { Facility } = {
 	{
 		id = "library",
 		name = "도서관",
-		parts = { 1500, 1500, 1600, 1700 },
+		parts = { 2100, 2200, 2300, 2400 },
 		income = 90,
 		student = "s07",
 		center = V(60, 0, -47.5),
@@ -142,7 +140,7 @@ local LIST: { Facility } = {
 	{
 		id = "nurse",
 		name = "보건실",
-		parts = { 3500, 3600, 3800, 4000 },
+		parts = { 5100, 5400, 5700, 6000 },
 		income = 150,
 		student = "s08",
 		center = V(-60, 0, -5),
@@ -157,7 +155,7 @@ local LIST: { Facility } = {
 	{
 		id = "science",
 		name = "과학실",
-		parts = { 7600, 8000, 8400, 8800 },
+		parts = { 12000, 13000, 13000, 14000 },
 		income = 260,
 		student = "s09",
 		center = V(-30, 0, -5),
@@ -172,7 +170,7 @@ local LIST: { Facility } = {
 	{
 		id = "music",
 		name = "음악실",
-		parts = { 16000, 17000, 18000, 19000 },
+		parts = { 27000, 29000, 30000, 32000 },
 		income = 420,
 		student = "s10",
 		center = V(30, 0, -5),
@@ -187,7 +185,7 @@ local LIST: { Facility } = {
 	{
 		id = "gym",
 		name = "체육관",
-		parts = { 34000, 36000, 38000, 40000 },
+		parts = { 59000, 63000, 66000, 70000 },
 		income = 700,
 		student = "s11",
 		center = V(60, 0, 37.5),
@@ -202,7 +200,7 @@ local LIST: { Facility } = {
 	{
 		id = "field",
 		name = "운동장",
-		parts = { 71000, 74000, 78000, 82000 },
+		parts = { 140000, 140000, 150000, 160000 },
 		income = 1100,
 		student = "s12",
 		center = V(-45, 0, 37.5),
@@ -217,7 +215,7 @@ local LIST: { Facility } = {
 	{
 		id = "principal",
 		name = "교장실",
-		parts = { 160000, 170000, 180000, 190000 },
+		parts = { 350000, 370000, 390000, 410000 },
 		income = 1800,
 		student = "s13",
 		center = V(60, 0, -5),
@@ -232,7 +230,7 @@ local LIST: { Facility } = {
 	{
 		id = "auditorium",
 		name = "강당",
-		parts = { 320000, 340000, 350000, 370000 },
+		parts = { 760000, 810000, 850000, 900000 },
 		income = 3000,
 		student = nil,
 		center = V(0, 18, -17.5),
@@ -337,13 +335,13 @@ function FacilityConfig.padOf(id: Types.FacilityId, k: number): Vector3
 	return if k <= 1 then row.pad else row.partPads[k - 1] or row.pad
 end
 
---- 졸업 횟수를 반영한 부품 k 가격
-function FacilityConfig.partPriceOf(id: Types.FacilityId, k: number, graduations: number): number
+--- 부품 k 가격
+function FacilityConfig.partPriceOf(id: Types.FacilityId, k: number): number
 	local row = BY_ID[id]
 	assert(row, `모르는 시설: {id}`)
-	local base = row.parts[k]
-	assert(base, `{id} 에 부품 {k} 이 없다`)
-	return math.floor(base * FacilityConfig.PRICE_SCALE ^ graduations + 0.5)
+	local price = row.parts[k]
+	assert(price, `{id} 에 부품 {k} 이 없다`)
+	return price
 end
 
 --- 다음에 살 부품. index = buildParts + 1, count = 그 시설 부품 수. 다 지었으면 nil(호출처가 W6 「다음 층」 분기를 둔다)

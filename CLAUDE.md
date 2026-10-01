@@ -6,6 +6,7 @@
 
 - 기획서(기준): `docs/기획서-교장이-되어보자.md`. 확정 수치는 부록 B, 성능 예산 §12.1, 어린이 안전 §12.2, 주간 게이트 §13.1.
   부록 A 와 문서 앞쪽 심사 반영 목록은 이력이다. 고치지 않는다.
+- 층 쌓기 재설계(2026-10-01, 단계 P1~P5): `docs/개선계획-2026-10-01-층-쌓기.md`.
 - 구현 계획: `plans/구현계획-교장이-되어보자.md`. 경제 시뮬: `docs/sim/`(사용법은 기획서 부록 C).
 - 기획서와 코드가 다르면 어느 쪽이 맞는지 정한 뒤 같은 변경에서 둘을 맞춘다.
 
@@ -28,14 +29,14 @@ export PATH="$HOME/.rokit/bin:$PATH" && stylua src && rojo sourcemap default.pro
 ```
 
 - Studio 에서 스크립트를 고치지 않는다. 파일이 기준이다.
-- Studio 는 `PrincipalProfile_Dev` + Mock 이다. 실제 DataStore 는 ServerScriptService 어트리뷰트 `UseLiveDataStore = true`.
+- Studio 는 `PrincipalSchool_Dev` + Mock 이다. 실제 DataStore 는 ServerScriptService 어트리뷰트 `UseLiveDataStore = true`.
 - `DevCheat` 는 Studio 에서만 켜진다: `ServerScriptService.DevCheat.FastForward:Invoke(player, 초)`, `GiveCoins:Invoke(player, n)`, `GiveDecor:Invoke(player, itemId, n)`, `MetricsNow:Invoke(player)`(세션을 끝내지 않고 `[Metrics]` 지금까지 요약 줄).
 
 ## 구조
 
-- `src/server/Services/` 서비스 8개(Data·Plot·Economy·Student·Decor·Mission·Graduation·Leaderboard). 부팅 순서는 `init.server.luau`.
+- `src/server/Services/` 서비스 7개(Data·Plot·Economy·Student·Decor·Mission·Leaderboard). 부팅 순서는 `init.server.luau`.
 - `src/server/Geometry/` 시설·부지·광장을 파트로 짓는 모듈. 나무·화단·광장 Creator Store 모델은 `PropLibrary.luau`(메시 id 가 없거나 실패하면 파트 폴백). 공용 헬퍼는 `src/server/BuildKit.luau`(Geometry 밖).
-- `src/client/Controllers/` 컨트롤러 11개(`InteriorRenderController` = 방 안 소품). 층 올리기(3층 이상·엘리베이터)는 2026-10-01 폐기했다. 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
+- `src/client/Controllers/` 컨트롤러 11개(`InteriorRenderController` = 방 안 소품). 층 쌓기(방 골라 쌓기·엘리베이터)는 P2 에서 다시 넣는다(개선계획). 리모트 구독은 `init.client.luau` 한 곳에서만 한다.
 - `src/shared/Config/` 수치의 단일 소스. 가격·확률·시간·문구는 여기서만 바꾼다.
 - `src/shared/Remotes.luau`(프로토콜은 기획서 §11.5), `Types.luau`, `Seats.luau`, `CharacterBuilder.luau`, 꾸미기 공용 `DecorGrid`·`DecorCodec`·`DecorBuilder`(수치는 `Config/DecorConfig.luau`). `src/first/` 로딩 화면.
 

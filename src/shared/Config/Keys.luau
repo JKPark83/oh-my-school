@@ -27,7 +27,6 @@ Keys.GATE_SIGN = "GateSign"
 Keys.SIGNPOST = "Signpost" -- 「우리 학교로」 팻말(ProximityPrompt)
 Keys.ADMISSION_DESK = "AdmissionDesk" -- 입학 접수대
 Keys.PRINCIPAL_CHAIR = "PrincipalChair" -- 교장실 Seat
-Keys.GRADUATION_BELL = "GraduationBell" -- 강당 단상 종
 Keys.SILHOUETTE = "Silhouette" -- 미건설 시설 실루엣
 Keys.CONSTRUCTION = "Construction" -- 2층 「공사 중」 실루엣
 Keys.STICKER_BOARD = "StickerBoard" -- 현관 서쪽 벽 3D 스티커판
@@ -39,11 +38,16 @@ Keys.HOME_PROMPT = "HomePrompt" -- 「우리 학교로」 ProximityPrompt(광장
 -- PlotState 폴더 어트리뷰트(기획서 §11.4)
 Keys.ATTR_OWNER_ID = "OwnerId" -- number, 0 = 빈 부지
 Keys.ATTR_OWNER_NAME = "OwnerName" -- string
-Keys.ATTR_GRADUATIONS = "Graduations" -- number
 Keys.ATTR_FACILITIES = "Facilities" -- CSV "desk,board"
 Keys.ATTR_STUDENTS = "Students" -- CSV "s01,s02"
 Keys.ATTR_INCOME = "Income" -- number, 초당 수입
 Keys.ATTR_DECOR = "Decor" -- DecorCodec 문자열. 빈 부지는 ""
+Keys.ATTR_FLOORS = "Floors" -- CSV "art,computer". 3층부터 순서대로
+Keys.ATTR_ROOFTOP = "Rooftop" -- CSV "garden"
+Keys.ATTR_TOWER_ROOM = "TowerRoom" -- 지금 짓는 방 id 또는 ""
+Keys.ATTR_TOWER_PARTS = "TowerParts" -- 0..3
+Keys.ATTR_LIKES = "Likes" -- number
+Keys.ATTR_RANK = "Rank" -- 1..12, 0 = 층 없음. 같은 서버 안 높이 순위
 
 -- 파트·모델 어트리뷰트
 Keys.ATTR_BUILT = "Built" -- 시설 모델: 마지막 부품을 넣어 완공될 때 true

@@ -1,8 +1,8 @@
 --!strict
 --[[
-	카메라. 기획서 §9.1(흔들림)·§9.5(졸업식 오빗)·§8.4(흔들림 끔).
+	카메라. 기획서 §9.1(흔들림)·§9.5·개선계획 §5.5(층 완공 축하 오빗)·§8.4(흔들림 끔).
 
-	평소에는 로블록스 기본 카메라(Custom)를 그대로 쓴다. 줌 8~40, FOV 65.
+	평소에는 로블록스 기본 카메라(Custom)를 그대로 쓴다. 줌 8~120, FOV 65.
 	직접 CFrame 으로 굴리는 것은 연출 중(panTo/orbit/cutTo)뿐이고, restore() 로 Custom 에 돌아온다.
 	꾸미기 모드의 lockPitch/unlockPitch 는 Custom 을 두고 피치만 매 프레임 덮어쓴다.
 
@@ -25,7 +25,7 @@ local Workspace = game:GetService("Workspace")
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 
 local ZOOM_MIN = 8
-local ZOOM_MAX = 40
+local ZOOM_MAX = 120 -- 개선계획 §5.5. 높은 학교 전체가 보이게
 local FIELD_OF_VIEW = 65
 
 -- §9.1 트라우마 모델
@@ -41,8 +41,8 @@ local FOV_PUNCH_SECONDS = 0.3
 -- panTo: 목표를 바라본 뒤 이만큼 있다가 Custom 으로 돌아온다
 local PAN_HOLD = 1.2
 
--- orbit: seconds 동안 이 각도만큼 돈다
-local ORBIT_SWEEP = math.rad(90)
+-- orbit: seconds 동안 이 각도만큼 돈다(층 완공 축하는 학교를 한 바퀴 돈다)
+local ORBIT_SWEEP = math.rad(360)
 
 local FADE = 0.88
 
@@ -114,7 +114,7 @@ function CameraController.panTo(worldPos: Vector3, seconds: number)
 		return
 	end
 	if scripted and scripted.kind == "orbit" then
-		return -- 졸업식 오빗이 우선이다
+		return -- 층 완공 축하 오빗이 우선이다
 	end
 	local from = cam.CFrame
 	local to = CFrame.lookAt(from.Position, worldPos)
