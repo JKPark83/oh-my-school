@@ -56,6 +56,7 @@ type PadApi = {
 	stickerPosition: (stickerId: any) -> Vector3?,
 	facilityPosition: (plotId: number, facilityId: string) -> Vector3?,
 	hintShortfall: () -> (),
+	towerBurst: () -> (),
 }
 local HudController = (require(script.Parent.HudController) :: any) :: HudApi
 local CameraController = (require(script.Parent.CameraController) :: any) :: CameraApi
@@ -818,6 +819,9 @@ handlers.part = function(payload: any)
 		then RoomConfig.PARTS
 		elseif type(payload.partCount) == "number" then payload.partCount
 		else index
+	if isFloor then
+		PadController.towerBurst()
+	end
 	if index >= count then
 		return -- 마지막 부품은 바로 뒤에 오는 FacilityBuilt(purchase)가 소리·햅틱·먼지를 맡는다
 	end

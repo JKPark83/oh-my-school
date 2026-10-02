@@ -11,6 +11,8 @@
 	  가까이 가면 타이머가 0 으로 돌아간다. 단계 ⑥(끝)도 다음 패드를 대상으로 에스컬레이션만 한다.
 	★ 단계 ⑤(꾸미기)는 월드 대상이 없다. HUD 「꾸미기」 버튼 옆 2D 손가락 + 버튼 펄스. 시트를 열거나 처음 놓으면 끝.
 	  에스컬레이션은 30초 뒤 말풍선을 한 번 더 띄우는 것뿐이다(팬할 월드 위치가 없다).
+	★ 층 안내: 층 방을 완공하면(profile.floors 가 늘면) 층 패드가 새 층으로 옮겨 간다. 화면 위 글 + 큰 「⬇」 화살표·빛기둥으로
+	  지금 층의 엘리베이터 → 새 층의 층 패드를 차례로 가리키고, 그 패드에 올라서면 끝. 튜토리얼 단계와 따로 돈다.
 	★ 모듈 최상위 부작용 없음. Start() 에서 폴더·앵커를 만든다.
 ]]
 
@@ -24,6 +26,8 @@ local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
+local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
+local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
 local Types = require(ReplicatedStorage.Shared.Types)
 
 -- 계획 §3.4 계약(형제 컨트롤러). 형태만 선언하고 any 로 받는다
@@ -31,6 +35,7 @@ type HudApi = {
 	profile: () -> Types.Profile?,
 	onProfile: (fn: (Types.Profile) -> ()) -> (),
 	myPlotId: () -> number?,
+	isOnOwnPlot: () -> boolean,
 	pulseDecorButton: (on: boolean) -> (),
 	decorButtonRect: () -> (Vector2?, Vector2?),
 }
@@ -117,6 +122,15 @@ local STUCK_SECOND = 60
 local PAN_SECONDS = 0.6
 local TICK = 0.25
 local BILLBOARD_DISTANCE = 150
+-- 층 안내
+local GUIDE_DELAY = 2.5 -- 층 완공 축하(카드·학생 등장)가 지나간 뒤에 띄운다
+local GUIDE_DONE_DISTANCE = 3 -- 층 패드에서 수평 이만큼 안이면 끝
+local GUIDE_FLOOR_SLACK = 1 -- 캐릭터 층 판정: 그 층 바닥보다 이만큼 아래까지 그 층
+local GUIDE_ELEVATOR_UP = 5 -- 타는 곳 바닥에서 화살표 앵커까지(+ GUIDE_ARROW_HEIGHT = 표지판 바로 위)
+local GUIDE_PAD_UP = 1
+local GUIDE_ARROW_SIZE = 120
+local GUIDE_ARROW_HEIGHT = 3.5
+local GUIDE_TEXT_Y = 228 -- px(인셋 무시). HUD 배너(인셋 58 + 120, 높이 40) 바로 아래
 
 -- 색(§8.1)
 local COLOR_PANEL = Color3.fromRGB(31, 41, 55)
@@ -156,6 +170,12 @@ local tickAccum = 0
 local hudGui: ScreenGui? = nil -- 2D 손가락(PlayerGui 바로 아래)
 local hudFinger: Frame? = nil
 local decorSeen = false -- 이번 접속에서 꾸미기 시트를 열었다
+local guideFloor: number? = nil -- 층 안내 중이면 새로 지은 층
+local guideFloorCount = -1 -- 마지막으로 본 강당 + 층 방 수(-1 = 아직 모름)
+local guideLabel: TextLabel? = nil
+local guideAnchor: BasePart? = nil
+local guideArrow: BillboardGui? = nil
+local guidePillar: BasePart? = nil
 
 -- ── 저수준 헬퍼 ──────────────────────────────────────────────────
 
@@ -415,6 +435,123 @@ local function clearVisuals()
 	HudController.pulseDecorButton(false)
 end
 
+-- ── 층 안내 ──────────────────────────────────────────────────────
+
+local function stopGuide()
+	guideFloor = nil
+	for _, inst in { guideLabel, guideAnchor, guideArrow, guidePillar } :: { Instance? } do
+		if inst then
+			inst:Destroy()
+		end
+	end
+	guideLabel, guideAnchor, guideArrow, guidePillar = nil, nil, nil, nil
+end
+
+--- 부지 로컬 높이 y 에 선 캐릭터의 층(1층·2층 강당·3층 이상)
+local function floorAt(y: number): number
+	local n = 1
+	while n < RoomConfig.MAX_FLOOR + 1 and y >= RoomConfig.floorY(n + 1) - GUIDE_FLOOR_SLACK do
+		n += 1
+	end
+	return n
+end
+
+local function startGuide(n: number)
+	stopGuide()
+	guideFloor = n
+	local label = Instance.new("TextLabel")
+	label.Name = "FloorGuide"
+	label.AnchorPoint = Vector2.new(0.5, 0)
+	label.Position = UDim2.new(0.5, 0, 0, GUIDE_TEXT_Y)
+	label.Size = UDim2.fromOffset(406, 44)
+	label.BackgroundColor3 = COLOR_PANEL
+	label.BackgroundTransparency = 0.1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 22
+	label.TextColor3 = COLOR_WHITE
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 20)
+	corner.Parent = label
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = COLOR_YELLOW
+	stroke.Thickness = 3
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = label
+	label.Parent = hudGui
+	guideLabel = label
+
+	local at = newPart("GuideAnchor", Vector3.new(0.2, 0.2, 0.2), CFrame.new(), 1)
+	guideAnchor = at
+	local arrowGui = newBillboard("GuideArrow", GUIDE_ARROW_SIZE, GUIDE_ARROW_HEIGHT, ARROW_TEXT, GUIDE_ARROW_SIZE - 16)
+	arrowGui.Adornee = at
+	local bounce = TweenInfo.new(FINGER_BOUNCE_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+	TweenService:Create(arrowGui, bounce, { StudsOffset = Vector3.new(0, GUIDE_ARROW_HEIGHT + FINGER_BOUNCE, 0) })
+		:Play()
+	guideArrow = arrowGui
+	local pillar = newPart("GuidePillar", PILLAR_SIZE, CFrame.new(), PILLAR_ALPHA)
+	local pulse = TweenInfo.new(PILLAR_PULSE_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+	TweenService:Create(pillar, pulse, { Transparency = PILLAR_PULSE_ALPHA }):Play()
+	guidePillar = pillar
+end
+
+--- 매 틱: 지금 층이 새 층이 아니면 그 층 엘리베이터, 새 층이면 층 패드를 가리킨다. 패드에 올라서면 끝
+local function updateGuide()
+	local n = guideFloor
+	local label, at, arrowGui, pillar = guideLabel, guideAnchor, guideArrow, guidePillar
+	if not n or not label or not at or not arrowGui or not pillar then
+		return
+	end
+	local plotId = HudController.myPlotId()
+	local plot = if plotId then PadController.plotModel(plotId) else nil
+	local origin = rootPosition()
+	local here = if plot
+			and origin
+			and HudController.isOnOwnPlot()
+		then floorAt(plot:GetPivot():PointToObjectSpace(origin).Y)
+		else nil
+	local target: Vector3? = nil -- 화살표 앵커
+	local floorSpot: Vector3? = nil -- 빛기둥 밑동(엘리베이터 타는 곳 바닥). 패드는 패드 장식이 대신한다
+	if here == n then
+		local pad = PadController.padPosition(Keys.TOWER_PAD_ID)
+		if pad and origin and Vector3.new(pad.X - origin.X, 0, pad.Z - origin.Z).Magnitude <= GUIDE_DONE_DISTANCE then
+			stopGuide()
+			return
+		end
+		label.Text = `{n}층 발판에서 계속 지어요!`
+		target = if pad then pad + Vector3.new(0, GUIDE_PAD_UP, 0) else nil
+	else
+		label.Text = `엘리베이터를 타고 {n}층으로 가요!`
+		if here and plot then
+			local spot = PlotLayout.elevatorSpot(here)
+			local base = plot:GetPivot() * Vector3.new(spot.X, RoomConfig.floorY(here), spot.Z)
+			floorSpot = base
+			target = base + Vector3.new(0, GUIDE_ELEVATOR_UP, 0)
+		end
+	end
+	arrowGui.Enabled = target ~= nil
+	if target then
+		at.Position = target
+	end
+	pillar.Parent = if floorSpot then fxFolder else nil
+	if floorSpot then
+		pillar.CFrame = CFrame.new(floorSpot + Vector3.new(0, PILLAR_SIZE.Y / 2, 0))
+	end
+end
+
+--- 강당·층 방이 새로 서면(완공) 축하가 지나간 뒤 안내를 켠다. 첫 프로필은 기준만 잡는다
+local function watchFloors(profile: Types.Profile)
+	local count = #profile.floors + (if profile.facilities.auditorium then 1 else 0)
+	if guideFloorCount >= 0 and count > guideFloorCount then
+		local n = RoomConfig.topFloor(#profile.floors)
+		task.delay(GUIDE_DELAY, function()
+			if guideFloorCount == count then
+				startGuide(n)
+			end
+		end)
+	end
+	guideFloorCount = count
+end
+
 -- ── 단계 계산(§2.1) ─────────────────────────────────────────────
 
 --- 내 부지 PlotState 의 Decor 어트리뷰트가 비었나(아직 하나도 안 놓음). 폴더가 아직 없으면 false
@@ -543,6 +680,7 @@ local function buildVisuals(stage: number): boolean
 end
 
 local function apply(profile: Types.Profile)
+	watchFloors(profile)
 	local stage = computeStage(profile)
 	local target = resolveTarget(stage, profile)
 	local stageChanged = stage ~= currentStage
@@ -581,6 +719,7 @@ local function tick(dt: number)
 	end
 	local step = tickAccum
 	tickAccum = 0
+	updateGuide()
 	local profile = HudController.profile()
 	if not profile then
 		return

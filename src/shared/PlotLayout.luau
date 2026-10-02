@@ -73,16 +73,43 @@ PlotLayout.FLOOR_STEP = 19
 PlotLayout.TOWER_FOOTPRINT = { x0 = -20, x1 = 20, z0 = -35, z1 = -5 } -- 40×30
 -- 방 가구 금지 구역(엘리베이터·도착 자리·층 패드가 있는 발자국 남동쪽 끝). 방 좌석·가구는 이 밖에 둔다
 PlotLayout.TOWER_CLEAR = { x0 = 12.5, x1 = 20, z0 = -22.5, z1 = -5 }
--- 3층 이상·옥상 엘리베이터 칸(같은 x·z). 도착 자리 = 타는 곳 + ARRIVAL_OFFSET(남쪽 4)
-PlotLayout.ELEVATOR_XZ = Vector2.new(17.5, -17.5)
-PlotLayout.ARRIVAL_OFFSET = Vector3.new(0, 0, 4)
--- 층 패드(옥상 바닥, 짓는 중이면 짓는 층 바닥). 도착 자리 남쪽, 남벽(z -5) 안
+-- 타는 곳 칸 가운데에서 엘리베이터 뒷면까지(클라 TowerRenderController: 칸 반 2 + 문틀 0.5 + 뒤 상자 1.4).
+-- 타는 곳은 모두 벽 안쪽 면에서 이만큼(뒷면 0.1 은 벽 속) 떨어져 벽에 등을 댄다
+PlotLayout.ELEVATOR_BACK = 3.9
+-- 3층 이상·옥상 엘리베이터 칸(같은 x·z). 탑 동벽(안쪽 면 x 19.4, 클라 WALL_T 0.6)에 등을 대고 서쪽을 본다
+PlotLayout.ELEVATOR_XZ = Vector2.new(19.4 - PlotLayout.ELEVATOR_BACK + 0.1, -17.5)
+-- 도착 자리 = 타는 곳 + arrivalOffset(n)
+PlotLayout.ARRIVAL_DIST = 4
+-- 3층 이상 도착 자리는 칸 남쪽 4(문 앞 서쪽 4 는 가구 금지 구역 x ≥ 12.5 밖이라)
+PlotLayout.ARRIVAL_OFFSET = Vector3.new(0, 0, PlotLayout.ARRIVAL_DIST)
+-- 층 패드(다 지은 맨 위 층 바닥. 층 방이 없으면 강당). 도착 자리 남쪽, 남벽(z -5) 안
 PlotLayout.TOWER_PAD_XZ = Vector2.new(17.5, -8.5)
--- 1층 타는 곳: 현관 서쪽 절반 가운데(계단 x 5~14·스티커판 z -9~-1·복도 패드 z ≤ -11.75 밖). 바닥 윗면 y 0
-PlotLayout.ELEVATOR_F1 = Vector3.new(-10, 0, 5)
--- 2층 타는 곳: 강당 동쪽(착지대 x ≤ 14·동쪽 커튼 z -28.5 사이), 3층 이상 칸 바로 아래. 강당 바닥 윗면 y 18.2
-PlotLayout.ELEVATOR_F2 =
-	Vector3.new(PlotLayout.ELEVATOR_XZ.X, PlotLayout.WALL_H + PlotLayout.AUDITORIUM_FLOOR_T, PlotLayout.ELEVATOR_XZ.Y)
+-- 1층 타는 곳: 현관 서벽(안쪽 면 x -14)에 등을 대고 동쪽을 본다. 스티커판 z -9~-1 남쪽. 바닥 윗면 y 0
+PlotLayout.ELEVATOR_F1 = Vector3.new(-14 + PlotLayout.ELEVATOR_BACK - 0.1, 0, 5)
+-- 2층 타는 곳: 강당 동벽(안쪽 면 x 24)에 등을 대고 서쪽을 본다(3층 이상 칸과 같은 z). 강당 바닥 윗면 y 18.2
+PlotLayout.ELEVATOR_F2 = Vector3.new(
+	24 - PlotLayout.ELEVATOR_BACK + 0.1,
+	PlotLayout.WALL_H + PlotLayout.AUDITORIUM_FLOOR_T,
+	PlotLayout.ELEVATOR_XZ.Y
+)
+
+--- n층 타는 곳 문이 보는 쪽(단위 벡터). 1층은 동쪽, 2층 이상은 서쪽
+function PlotLayout.elevatorFacing(n: number): Vector3
+	return if n <= 1 then Vector3.new(1, 0, 0) else Vector3.new(-1, 0, 0)
+end
+
+--- n층 타는 곳(부지 로컬 x·z, y 0). 1층 현관·2층 강당·3층 이상 탑 동벽
+function PlotLayout.elevatorSpot(n: number): Vector3
+	return if n <= 1
+		then PlotLayout.ELEVATOR_F1 * Vector3.new(1, 0, 1)
+		elseif n == 2 then PlotLayout.ELEVATOR_F2 * Vector3.new(1, 0, 1)
+		else Vector3.new(PlotLayout.ELEVATOR_XZ.X, 0, PlotLayout.ELEVATOR_XZ.Y)
+end
+
+--- n층 도착 자리 = 타는 곳 + 이것. 1층·2층은 문 앞 4, 3층 이상은 ARRIVAL_OFFSET
+function PlotLayout.arrivalOffset(n: number): Vector3
+	return if n <= 2 then PlotLayout.elevatorFacing(n) * PlotLayout.ARRIVAL_DIST else PlotLayout.ARRIVAL_OFFSET
+end
 
 -- ── 스티커(§3.2 #4·#5·#10) ───────────────────────────────────────
 PlotLayout.MIN_GAP = 8 -- 다른 활성 스티커와 최소 거리
@@ -338,7 +365,9 @@ do
 	assert(hallRow, "PlotLayout: FacilityConfig 에 hall 행이 없다")
 	local hallPad = rectAt(hallRow.pad.X, hallRow.pad.Z)
 	local f1 = PlotLayout.ELEVATOR_F1
-	local f1Spots: { [string]: DecorRect } = { f1 = rectAt(f1.X, f1.Z), f1Arrival = rectAt(f1.X + off.X, f1.Z + off.Z) }
+	local off1 = PlotLayout.arrivalOffset(1)
+	local f1Spots: { [string]: DecorRect } =
+		{ f1 = rectAt(f1.X, f1.Z), f1Arrival = rectAt(f1.X + off1.X, f1.Z + off1.Z) }
 	for name, r in f1Spots do
 		assert(inside(r, entIn), `PlotLayout: {name} 칸이 현관 안이 아니다`)
 		assert(not overlaps(r, stairs), `PlotLayout: {name} 칸이 계단과 겹친다`)
@@ -373,7 +402,13 @@ do
 		math.abs(f2.Y - (aud.center.Y + PlotLayout.AUDITORIUM_FLOOR_T)) < 1e-4,
 		"PlotLayout: f2 높이가 강당 바닥이 아니다"
 	)
-	local f2Spots: { [string]: DecorRect } = { f2 = rectAt(f2.X, f2.Z), f2Arrival = rectAt(f2.X + off.X, f2.Z + off.Z) }
+	local off2 = PlotLayout.arrivalOffset(2)
+	-- 층 방이 없으면 층 패드도 강당 바닥에 선다
+	local f2Spots: { [string]: DecorRect } = {
+		f2 = rectAt(f2.X, f2.Z),
+		f2Arrival = rectAt(f2.X + off2.X, f2.Z + off2.Z),
+		towerPad = rectAt(PlotLayout.TOWER_PAD_XZ.X, PlotLayout.TOWER_PAD_XZ.Y),
+	}
 	local blockers: { [string]: DecorRect } =
 		{ stairwell = stairwell, landing = landing, seats = seats, stage = stage, pad = audPad }
 	for name, r in f2Spots do

@@ -396,6 +396,12 @@ function RoomConfig.topFloor(floorCount: number): number
 	return 2 + floorCount
 end
 
+--- 엘리베이터로 갈 수 있는 층인가: 다 지은 층(1 ~ 맨 위 층), 옥상(roofN)은 옥상 방이 하나라도 있을 때만.
+--- 짓는 중인 층은 완공 뒤에 간다
+function RoomConfig.canRide(n: number, floorCount: number, hasRooftop: boolean, roofN: number): boolean
+	return (n >= 1 and n <= RoomConfig.topFloor(floorCount)) or (hasRooftop and n == roofN)
+end
+
 --- n층의 방 id. 3층 미만이거나 아직 없으면 nil
 function RoomConfig.roomOfFloor(floors: { string }, n: number): string?
 	return floors[n - 2]

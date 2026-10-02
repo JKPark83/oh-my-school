@@ -20,7 +20,6 @@ local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local FacilityConfig = require(ReplicatedStorage.Shared.Config.FacilityConfig)
 local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 local RoomConfig = require(ReplicatedStorage.Shared.Config.RoomConfig)
-local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local Seats = require(ReplicatedStorage.Shared.Seats)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
@@ -38,7 +37,6 @@ local HOME_COOLDOWN = 5
 local TOUCH_RANGE = 12
 local CHOOSE_COOLDOWN = 0.5
 local LIKE_COOLDOWN = 1
-local CELEBRATE_DELAY = 4.5 -- 층 완공 연출이 끝난 뒤 그 층에 서 있던 주인을 새 옥상으로 올린다
 
 type ComboState = { count: number, last: number }
 type StarWindow = { start: number, count: number, taken: { [BasePart]: boolean } }
@@ -118,21 +116,6 @@ local function buy(player: Player, profile: Types.Profile, nextPart: FacilityCon
 	DataService.saveDebounced(player, EconomyConfig.SAVE_DEBOUNCE)
 end
 
---- 층 완공 뒤 floorNo 층 발자국 안에 서 있으면 새 옥상(floorNo + 1) 도착 자리로 올린다
-local function liftToRoof(player: Player, floorNo: number)
-	local plotId = PlotService.plotOf(player)
-	local root = rootOf(player)
-	if not plotId or not root then
-		return
-	end
-	local p = PlotService.cframe(plotId):PointToObjectSpace(root.Position)
-	local foot = PlotLayout.TOWER_FOOTPRINT
-	local inside = p.X >= foot.x0 and p.X <= foot.x1 and p.Z >= foot.z0 and p.Z <= foot.z1
-	if inside and p.Y >= RoomConfig.floorY(floorNo) and p.Y < RoomConfig.floorY(floorNo + 1) then
-		PlotService.teleport(player, Tower.arrival(PlotService.cframe(plotId), floorNo + 1))
-	end
-end
-
 --- 짓던 방(towerRoom) 완공. 부품 수·돈은 호출자가 처리했다
 local function finishRoom(player: Player, profile: Types.Profile)
 	local roomId = profile.towerRoom
@@ -163,9 +146,6 @@ local function finishRoom(player: Player, profile: Types.Profile)
 	end
 	MissionService.onBuilt(player)
 	LeaderboardService.submit(player, #profile.floors)
-	if floorNo > 0 then
-		task.delay(CELEBRATE_DELAY, liftToRoof, player, floorNo)
-	end
 	DataService.syncNow(player)
 	DataService.save(player)
 end

@@ -95,9 +95,8 @@ local TEXT = {
 	ALL_BUILT = "학교 완성!",
 	ALL_BUILT_SUB = "꾸미고 스티커 모으자",
 	TOWER_CAPTION = "층 쌓기",
-	TOWER_CHOOSE_SUB = "옥상에서 방을 골라요",
+	TOWER_CHOOSE_SUB = "맨 위 층 발판에서 골라요",
 	TOWER_TOP = "최고 높이!",
-	ELEVATOR_GUIDE = "엘리베이터로 옥상에 가요!", -- 강당 완공 직후 한 번
 	GO_HOME = "우리 학교로",
 	GO_HOME_SUB = "탭하면 돌아가요",
 	LIKE = "👍 멋져요",
@@ -583,17 +582,14 @@ local function floorsText(profile: Profile): string
 	return if medal then `{text} {medal}` else text
 end
 
---- 층 수 칩(강당 완공 뒤). 강당이 막 완공되면 엘리베이터 안내를 한 번 띄운다
-local function renderFloors(profile: Profile, prev: Profile?)
+--- 층 수 칩(강당 완공 뒤). 새 층으로 가는 안내는 TutorialController 가 띄운다
+local function renderFloors(profile: Profile)
 	local open = RoomConfig.isOpen(profile)
 	floorsChip.Visible = open
 	if not open then
 		return
 	end
 	floorsLabel.Text = floorsText(profile)
-	if prev and not RoomConfig.isOpen(prev) then
-		HudController.toast(TEXT.ELEVATOR_GUIDE)
-	end
 end
 
 --- 받은 「멋져요」 칩. 0 이면 숨긴다. 늘면 펀치
@@ -768,7 +764,7 @@ end
 local function render(profile: Profile, prev: Profile?)
 	renderCoins(profile, prev)
 	renderIncome(profile, prev)
-	renderFloors(profile, prev)
+	renderFloors(profile)
 	renderLikes(profile, prev)
 	renderLike()
 	renderBoard(profile, prev)

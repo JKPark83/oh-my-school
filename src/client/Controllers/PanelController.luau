@@ -1344,7 +1344,7 @@ local function buildRoom(content: Frame)
 	end
 end
 
---- 그 부지 PlotState 로 층 버튼을 만든다. 짓는 중인 층은 「공사 중」, 맨 위는 옥상(도착 판정은 서버)
+--- 그 부지 PlotState 로 층 버튼을 만든다. 다 지은 층과(옥상 방이 있으면) 옥상만. 짓는 층은 완공 뒤에 뜬다(도착 판정은 서버)
 local function buildElevator(content: Frame, payload: any)
 	local plotId = if typeof(payload) == "table" and type(payload.plot) == "number" then payload.plot else nil
 	local scroll = titledScroll(content, "엘리베이터")
@@ -1354,8 +1354,11 @@ local function buildElevator(content: Frame, payload: any)
 	if not plotId or not state then
 		return
 	end
-	local csv = state:GetAttribute(Keys.ATTR_FLOORS)
-	local floors = RoomConfig.fromCsv(if type(csv) == "string" then csv else "")
+	local function csvOf(key: string): { string }
+		local raw = state:GetAttribute(key)
+		return RoomConfig.fromCsv(if type(raw) == "string" then raw else "")
+	end
+	local floors = csvOf(Keys.ATTR_FLOORS)
 	local towerRoom = state:GetAttribute(Keys.ATTR_TOWER_ROOM)
 	local towerParts = state:GetAttribute(Keys.ATTR_TOWER_PARTS)
 	local building = type(towerRoom) == "string"
@@ -1365,20 +1368,22 @@ local function buildElevator(content: Frame, payload: any)
 		and RoomConfig.BY_ID[towerRoom].kind == "floor"
 	local top = RoomConfig.topFloor(#floors)
 	local auditorium = FacilityConfig.BY_ID.auditorium
-	local rows: { string } = { "1층", `2층 {if auditorium then auditorium.name else ""}` }
+	local stops: { { floor: number, text: string } } = {
+		{ floor = 1, text = "1층" },
+		{ floor = 2, text = `2층 {if auditorium then auditorium.name else ""}` },
+	}
 	for n = RoomConfig.FIRST_FLOOR, top do
 		local room = RoomConfig.BY_ID[RoomConfig.roomOfFloor(floors, n) or ""]
-		table.insert(rows, `{n}층 {if room then room.name else ""}`)
+		table.insert(stops, { floor = n, text = `{n}층 {if room then room.name else ""}` })
 	end
-	if building then
-		table.insert(rows, `{top + 1}층 공사 중`)
+	if #csvOf(Keys.ATTR_ROOFTOP) > 0 then
+		table.insert(stops, { floor = top + (if building then 2 else 1), text = "옥상" })
 	end
-	table.insert(rows, "옥상")
-	for floor, text in rows do
-		local b = button(scroll, `Floor{floor}`, text, UDim2.new(1, -12, 0, ELEVATOR_ROW))
-		b.LayoutOrder = floor
+	for i, stop in stops do
+		local b = button(scroll, `Floor{stop.floor}`, stop.text, UDim2.new(1, -12, 0, ELEVATOR_ROW))
+		b.LayoutOrder = i
 		b.Activated:Connect(function()
-			Remotes.RideElevator:FireServer(plotId, floor)
+			Remotes.RideElevator:FireServer(plotId, stop.floor)
 			PanelController.close()
 		end)
 	end

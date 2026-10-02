@@ -18,8 +18,10 @@
 	         먼 부지 부품 ≥ 2 = 구역 바닥판 1 + 완공이면 학생 의자 1(옥상 학생은 어디서나 보인다).
 	  I{n}   방 안(Rooms.get 레시피): 캐릭터가 서 있는 부지의 그 층 ±1 층만(옥상은 R{id} 가 그린다).
 	         부품 2 = big, 3 = +props, 완공 = +finish. 방 하나 ≤ 60 파트(assert). 바닥 큰 가구(opts.collide)만 충돌한다.
+	  E{n}   엘리베이터 문(9 파트, 서버 프롬프트 자리 뒤 벽에 등을 댄다): 가까운 부지는 1층·2층·옥상, 캐릭터가 선 부지는 그 층 ±1.
+	         프롬프트가 뜨면 문이 열리고 사라지면 닫힌다(PromptShown·PromptHidden, 내 화면만).
 	  레시피 파트에 opts.mesh 가 있으면 MeshPart(처음엔 파트로 짓고 메시가 준비되면 다시 짓는다. id 0·실패 = 파트).
-	부지 하나 최악(30층 + 옥상) 가까움 5 × 28 + 7 + 옥상 방 2 × 45 + 방 안 3 × 60 ≈ 417, 먼 부지 28 + 3 + 2 × 2 = 35.
+	부지 하나 최악(30층 + 옥상) 가까움 5 × 28 + 7 + 옥상 방 2 × 45 + 방 안 3 × 60 + 엘리베이터 문 6 × 9 ≈ 471, 먼 부지 28 + 3 + 2 × 2 = 35.
 
 	가림 페이드(옛 "TowerFade" 그대로)
 	  RenderStep "TowerFade"(Camera + 3, CameraController "CameraFade" +2 뒤)에서 HumanoidRootPart → 카메라 쪽으로
@@ -35,6 +37,7 @@
 ]]
 
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -67,6 +70,21 @@ local BAND_H = 3 -- 간판 띠
 local RAIL_H = 3
 local PILLAR = 3 -- 엘리베이터 기둥 굵기
 local PILLAR_ABOVE = 8 -- 옥상 위로 솟는 높이
+-- 엘리베이터 문(타는 곳 칸 끝에 붙여 PlotLayout.elevatorFacing 쪽을 본다. 도착 자리가 그쪽이라 문에서 걸어 나오는 모양)
+local ELEV_W = 5 -- 문틀 전체 폭
+local ELEV_H = 8.1
+local ELEV_D = 1.4 -- 뒤 상자 깊이
+local OPEN_W = 2.6 -- 문 구멍 폭(문 한 짝 = 절반)
+local OPEN_H = 6.5
+local FACADE_T = 0.5 -- 문틀 두께. 문은 그 안 0.05~0.25 에 있어 열리면 옆 문틀 속으로 숨는다
+local DOOR_SLIDE = (ELEV_W - OPEN_W) / 2
+local DOOR_SECONDS = 0.45
+local SPOT_MATCH = 2 -- 프롬프트 자리와 문 조각의 Spot 이 이만큼 안이면 같은 타는 곳
+local ELEV_PIXELS_PER_STUD = 40
+local DOOR_STEEL = Color3.fromRGB(196, 204, 214)
+local ATTR_SPOT = "ElevatorSpot" -- 문 조각 Model: 프롬프트 자리(월드)
+local ATTR_CLOSED = "ClosedCFrame" -- 문 짝: 닫힌 CFrame
+local ATTR_SIDE = "SlideSide" -- 문 짝: 열리는 쪽(-1 서·+1 동)
 local POLE_H = 7
 local FLAG_SIZE = Vector3.new(4, 2.5, 0.2)
 local GHOST = 0.7 -- 실루엣 투명도
@@ -330,6 +348,153 @@ local function buildRoof(pivot: CFrame, roofN: number, rank: number, isNear: boo
 	return m
 end
 
+--- n층 엘리베이터 문. 뒤 상자 1 + 문틀 3(간판·층 표시등 SurfaceGui) + 문 2 + 문턱 1 + 호출 버튼 2 = 9 파트.
+--- 벽에 등을 댄다(PlotLayout.elevatorFacing). 아래 좌표는 타는 곳 바닥 가운데에서 문이 보는 쪽이 +Z 인 틀 기준
+local function buildElevator(pivot: CFrame, n: number, label: string): Model
+	local m = newModel(pivot, n, `E{n}`)
+	local spot = if n <= 1
+		then PlotLayout.ELEVATOR_F1
+		elseif n == 2 then PlotLayout.ELEVATOR_F2
+		else Vector3.new(PlotLayout.ELEVATOR_XZ.X, RoomConfig.floorY(n), PlotLayout.ELEVATOR_XZ.Y)
+	local frame = pivot * CFrame.lookAlong(spot, -PlotLayout.elevatorFacing(n))
+	local x, y = 0, 0
+	local zf = -PlotLayout.ELEVATOR_BACK + ELEV_D -- 문틀 뒷면 = 뒤 상자 앞면(타는 곳 4×4 칸 끝에서 문틀 두께만큼 뒤)
+	local zm = zf + FACADE_T / 2
+	local side = (ELEV_W - OPEN_W) / 2
+	local frameColor = WorldPalette.gateBeam
+
+	local box = part(
+		m,
+		"Box",
+		frame,
+		Vector3.new(x, y + ELEV_H / 2, zf - ELEV_D / 2),
+		Vector3.new(ELEV_W, ELEV_H, ELEV_D),
+		WorldPalette.trim
+	)
+	box.CanCollide = true
+	box.CanQuery = true -- 가림 페이드 레이(벽과 같다)
+	for i, dx in { -1, 1 } do
+		part(
+			m,
+			if i == 1 then "FrameW" else "FrameE",
+			frame,
+			Vector3.new(x + dx * (OPEN_W + side) / 2, y + OPEN_H / 2, zm),
+			Vector3.new(side, OPEN_H, FACADE_T),
+			frameColor
+		)
+		-- 문 한 짝. 위·아래를 살짝 띄워 문틀·문턱과 면이 겹치지 않게
+		local doorH = OPEN_H - 0.12 - 0.05
+		local door = part(
+			m,
+			if i == 1 then "DoorW" else "DoorE",
+			frame,
+			Vector3.new(x + dx * OPEN_W / 4, y + 0.12 + doorH / 2, zf + 0.15),
+			Vector3.new(OPEN_W / 2 - 0.04, doorH, 0.2),
+			DOOR_STEEL
+		)
+		door.Material = Enum.Material.Metal
+		door:SetAttribute(ATTR_CLOSED, door.CFrame)
+		door:SetAttribute(ATTR_SIDE, dx)
+	end
+	local header = part(
+		m,
+		"Header",
+		frame,
+		Vector3.new(x, y + (OPEN_H + ELEV_H) / 2, zm),
+		Vector3.new(ELEV_W, ELEV_H - OPEN_H, FACADE_T),
+		frameColor
+	)
+	-- 문턱: 방 안 마루(윗면 +0.07)보다 높게
+	local sill = part(
+		m,
+		"Sill",
+		frame,
+		Vector3.new(x, y + 0.06, zf + 0.4),
+		Vector3.new(OPEN_W + 0.4, 0.12, 0.8),
+		WorldPalette.lampIron
+	)
+	sill.Material = Enum.Material.Metal
+	-- 호출 버튼(문 앞에서 봐서 오른쪽 문틀 앞면, 저학년 손 높이)
+	local bx = x + (OPEN_W + side) / 2
+	part(m, "CallPlate", frame, Vector3.new(bx, y + 3.4, zf + FACADE_T + 0.04), Vector3.new(0.5, 1, 0.08), DOOR_STEEL)
+	local button = part(
+		m,
+		"CallButton",
+		frame,
+		Vector3.new(bx, y + 3.4, zf + FACADE_T + 0.12),
+		Vector3.new(0.1, 0.36, 0.36),
+		WorldPalette.lampGlow
+	)
+	button.Shape = Enum.PartType.Cylinder
+	button.Material = Enum.Material.Neon
+	button.CFrame *= CFrame.Angles(0, math.pi / 2, 0) -- 원기둥 축(X)을 앞(Z)으로
+
+	-- 간판 「엘리베이터」 + 층 표시등
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Sign"
+	gui.Face = Enum.NormalId.Back -- +Z = 문 앞(타는 곳 쪽)
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = ELEV_PIXELS_PER_STUD
+	gui.MaxDistance = GUI_MAX_DISTANCE
+	gui.Parent = header
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Position = UDim2.fromScale(0.05, 0.06)
+	title.Size = UDim2.fromScale(0.9, 0.44)
+	title.Font = Enum.Font.GothamBlack
+	title.TextScaled = true
+	title.Text = "엘리베이터"
+	title.TextColor3 = WorldPalette.lightText
+	title.Parent = gui
+	local led = Instance.new("TextLabel")
+	led.AnchorPoint = Vector2.new(0.5, 0)
+	led.Position = UDim2.fromScale(0.5, 0.56)
+	led.Size = UDim2.fromScale(0.5, 0.36)
+	led.BackgroundColor3 = WorldPalette.boardDark
+	led.Font = Enum.Font.GothamBold
+	led.TextScaled = true
+	led.Text = `▲▼ {label}`
+	led.TextColor3 = WorldPalette.lampGlow
+	led.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.2, 0)
+	corner.Parent = led
+
+	-- 서버 프롬프트 자리(앵커 가운데·바닥판 Attachment 모두 바닥 + 3)
+	m:SetAttribute(ATTR_SPOT, (frame * CFrame.new(0, 3, 0)).Position)
+	return m
+end
+
+--- 엘리베이터 프롬프트가 뜨면 그 타는 곳 문을 열고, 사라지면 닫는다(내 화면만)
+local function slideDoors(prompt: ProximityPrompt, open: boolean)
+	if prompt.Name ~= Keys.ELEVATOR_PROMPT then
+		return
+	end
+	local at = prompt.Parent
+	local pos = if at and at:IsA("Attachment")
+		then at.WorldPosition
+		elseif at and at:IsA("BasePart") then at.Position
+		else nil
+	if not pos then
+		return
+	end
+	for _, entry in rendered do
+		for _, node in entry.nodes do
+			local spot = node:GetAttribute(ATTR_SPOT)
+			if typeof(spot) == "Vector3" and (spot - pos).Magnitude <= SPOT_MATCH then
+				for _, door in node:GetChildren() do
+					local closed, dx = door:GetAttribute(ATTR_CLOSED), door:GetAttribute(ATTR_SIDE)
+					if door:IsA("BasePart") and typeof(closed) == "CFrame" and type(dx) == "number" then
+						local goal = if open then closed * CFrame.new(dx * DOOR_SLIDE, 0, 0) else closed
+						TweenService:Create(door, TweenInfo.new(DOOR_SECONDS, Enum.EasingStyle.Quad), { CFrame = goal })
+							:Play()
+					end
+				end
+			end
+		end
+	end
+end
+
 local function meshReady(asset: PropAssets.MeshAsset): boolean
 	return MeshCache.get(asset) ~= nil
 end
@@ -556,6 +721,32 @@ local function renderPlot(plotId: number)
 			sig = `{roofN}|{stage}|{lod}|{meshVersion}`,
 			build = function()
 				return buildRoofRoom(pivot, roofN, room, stage, isNear)
+			end,
+		}
+	end
+
+	-- 엘리베이터 문: 가까운 부지는 1층(현관)·2층(강당)·옥상, 캐릭터가 선 부지는 그 층 ±1 도.
+	-- 갈 수 있는 층에만 단다(짓는 층·옥상 방 없는 옥상은 없다)
+	local stops: { [number]: boolean } = {}
+	if isNear then
+		stops[1], stops[2], stops[roofN] = true, true, true
+	end
+	if plotId == herePlot then
+		for n = math.max(RoomConfig.FIRST_FLOOR, hereFloor - 1), hereFloor + 1 do
+			stops[n] = true
+		end
+	end
+	for n in stops do
+		if not RoomConfig.canRide(n, #st.floors, #st.rooftop > 0, roofN) then
+			stops[n] = nil
+		end
+	end
+	for n in stops do
+		local label = if n == roofN then "옥상" else `{n}층`
+		want[`E{n}`] = {
+			sig = `{label}|{lod}`,
+			build = function()
+				return buildElevator(pivot, n, label)
 			end,
 		}
 	end
@@ -887,6 +1078,13 @@ function TowerRenderController.Start()
 
 	-- CameraController "CameraFade"(+2) 뒤에 돈다
 	RunService:BindToRenderStep("TowerFade", Enum.RenderPriority.Camera.Value + 3, updateFade)
+
+	ProximityPromptService.PromptShown:Connect(function(prompt: ProximityPrompt)
+		slideDoors(prompt, true)
+	end)
+	ProximityPromptService.PromptHidden:Connect(function(prompt: ProximityPrompt)
+		slideDoors(prompt, false)
+	end)
 
 	-- Plots·PlotState 는 서버 부팅 뒤 온다. Start 를 막지 않게 따로 기다린다
 	task.spawn(function()

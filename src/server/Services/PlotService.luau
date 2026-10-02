@@ -575,7 +575,7 @@ local function nearElevator(plotId: number, root: BasePart): boolean
 	return false
 end
 
---- RideElevator(plotId, floor). 방문객도 탄다. 1층 ~ Roof 층, 엘리베이터 근처에서만(개선계획 §3.3)
+--- RideElevator(plotId, floor). 방문객도 탄다. 다 지은 층·옥상 방이 있는 옥상만, 엘리베이터 근처에서만(개선계획 §3.3)
 local function rideElevator(player: Player, plotId: number, floor: number)
 	if plotId % 1 ~= 0 or floor % 1 ~= 0 or not plotModels[plotId] then
 		return
@@ -585,7 +585,8 @@ local function rideElevator(player: Player, plotId: number, floor: number)
 	if not profile or not RoomConfig.isOpen(profile) then
 		return
 	end
-	if floor < 1 or floor > Tower.roofFloor(#profile.floors, profile.towerRoom, profile.towerParts) then
+	local roofN = Tower.roofFloor(#profile.floors, profile.towerRoom, profile.towerParts)
+	if not RoomConfig.canRide(floor, #profile.floors, next(profile.rooftop) ~= nil, roofN) then
 		return
 	end
 	local character = player.Character

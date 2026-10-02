@@ -4,6 +4,7 @@
 
 	서버가 만든 부지 인스턴스(Workspace.Plots.PlotNN)를 읽고 로컬 연출만 얹는다. 상태의 출처는 언제나 어트리뷰트다.
 	- 구매 패드: PadState 로 보이기·색을 정하고, 내 부지의 활성 패드 위에 빌보드(이름·가격·진행 링)를 띄운다.
+	  내 부지 층 패드는 장식을 더 얹는다(금 테두리·모서리 등·올라가는 빛 고리·반짝이·「다음 층」 글씨). 층 부품을 사면 towerBurst
 	- 칭찬스티커: 서버 파트는 보이지 않는 히트박스(3.4×3×3.4)다. 내 부지면 그 바닥에 3×0.1×3 표시판(별·하트·꽃·스마일)과
 	  세로 빛·반짝 소리를 로컬로 붙인다(개선계획 §3.2 #2·#3·#9). 금 스티커엔 빛기둥. 수평 2.2·높이 4 안이면 먼저 숨기는
 	  클라 예측(0.5초 안에 확정이 없으면 되돌림)
@@ -91,6 +92,19 @@ local PICKUP_RADIUS = 2.2 -- 스터드, 수평(§3.2 #6)
 local PICKUP_DY = 4 -- 스터드, 히트박스 중심과 캐릭터 루트의 높이 차
 local PICKUP_REVERT = 0.5 -- 초
 local PILLAR_HEIGHT = 12
+-- 층 패드 장식(내 부지만)
+local DECOR_FRAME = 0.5 -- 테두리 굵기·높이
+local DECOR_LAMP = 0.7
+local DECOR_RINGS = 3
+local DECOR_RING_RISE = 7 -- 스터드
+local DECOR_RING_SECONDS = 1.8
+local DECOR_RING_ALPHA = 0.25
+local DECOR_SPARKLE_RATE = 6
+local DECOR_TEXT_PIXELS = 50 -- SurfaceGui 스터드당 픽셀
+local BURST_SPARKLES = 30
+local BURST_SECONDS = 0.7
+local BURST_BEAM_H = 16 -- 위층까지 솟는 빛기둥
+local BURST_WAVE = 10 -- 퍼지는 고리 지름
 -- 스티커·별 표시판(§3.2 #2). 판 중심 = 바닥 윗면 + 0.01 → 판 윗면 = 바닥 + 0.06
 local PLATE_SIZE = Vector3.new(3, 0.1, 3)
 local PLATE_LIFT = 0.01
@@ -141,6 +155,8 @@ type Ring = {
 	pulse: Tween?,
 }
 
+type TowerDecor = { folder: Folder, gui: SurfaceGui, label: TextLabel, emitter: ParticleEmitter }
+
 type PadEntry = {
 	part: BasePart,
 	plotId: number,
@@ -149,6 +165,7 @@ type PadEntry = {
 	baseColor: Color3,
 	state: string,
 	ring: Ring?,
+	decor: TowerDecor?,
 	pressed: boolean,
 	pressTween: Tween?,
 	conns: { RBXScriptConnection },
@@ -374,6 +391,12 @@ local function updateRing(entry: PadEntry)
 		end
 		ring.name.Text = text
 		price = towerPrice
+		if entry.decor and profile then
+			local room = RoomConfig.BY_ID[profile.towerRoom]
+			local top = RoomConfig.topFloor(#profile.floors)
+			local roof = if room then room.kind == "roof" else top >= RoomConfig.MAX_FLOOR
+			entry.decor.label.Text = if roof then "옥상" else `{top + 1}층`
+		end
 	else
 		local nextIndex = if profile then profile.buildParts + 1 else 1
 		price = FacilityConfig.partPriceOf(entry.facilityId, nextIndex)
@@ -448,6 +471,113 @@ local function sinkPad(entry: PadEntry)
 	tween:Play()
 end
 
+local function destroyDecor(entry: PadEntry)
+	local decor = entry.decor
+	if decor then
+		decor.folder:Destroy()
+		decor.gui:Destroy()
+		entry.decor = nil
+	end
+end
+
+--- 층 패드 장식. 패드 바닥(= 층 바닥) 기준으로 둘레에 세운다. 패드가 옮겨 가면 다시 만든다
+local function buildDecor(entry: PadEntry): TowerDecor
+	local pad = entry.part
+	local folder = Instance.new("Folder")
+	folder.Name = "TowerPadDecor"
+	folder.Parent = fxFolder
+	local floor = entry.base * CFrame.new(0, -pad.Size.Y / 2, 0)
+	local half = pad.Size.X / 2 + DECOR_FRAME / 2
+	local function put(name: string, size: Vector3, offset: CFrame, color: Color3, material: Enum.Material): Part
+		local p = newLocalPart(name, size, floor * offset, color)
+		p.Material = material
+		p.Parent = folder
+		return p
+	end
+	-- 금 테두리 4 + 모서리 등 4(숨쉬기)
+	local long = pad.Size.X + DECOR_FRAME * 2
+	for i, side in { Vector3.new(0, 0, -1), Vector3.new(0, 0, 1), Vector3.new(-1, 0, 0), Vector3.new(1, 0, 0) } do
+		local size = if side.X == 0
+			then Vector3.new(long, DECOR_FRAME, DECOR_FRAME)
+			else Vector3.new(DECOR_FRAME, DECOR_FRAME, long)
+		put(
+			`Frame{i}`,
+			size,
+			CFrame.new(side * half + Vector3.new(0, DECOR_FRAME / 2, 0)),
+			COLOR_GOLD,
+			Enum.Material.Metal
+		)
+	end
+	local glow = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+	for i, c in { Vector2.new(-1, -1), Vector2.new(1, -1), Vector2.new(-1, 1), Vector2.new(1, 1) } do
+		local lamp = put(
+			`Lamp{i}`,
+			Vector3.one * DECOR_LAMP,
+			CFrame.new(c.X * half, DECOR_FRAME + DECOR_LAMP / 2, c.Y * half),
+			COLOR_YELLOW,
+			Enum.Material.Neon
+		)
+		lamp.Shape = Enum.PartType.Ball
+		TweenService:Create(lamp, glow, { Transparency = 0.6 }):Play()
+	end
+	-- 위로 올라가며 사라지는 빛 고리(엘리베이터처럼 「위로」)
+	local flat = CFrame.Angles(0, 0, math.pi / 2) -- 원기둥 축(X)을 세로로
+	local ringSize = Vector3.new(0.12, long, long)
+	for i = 1, DECOR_RINGS do
+		local start = CFrame.new(0, pad.Size.Y + 0.1, 0) * flat
+		local ring = put(`Ring{i}`, ringSize, start, COLOR_GREEN, Enum.Material.Neon)
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Transparency = 1
+		local rise = TweenInfo.new(DECOR_RING_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, -1)
+		task.delay((i - 1) * DECOR_RING_SECONDS / DECOR_RINGS, function()
+			if ring.Parent then
+				ring.Transparency = DECOR_RING_ALPHA
+				TweenService:Create(ring, rise, {
+					CFrame = floor * CFrame.new(0, DECOR_RING_RISE, 0) * flat,
+					Transparency = 1,
+				}):Play()
+			end
+		end)
+	end
+	-- 반짝이: 패드 윗면 전체에서 위로
+	local core = put(
+		"Sparkles",
+		Vector3.new(pad.Size.X, 0.1, pad.Size.Z),
+		CFrame.new(0, pad.Size.Y, 0),
+		COLOR_GREEN,
+		Enum.Material.Neon
+	)
+	core.Transparency = 1
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Shape = Enum.ParticleEmitterShape.Box
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Rate = DECOR_SPARKLE_RATE
+	emitter.Lifetime = NumberRange.new(1.2, 1.8)
+	emitter.Speed = NumberRange.new(3, 5)
+	emitter.SpreadAngle = Vector2.new(10, 10)
+	emitter.Size = NumberSequence.new(0.35, 0)
+	emitter.LightEmission = 1
+	emitter.Color = ColorSequence.new(COLOR_YELLOW, COLOR_GREEN)
+	emitter.Parent = core
+	-- 패드 윗면 글씨: 「다음 층」 / 「5층」(updateRing 이 바꾼다). 패드가 눌려도 같이 내려가게 패드에 붙인다
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "TowerPadText"
+	gui.Adornee = pad
+	gui.Face = Enum.NormalId.Top
+	gui.CanvasSize = Vector2.new(pad.Size.X, pad.Size.Z) * DECOR_TEXT_PIXELS
+	gui.LightInfluence = 0
+	gui.Parent = guiFolder
+	local caption = newLabel(gui, "다음 층", 30, COLOR_WHITE)
+	caption.Size = UDim2.fromScale(1, 0.3)
+	caption.Position = UDim2.fromScale(0, 0.12)
+	local label = newLabel(gui, "", 80, COLOR_WHITE)
+	label.Size = UDim2.fromScale(1, 0.5)
+	label.Position = UDim2.fromScale(0, 0.4)
+	label.TextStrokeColor3 = COLOR_GOLD
+	label.TextStrokeTransparency = 0
+	return { folder = folder, gui = gui, label = label, emitter = emitter }
+end
+
 local function applyPad(entry: PadEntry)
 	local part = entry.part
 	local raw = part:GetAttribute(Keys.ATTR_PAD_STATE)
@@ -460,17 +590,22 @@ local function applyPad(entry: PadEntry)
 		part.Transparency = 0
 		part.Color = COLOR_GREEN
 		if mine then
+			if entry.facilityId == TOWER_FACILITY and not entry.decor then
+				entry.decor = buildDecor(entry)
+			end
 			if not entry.ring then
 				entry.ring = buildRing(entry)
 			end
 			updateRing(entry)
 		else
 			destroyRing(entry)
+			destroyDecor(entry)
 		end
 		return
 	end
 
 	destroyRing(entry)
+	destroyDecor(entry)
 	if previous == PAD_ACTIVE and state ~= PAD_BUILT then
 		-- 눌린 채 비활성이 되면 원래 자리로 돌려 둔다
 		stopPress(entry)
@@ -495,6 +630,7 @@ local function unwatchPad(part: Instance)
 	end
 	disconnectAll(entry.conns)
 	destroyRing(entry)
+	destroyDecor(entry)
 	pads[part :: any] = nil
 end
 
@@ -511,6 +647,10 @@ local function movePad(entry: PadEntry)
 		return
 	end
 	entry.base = base
+	if entry.decor then
+		destroyDecor(entry)
+		entry.decor = buildDecor(entry)
+	end
 	if entry.state ~= PAD_ACTIVE then
 		return
 	end
@@ -536,6 +676,7 @@ local function watchPad(part: Instance, plotId: number)
 		baseColor = part.Color,
 		state = "",
 		ring = nil,
+		decor = nil,
 		pressed = false,
 		pressTween = nil,
 		conns = {},
@@ -1499,6 +1640,45 @@ end
 --- 프로필·부지 변화 뒤 패드·팻말·종·프롬프트를 어트리뷰트에서 다시 계산한다
 function PadController.refresh()
 	refreshAll()
+end
+
+--- 층 부품을 샀을 때(FeedbackController). 내 층 패드에서 반짝이가 터지고 고리가 퍼지며 빛기둥이 위층으로 솟는다
+function PadController.towerBurst()
+	for _, entry in pads do
+		local decor = entry.decor
+		if decor and entry.plotId == myPlotId and entry.facilityId == TOWER_FACILITY then
+			decor.emitter:Emit(BURST_SPARKLES)
+			local floor = entry.base * CFrame.new(0, -entry.part.Size.Y / 2, 0)
+			local info = TweenInfo.new(BURST_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local wave = newLocalPart(
+				"BurstWave",
+				Vector3.new(0.15, entry.part.Size.X, entry.part.Size.Z),
+				floor * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, 0, math.pi / 2),
+				COLOR_YELLOW
+			)
+			wave.Shape = Enum.PartType.Cylinder
+			wave.Transparency = 0.2
+			local beam = newLocalPart(
+				"BurstBeam",
+				Vector3.new(entry.part.Size.X * 0.8, 1, entry.part.Size.Z * 0.8),
+				floor * CFrame.new(0, 0.5, 0),
+				COLOR_GREEN
+			)
+			beam.Transparency = 0.3
+			TweenService:Create(wave, info, { Size = Vector3.new(0.15, BURST_WAVE, BURST_WAVE), Transparency = 1 })
+				:Play()
+			TweenService:Create(beam, info, {
+				Size = Vector3.new(beam.Size.X, BURST_BEAM_H, beam.Size.Z),
+				CFrame = floor * CFrame.new(0, BURST_BEAM_H / 2, 0),
+				Transparency = 1,
+			}):Play()
+			task.delay(BURST_SECONDS, function()
+				wave:Destroy()
+				beam:Destroy()
+			end)
+			return
+		end
+	end
 end
 
 --- StickerCollected: 예측한 스티커를 확정한다(Collected 가 올 때까지 숨긴 채 둔다)

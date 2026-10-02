@@ -6,7 +6,7 @@
 	  FloorNN   층마다 바닥판(3층부터. 짓는 중인 층 방은 부품 1 부터 그 층 바닥판도)
 	  Roof      맨 위 판 = 옥상 바닥. 층이 0 이면 강당 지붕 바로 위
 	  RoofRail1~4  Roof 둘레 투명 충돌 벽(옥상에서 떨어지지 않게. 난간 모양은 클라가 그린다)
-	  TowerPad  층 패드(PAD_TAG, FacilityId "tower"). 옥상 바닥, 짓는 중이면 짓는 층 바닥 위
+	  TowerPad  층 패드(PAD_TAG, FacilityId "tower"). 다 지은 맨 위 층 바닥 위(층 방이 없으면 강당)
 	  ElevatorF1·ElevatorF2  1층(현관)·2층(강당) 엘리베이터 앵커(투명, 충돌 없음)
 	엘리베이터 프롬프트(이름 ElevatorPrompt)는 바닥판·Roof 의 Attachment "Elevator" 와 1·2층 앵커에 단다.
 	누르면 클라가 층 버튼 패널을 연다(서버는 RideElevator 만 판정한다).
@@ -65,7 +65,7 @@ local function buildingFloor(towerRoom: string, towerParts: number): boolean
 	return towerParts >= 1 and room ~= nil and room.kind == "floor"
 end
 
---- Roof(옥상 바닥)가 있는 층 = 엘리베이터로 갈 수 있는 맨 위 층
+--- Roof(옥상 바닥)가 있는 층
 function Tower.roofFloor(floorCount: number, towerRoom: string, towerParts: number): number
 	return RoomConfig.topFloor(floorCount) + (if buildingFloor(towerRoom, towerParts) then 2 else 1)
 end
@@ -75,14 +75,12 @@ function Tower.floorTop(n: number): number
 	return RoomConfig.floorY(n) + (if n >= RoomConfig.FIRST_FLOOR then LIFT else 0)
 end
 
---- n층 엘리베이터 도착 자리(바닥 윗면, 월드). PlotService.teleport 가 +4 올려서 놓는다
+--- n층 엘리베이터 도착 자리(바닥 윗면, 월드). 엘리베이터에서 멀어지는 쪽을 본다. PlotService.teleport 가 +4 올려서 놓는다
 function Tower.arrival(plotCFrame: CFrame, n: number): CFrame
-	local spot = if n <= 1
-		then PlotLayout.ELEVATOR_F1
-		elseif n == 2 then PlotLayout.ELEVATOR_F2
-		else Vector3.new(PlotLayout.ELEVATOR_XZ.X, 0, PlotLayout.ELEVATOR_XZ.Y)
-	local p = Vector3.new(spot.X, Tower.floorTop(n), spot.Z) + PlotLayout.ARRIVAL_OFFSET
-	return plotCFrame * CFrame.new(p)
+	local spot = PlotLayout.elevatorSpot(n)
+	local offset = PlotLayout.arrivalOffset(n)
+	local p = Vector3.new(spot.X, Tower.floorTop(n), spot.Z) + offset
+	return plotCFrame * CFrame.lookAlong(p, offset.Unit)
 end
 
 local function makePrompt(parent: Instance)
@@ -212,8 +210,8 @@ function Tower.refresh(
 		end
 	end
 
-	-- 층 패드: 옥상 바닥, 층 방을 짓는 중이면 그 층 바닥
-	local padN = if buildingFloor(towerRoom, towerParts) then roofN - 1 else roofN
+	-- 층 패드: 다 지은 맨 위 층 바닥(층 방이 없으면 강당). 짓는 층·옥상은 완공 전에 갈 수 없다
+	local padN = RoomConfig.topFloor(#floors)
 	local padCenter = Vector3.new(PlotLayout.TOWER_PAD_XZ.X, Tower.floorTop(padN) + PAD_LIFT, PlotLayout.TOWER_PAD_XZ.Y)
 	local pad, newPad = ensure(folder, plotCFrame, Tower.PAD, PAD_SIZE, padCenter, {
 		color = WorldPalette.pad,
