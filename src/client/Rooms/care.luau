@@ -1,8 +1,10 @@
 --!strict
 --[[
-	돌봄교실 레시피. 북서 낮잠 매트, 서쪽 낮은 원탁, 남쪽 블록 러그·책 읽는 빈백, 북동 장난감 선반·사물함, 남동 간식 탁자.
+	돌봄교실 레시피. 북서 낮잠 매트·벽 깃발, 방 가운데 북쪽 흔들목마, 서쪽 낮은 원탁, 남쪽 블록 러그·책 읽는 빈백,
+	북동 장난감 선반·사물함, 남동 간식 탁자.
 	좌석: 1·2 원탁 방석, 3·4 빈백, 5 간식 탁자(RoomConfig care). 원탁은 좌석 상자에 걸쳐서 이름이 Desk* 다.
-	선반 위 곰 인형은 메시(PropAssets.HERO.bear)가 준비되면 공 4 대신 1 파트. 파트 수: 폴백 55 / 메시 52.
+	선반 위 곰 인형은 메시(PropAssets.HERO.bear)가 준비되면 공 4 대신 1 파트.
+	흔들목마는 메시(PropAssets.HERO.rockinghorse)가 준비되면 파트 3 대신 1 파트. 파트 수: 폴백 60 / 메시 55.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,7 +14,6 @@ local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local ZN, XI = Kit.Z_N, Kit.X_IN
-local FABRIC = Enum.Material.Fabric
 local TABLE_X, TABLE_Z, TABLE_TOP = -10, -5.5, 2.6 -- 원탁 가운데·윗면 높이
 local SNACK_X, SNACK_Z = 8, 9
 local MAT_Z = -11.8
@@ -36,13 +37,13 @@ local recipe: Kit.Recipe = {
 			}
 		)
 		for i, c in { WorldPalette.sticker, WorldPalette.star } do
-			Kit.cylinder(put, `Chair{i}`, seats[i] + Vector3.new(0, 0.7, 0), 2, 1.4, c, { material = FABRIC })
+			Kit.cylinder(put, `Chair{i}`, seats[i] + Vector3.new(0, 0.7, 0), 2, 1.4, c)
 		end
-		-- 빈백 2: 앉는 몸통 + 뒤 등받이 공
+		-- 빈백 2: 앉는 몸통 + 뒤 등받이 공(Fabric 은 색이 어둡게 묻혀서 기본 재질)
 		for k, c in { WorldPalette.blossom, room.accent } do
 			local s = seats[k + 2]
-			put(`Chair{k + 2}`, Vector3.new(2.2, 1.4, 2.2), s + Vector3.new(0, 0.7, 0), c, { material = FABRIC })
-			Kit.ball(put, `Chair{k + 2}Back`, s + Vector3.new(0, 1.4, 1.4), 2.2, c, { material = FABRIC })
+			put(`Chair{k + 2}`, Vector3.new(2.2, 1.4, 2.2), s + Vector3.new(0, 0.7, 0), c)
+			Kit.ball(put, `Chair{k + 2}Back`, s + Vector3.new(0, 1.4, 1.4), 2.2, c)
 		end
 		-- 낮잠 매트 2
 		for k, x in { -16, -10 } do
@@ -50,10 +51,7 @@ local recipe: Kit.Recipe = {
 				`NapMat{k}`,
 				Vector3.new(5, 0.3, 3),
 				Vector3.new(x, 0.15, MAT_Z),
-				if k == 1 then WorldPalette.star else room.wall,
-				{
-					material = FABRIC,
-				}
+				if k == 1 then WorldPalette.star else WorldPalette.lawn
 			)
 		end
 		-- 장난감 선반(북쪽 벽) + 장난감 상자, 사물함(동쪽 벽)
@@ -73,46 +71,41 @@ local recipe: Kit.Recipe = {
 		put("BookRack", Vector3.new(6, 2.4, 1), Vector3.new(-2.5, 1.2, 13.8), WorldPalette.trim, { collide = true })
 	end,
 
-	props = function(put, ctx) -- 21 파트(메시 18)
-		-- 원탁 위: 크레파스 상자 + 도화지
+	props = function(put, ctx) -- 23 파트(메시 18)
+		-- 원탁 위: 크레파스 상자
 		put(
 			"Crayons",
 			Vector3.new(1.2, 0.3, 0.8),
 			Vector3.new(TABLE_X, TABLE_TOP + 0.15, TABLE_Z + 0.5),
 			WorldPalette.desk
 		)
-		-- 바깥 모서리가 원탁(반지름 3) 안: 가운데에서 약 2.55
-		put(
-			"Paper",
-			Vector3.new(1.2, 0.05, 0.9),
-			Vector3.new(TABLE_X - 1.5, TABLE_TOP + 0.025, TABLE_Z + 1),
-			WorldPalette.trim
-		)
+		-- 흔들목마(방 가운데 북쪽, 높이 4). yaw 270: 길이가 x, 얼굴이 동쪽(도착 자리)
+		if
+			not Kit.hero(put, ctx.ready, "RockingHorse", PropAssets.HERO.rockinghorse, Vector3.new(1, 0, -5), 4, 270)
+		then
+			-- 폴백: 흔들판 + 몸통 + 머리(동쪽 끝, 몸통 윗면 위)
+			put(
+				"HorseRocker",
+				Vector3.new(4.8, 0.4, 1.3),
+				Vector3.new(1, 0.2, -5),
+				WorldPalette.benchWood,
+				{ material = Enum.Material.Wood }
+			)
+			put("HorseBody", Vector3.new(2.9, 2, 1.2), Vector3.new(1, 1.4, -5), WorldPalette.star)
+			put("HorseHead", Vector3.new(1.1, 1.6, 1.1), Vector3.new(2.75, 3.2, -5), WorldPalette.star)
+		end
 		-- 매트 위 베개
 		for k, x in { -17.8, -11.8 } do
-			put(
-				`Pillow{k}`,
-				Vector3.new(1.2, 0.4, 2),
-				Vector3.new(x, 0.5, MAT_Z),
-				WorldPalette.trim,
-				{ material = FABRIC }
-			)
+			put(`Pillow{k}`, Vector3.new(1.2, 0.4, 2), Vector3.new(x, 0.5, MAT_Z), WorldPalette.trim)
 		end
 		-- 선반 위 곰 인형(몸·머리·귀 2)과 블록 2
 		local bearX, shelfZ = 7.5, ZN + 0.75
 		-- 메시: 선반(윗면 4, 깊이 1.2) 위에 앉아 방 쪽(남)을 본다
 		if not Kit.hero(put, ctx.ready, "Bear", PropAssets.HERO.bear, Vector3.new(bearX, 4, ZN + 0.6), 1.8, 0) then
-			Kit.ball(put, "BearBody", Vector3.new(bearX, 4.6, shelfZ), 1.4, WorldPalette.cork, { material = FABRIC })
-			Kit.ball(put, "BearHead", Vector3.new(bearX, 5.7, shelfZ), 1, WorldPalette.cork, { material = FABRIC })
+			Kit.ball(put, "BearBody", Vector3.new(bearX, 4.6, shelfZ), 1.4, WorldPalette.cork)
+			Kit.ball(put, "BearHead", Vector3.new(bearX, 5.7, shelfZ), 1, WorldPalette.cork)
 			for k, dx in { -0.35, 0.35 } do
-				Kit.ball(
-					put,
-					`BearEar{k}`,
-					Vector3.new(bearX + dx, 6.15, shelfZ),
-					0.4,
-					WorldPalette.cork,
-					{ material = FABRIC }
-				)
+				Kit.ball(put, `BearEar{k}`, Vector3.new(bearX + dx, 6.15, shelfZ), 0.4, WorldPalette.cork)
 			end
 		end
 		put("ShelfBlock1", Vector3.one * 0.9, Vector3.new(9.6, 4.45, shelfZ), WorldPalette.star)
@@ -135,20 +128,18 @@ local recipe: Kit.Recipe = {
 		put("Book2", Vector3.new(1.2, 0.2, 0.8), Vector3.new(-1.5, 2.5, 13.8), WorldPalette.desk)
 	end,
 
-	finish = function(put, ctx) -- 15 파트
+	finish = function(put, ctx) -- 18 파트
 		local room = ctx.room
-		Kit.rug(put, "BlockRug", -13, 8.5, 8, 6, WorldPalette.star)
-		Kit.rug(put, "ReadRug", -2.5, 10, 9, 5, room.wall)
+		-- 깔개는 기본 재질(Kit.rug 의 Fabric 은 색이 어둡게 묻힌다)
+		put("BlockRug", Vector3.new(8, 0.1, 6), Vector3.new(-13, 0.05, 8.5), WorldPalette.star)
+		put("ReadRug", Vector3.new(9, 0.1, 5), Vector3.new(-2.5, 0.05, 10), WorldPalette.sticker)
 		-- 매트 위 이불
 		for k, x in { -15.2, -9.2 } do
 			put(
 				`Blanket{k}`,
 				Vector3.new(2.8, 0.1, 2.8),
 				Vector3.new(x, 0.35, MAT_Z),
-				if k == 1 then WorldPalette.sticker else WorldPalette.blossom,
-				{
-					material = FABRIC,
-				}
+				if k == 1 then WorldPalette.sticker else WorldPalette.blossom
 			)
 		end
 		-- 날씨판(해·구름)
@@ -171,6 +162,16 @@ local recipe: Kit.Recipe = {
 				Vector3.new(0.3, 1.6, 2),
 				Vector3.new(XI - 0.15, 6.5, z),
 				if k == 1 then WorldPalette.signBoard else WorldPalette.star
+			)
+		end
+		-- 낮잠 코너 위 마름모 깃발 3(벽에 붙는다, 시계 x -9~-7 과 안 겹친다)
+		for k, c in { WorldPalette.blossom, WorldPalette.sticker, WorldPalette.star } do
+			put(
+				`Flag{k}`,
+				Vector3.new(1.4, 1.4, 0.2),
+				Vector3.new(-20 + k * 3, 13, ZN + 0.1),
+				c,
+				{ rot = CFrame.Angles(0, 0, math.pi / 4) }
 			)
 		end
 		put("Clock", Vector3.new(0.2, 2, 2), Vector3.new(-8, 11, ZN + 0.1), WorldPalette.clockFace, {

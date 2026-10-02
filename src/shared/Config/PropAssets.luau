@@ -103,7 +103,8 @@ PropAssets.MESHES = {
 
 --[[
 	주인공 소품 메시(P5, 2026-10-02 Studio 메시 생성으로 만들어 게임 소유자 계정에 올렸다). 방마다 한두 개.
-	  · 전부 한 덩어리 MeshPart + 원래 텍스처. 앞(정면)이 +Z 다. size 는 만든 그대로의 크기라 비율로만 쓴다.
+	  · 전부 한 덩어리 MeshPart + 원래 텍스처. 앞(정면)이 +Z 다(예외: 2026-10-03 에 만든 robotarm·dinosaur 와
+	    lectern 아래 새 키들은 −Z). size 는 만든 그대로의 크기라 비율로만 쓴다.
 	  · 클라만 쓴다(client/MeshCache). 층 쌓기 방은 Rooms/Kit.hero, 1층 시설은 InteriorRenderController 의 hero.
 	  · id 가 0 이거나 못 불러오면 레시피가 그 자리를 파트로 짓는다.
 	  · 삼각형 예산(기획서 §12.1): 층 방 하나 ≤ 10,000, 1층 시설 하나 ≤ 6,000.
@@ -145,12 +146,12 @@ PropAssets.HERO = {
 		size = Vector3.new(2.321, 6.000, 2.239),
 		triangles = 1920,
 	} :: MeshAsset,
-	-- 코딩로봇실 로봇 팔
+	-- 코딩로봇실 로봇 팔(둥근 받침·주황 팔·집게, 2026-10-03 다시 만듦). 앞 = −Z: 집게가 −Z 로 뻗는다
 	robotarm = {
-		id = 131894019159918,
-		texture = 131334285648079,
-		size = Vector3.new(2.217, 6.000, 2.629),
-		triangles = 2374,
+		id = 105893901729989,
+		texture = 103707194722311,
+		size = Vector3.new(2.500, 3.379, 3.705),
+		triangles = 1982,
 	} :: MeshAsset,
 	-- 코딩로봇실 바퀴 로봇
 	rover = {
@@ -180,12 +181,12 @@ PropAssets.HERO = {
 		size = Vector3.new(4.751, 3.794, 5.000),
 		triangles = 1770,
 	} :: MeshAsset,
-	-- 전시실 공룡
+	-- 전시실 공룡 화석 뼈대(티라노, 갈비 사이가 뚫림, 2026-10-03 다시 만듦). 앞 = −Z: 머리가 −Z
 	dinosaur = {
-		id = 78996120472708,
-		texture = 75298412257207,
-		size = Vector3.new(1.576, 2.890, 4.000),
-		triangles = 2998,
+		id = 96816735894628,
+		texture = 118969854246804,
+		size = Vector3.new(4.000, 7.522, 9.386),
+		triangles = 5482,
 	} :: MeshAsset,
 	-- 전시실·복도 트로피
 	trophy = {
@@ -298,6 +299,56 @@ PropAssets.HERO = {
 		texture = 132341444607968,
 		size = Vector3.new(3.968, 5.000, 3.466),
 		triangles = 1286,
+	} :: MeshAsset,
+	-- 아래는 2026-10-03 generate_mesh 로 만든 것. 앞(정면)이 전부 −Z 다(위 P5 메시와 반대) → 레시피 yaw 에 180 을 더한다
+	-- 미술실 석고상(곱슬머리 머리·어깨)
+	bust = {
+		id = 128373287498109,
+		texture = 80336182489489,
+		size = Vector3.new(1.106, 1.707, 1.200),
+		triangles = 1998,
+	} :: MeshAsset,
+	-- 방송실 믹서(페이더·노브·미터·헤드폰)
+	mixer = {
+		id = 95242537043903,
+		texture = 124585443322319,
+		size = Vector3.new(1.277, 1.000, 0.992),
+		triangles = 1772,
+	} :: MeshAsset,
+	-- 돌봄교실 흔들목마(머리가 −Z)
+	rockinghorse = {
+		id = 89999256887156,
+		texture = 98738247977349,
+		size = Vector3.new(1.400, 2.638, 3.022),
+		triangles = 1978,
+	} :: MeshAsset,
+	-- 컴퓨터실 서버 랙(유리문·불빛)
+	serverRack = {
+		id = 140723904612222,
+		texture = 118591948945218,
+		size = Vector3.new(2.086, 3.213, 2.000),
+		triangles = 952,
+	} :: MeshAsset,
+	-- 요리실 조리대(윗면 평평, 화구 1·싱크, 위로 튀어나온 것 없음)
+	cookcounter = {
+		id = 100723810927403,
+		texture = 84971449597492,
+		size = Vector3.new(4.314, 2.875, 2.298),
+		triangles = 1168,
+	} :: MeshAsset,
+	-- 댄스실 붐박스
+	boombox = {
+		id = 75249291437117,
+		texture = 72783653080991,
+		size = Vector3.new(2.384, 1.600, 0.866),
+		triangles = 1494,
+	} :: MeshAsset,
+	-- 영어체험실 비행기(천장에 매단다, 기수가 −Z)
+	airplane = {
+		id = 128948837841845,
+		texture = 100956940339011,
+		size = Vector3.new(4.244, 2.200, 4.148),
+		triangles = 2930,
 	} :: MeshAsset,
 }
 

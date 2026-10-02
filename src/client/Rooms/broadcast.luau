@@ -3,8 +3,11 @@
 	방송실 레시피. 좌석은 모두 남쪽(seatYaw 180)을 본다.
 	북쪽 = 학교 색 배경막 앞 방송 데스크(학생 자리 1번·2번 앵커, 마이크 2), 가운데 = 카메라 삼각대·조명 스탠드 2,
 	서쪽 = 믹서 콘솔 자리(3번), 남쪽 = 미리보기 모니터 자리(4·5번), 서쪽 벽 = 체크 무늬 방음 패널, 북쪽 벽 = ON AIR 등(노랑·초록).
+	남동쪽 = 손님 인터뷰 소파(노랑, 서쪽을 본다) + 낮은 탁자.
+	동쪽 벽 = TV 묶음(화면 2, 문으로 들어오면 바로 보인다), 북쪽 벽 = 배경막 양옆 스피커 2·스튜디오 시계, 천장 = 조명 트러스.
 	카메라 몸통은 PropAssets.HERO.camera 메시(렌즈가 데스크 쪽 북쪽). 삼각대 다리는 늘 파트, 메시가 없으면 몸통·렌즈도 파트.
-	파트: 폴백 big 22 / props 15 / finish 15 = 52, 메시일 때 big 22 / props 14 / finish 15 = 51.
+	믹서는 PropAssets.HERO.mixer 메시(노브 면이 −Z 라 yaw 0 이면 좌석 3 쪽 북쪽을 본다). 메시가 없으면 상자 + 페이더 3.
+	파트: 폴백 big 27 / props 14 / finish 19 = 60, 메시일 때 big 27 / props 10 / finish 19 = 56.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -67,7 +70,7 @@ local recipe: Kit.Recipe = {
 			WorldPalette.lampIron,
 			{ rot = CFrame.Angles(-TILT, 0, 0) }
 		)
-		if not Kit.hero(put, ctx.ready, "Camera", PropAssets.HERO.camera, CAM + Vector3.new(0, CAM_Y, 0), 1.4, 180) then
+		if not Kit.hero(put, ctx.ready, "Camera", PropAssets.HERO.camera, CAM + Vector3.new(0, CAM_Y, 0), 1.8, 180) then
 			put("Camera", Vector3.new(1.2, 1, 1.8), CAM + Vector3.new(0, CAM_Y + 0.5, 0), WorldPalette.boardDark)
 		end
 		-- 조명 스탠드 받침·기둥
@@ -75,28 +78,37 @@ local recipe: Kit.Recipe = {
 			Kit.cylinder(put, `LightBase{k}`, p + Vector3.new(0, 0.1, 0), 1.4, 0.2, WorldPalette.lampIron)
 			put(`LightPole{k}`, Vector3.new(0.2, 5.6, 0.2), p + Vector3.new(0, 3, 0), WorldPalette.lampIron)
 		end
+		-- 천장 조명 트러스(조명 스탠드 위를 가로지른다, 천장에 붙는다)
+		put("Truss", Vector3.new(16, 0.4, 0.4), Vector3.new(DESK.x, Kit.CEIL - 0.2, -4), WorldPalette.lampIron)
+		-- 남동쪽 손님 인터뷰 자리: 소파(앉는 판 + 등받이, 서쪽을 본다) + 낮은 탁자
+		put("Sofa", Vector3.new(2.2, 1.4, 5), Vector3.new(10, 0.7, 10), WorldPalette.sticker, { collide = true })
+		put("SofaBack", Vector3.new(0.6, 3, 5), Vector3.new(11.4, 1.5, 10), WorldPalette.sticker)
+		Kit.lowTable(put, "GuestTable", 7, 10, 2, 3, 1.4, WorldPalette.signBoard)
 	end,
 
 	props = function(put, ctx)
 		local room = ctx.room
 		local top = Kit.SIT_DESK
-		-- 앵커 앞 마이크(대 + 머리)와 대본
+		-- 앵커 앞 마이크(대 + 머리)
 		for i = 1, 2 do
 			local x = room.seats[i].X
 			put(`Mic{i}`, Vector3.new(0.12, 1, 0.12), Vector3.new(x, top + 0.5, DESK.z - 0.2), WorldPalette.lampIron)
 			Kit.ball(put, `MicHead{i}`, Vector3.new(x, top + 1.15, DESK.z - 0.2), 0.4, WorldPalette.boardDark)
-			put(
-				`Script{i}`,
-				Vector3.new(1, 0.05, 0.7),
-				Vector3.new(x + 1.1, top + 0.025, DESK.z + 0.2),
-				WorldPalette.trim
-			)
 		end
-		-- 믹서 콘솔(좌석 3 책상 위) + 페이더 3
+		-- 뉴스 데스크 앞판 노랑 띠
+		put(
+			"DeskStripe",
+			Vector3.new(DESK.w, 0.5, 0.05),
+			Vector3.new(DESK.x, Kit.SIT_DESK * 0.6, DESK.z + 0.9), -- 앞판에 반쯤 묻힌다
+			WorldPalette.sticker
+		)
+		-- 믹서 콘솔(좌석 3 책상 위, 노브 면이 북쪽 좌석을 본다). 메시가 없으면 상자 + 페이더 3
 		local mix = Kit.deskTop(room.seats[3], room.seatYaw)
-		put("Mixer", Vector3.new(2.6, 0.3, 1.2), mix + Vector3.new(0, 0.15, 0.1), WorldPalette.boardDark)
-		for k, c in { WorldPalette.sticker, WorldPalette.pad, WorldPalette.star } do
-			put(`Fader{k}`, Vector3.new(0.25, 0.2, 0.6), mix + Vector3.new(-1.2 + k * 0.6, 0.4, 0.1), c)
+		if not Kit.hero(put, ctx.ready, "Mixer", PropAssets.HERO.mixer, mix, 1.6, 0) then
+			put("Mixer", Vector3.new(2.6, 0.3, 1.2), mix + Vector3.new(0, 0.15, 0.1), WorldPalette.boardDark)
+			for k, c in { WorldPalette.sticker, WorldPalette.pad, WorldPalette.star } do
+				put(`Fader{k}`, Vector3.new(0.25, 0.2, 0.6), mix + Vector3.new(-1.2 + k * 0.6, 0.4, 0.1), c)
+			end
 		end
 		-- 카메라 렌즈(북쪽으로). 메시는 렌즈가 붙어 있다
 		if not ctx.ready(PropAssets.HERO.camera) then
@@ -163,14 +175,33 @@ local recipe: Kit.Recipe = {
 				{ material = Enum.Material.Neon }
 			)
 		end
-		-- 서쪽 벽 방음 패널 3 × 2 체크 무늬
+		-- 서쪽 벽 방음 패널 2 × 2 체크 무늬
 		for row = 0, 1 do
-			for col = 0, 2 do
+			for col = 0, 1 do
 				local c = if (row + col) % 2 == 0 then room.wall else room.accent
-				Kit.board(put, `Acoustic{row}{col}`, "W", -12 + col * 3, 7.5 + row * 3, 3, 3, c)
+				Kit.board(put, `Acoustic{row}{col}`, "W", -11 + col * 3.6, 7.5 + row * 3.6, 3.6, 3.6, c)
 			end
 		end
 		Kit.rug(put, "Rug", -5, -1.5, 12, 6, room.wall)
+		-- 동쪽 벽 TV 묶음: 틀 + 화면 2(Neon, 하늘·주황)
+		Kit.board(put, "TvWall", "E", -8, 8.5, 9, 5.5, WorldPalette.boardDark)
+		for k, c in { WorldPalette.star, WorldPalette.lampGlow } do
+			put(
+				`TvScreen{k}`,
+				Vector3.new(0.05, 4.4, 3.8),
+				Vector3.new(Kit.X_IN - 0.2, 8.5, -10.3 + (k - 1) * 4.6),
+				c,
+				{ material = Enum.Material.Neon }
+			)
+		end
+		-- 배경막 양옆 스피커 2
+		Kit.board(put, "SpeakerW", "N", -15, 11, 1.8, 2.6, WorldPalette.boardDark)
+		Kit.board(put, "SpeakerE", "N", 5, 11, 1.8, 2.6, WorldPalette.boardDark)
+		-- 스튜디오 시계(원판, ON AIR 등 오른쪽 아래)
+		put("Clock", Vector3.new(0.1, 2.4, 2.4), Vector3.new(14, 9.5, Kit.Z_N + 0.05), WorldPalette.clockFace, {
+			shape = Enum.PartType.Cylinder,
+			rot = CFrame.Angles(0, math.pi / 2, 0),
+		})
 	end,
 }
 return recipe

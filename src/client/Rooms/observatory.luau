@@ -3,8 +3,9 @@
 	천문대 레시피(옥상 방, 구역 x 0 ~ 11, z -13.9 ~ -3). 바닥 = 밤색 데크 + Neon 별 점.
 	서북 = 둥근 돔(원통 받침 + 구, 남쪽 슬릿, 동쪽 문 + 계단 발판 2), 가운데 = 삼각대 큰 망원경(북쪽 하늘을 본다).
 	학생 자리 1번은 망원경 접안렌즈 뒤 스툴. 서남 = 별자리 판 앞 벤치(좌석 2·3), 동쪽 = 스툴(좌석 4)·로켓 모형, 동북 = 안테나 접시.
-	메시(PropAssets.HERO): 삼각대·통·접안렌즈·파인더 6 파트 → telescope 1(대물렌즈 북쪽), 로켓 4 파트 → rocket 1.
-	파트: 폴백 big 15 / props 11 / finish 12 = 38, 메시 big 12 / props 6 / finish 12 = 30.
+	돔은 라벤더 받침 + 은빛 지붕 두 톤, 동북 스툴과 안테나 사이 = 토성 받침, 별자리 판 = 별을 잇는 선 + 달.
+	메시(PropAssets.HERO): 삼각대·통·접안렌즈·파인더 6 파트 → telescope 1(대물렌즈 북쪽), 로켓 5 파트 → rocket 1.
+	파트: 폴백 big 15 / props 15 / finish 15 = 45, 메시 big 12 / props 9 / finish 15 = 36.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,6 +30,7 @@ local DISH_Y = 2.8
 -- 접시: 축을 위·남쪽 45° 로 → 축 = (0, sin45, cos45)
 local DISH_ROT = CFrame.Angles(0, math.rad(-90), 0) * CFrame.Angles(0, 0, math.rad(45))
 local BOARD_Z = -7.6 -- 별자리 판(벤치 북쪽, 남쪽 면에 별)
+local SATURN = Vector2.new(10.2, -10.7) -- 토성 받침(좌석 4 스툴과 안테나 접시 사이)
 
 local recipe: Kit.Recipe = {
 	big = function(put, ctx)
@@ -41,15 +43,16 @@ local recipe: Kit.Recipe = {
 			WorldPalette.boardDark
 		)
 		-- 돔: 원통 받침 + 구(윗반구가 보인다) + 남쪽 슬릿 + 동쪽 문
-		Kit.cylinder(
+		Kit.cylinder(put, "DomeBase", Vector3.new(DOME.X, DOME_BASE_H / 2, DOME.Y), DOME_D, DOME_BASE_H, room.wall)
+		-- 지붕은 은빛 금속: 라벤더 받침과 두 톤으로 갈려 물탱크가 아니라 돔으로 읽힌다
+		Kit.ball(
 			put,
-			"DomeBase",
-			Vector3.new(DOME.X, DOME_BASE_H / 2, DOME.Y),
+			"DomeTop",
+			Vector3.new(DOME.X, DOME_BASE_H, DOME.Y),
 			DOME_D,
-			DOME_BASE_H,
-			WorldPalette.trim
+			WorldPalette.pole,
+			{ material = Enum.Material.Metal }
 		)
-		Kit.ball(put, "DomeTop", Vector3.new(DOME.X, DOME_BASE_H, DOME.Y), DOME_D, WorldPalette.pole)
 		-- 슬릿: 구 표면 45° 지점에 접한 판(꼭대기 → 남쪽)
 		put(
 			"DomeSlit",
@@ -81,7 +84,7 @@ local recipe: Kit.Recipe = {
 				"ScopeTube",
 				Vector3.new(TUBE_LEN, 0.9, 0.9),
 				Vector3.new(SCOPE.X, TUBE_Y, SCOPE.Z),
-				WorldPalette.trim,
+				room.accent,
 				{ shape = Enum.PartType.Cylinder, rot = TUBE_ROT }
 			)
 		end
@@ -121,16 +124,33 @@ local recipe: Kit.Recipe = {
 				"Finder",
 				Vector3.new(1.5, 0.3, 0.3),
 				tube + TUBE_UP * 0.6,
-				room.accent,
+				WorldPalette.trim,
 				{ shape = Enum.PartType.Cylinder, rot = TUBE_ROT }
 			)
 		end
 		if not ctx.ready(PropAssets.HERO.rocket) then
-			-- 로켓: 코 + 날개 2(십자)
+			-- 로켓: 코 + 날개 2(십자) + 남쪽 둥근 창(원판 축을 Z 로)
 			Kit.ball(put, "RocketNose", Vector3.new(ROCKET.X, 2.7, ROCKET.Y), 1, WorldPalette.sticker)
 			put("RocketFinA", Vector3.new(2, 1, 0.15), Vector3.new(ROCKET.X, 0.5, ROCKET.Y), room.accent)
 			put("RocketFinB", Vector3.new(0.15, 1, 2), Vector3.new(ROCKET.X, 0.5, ROCKET.Y), room.accent)
+			put(
+				"RocketWindow",
+				Vector3.new(0.08, 0.5, 0.5),
+				Vector3.new(ROCKET.X, 1.7, ROCKET.Y + 0.5),
+				WorldPalette.star,
+				{ shape = Enum.PartType.Cylinder, rot = CFrame.Angles(0, math.rad(90), 0) }
+			)
 		end
+		-- 토성: 기둥 + 주황 행성 + 기울인 노란 고리(원판 축을 Z 축으로 70° 세운다)
+		Kit.cylinder(put, "SaturnPost", Vector3.new(SATURN.X, 0.95, SATURN.Y), 0.2, 1.9, WorldPalette.lampIron)
+		Kit.ball(put, "SaturnBall", Vector3.new(SATURN.X, 2.4, SATURN.Y), 1.1, WorldPalette.cork)
+		put(
+			"SaturnRing",
+			Vector3.new(0.08, 1.6, 1.6),
+			Vector3.new(SATURN.X, 2.4, SATURN.Y),
+			WorldPalette.sticker,
+			{ shape = Enum.PartType.Cylinder, rot = CFrame.Angles(0, 0, math.rad(70)) }
+		)
 		-- 안테나 수신기(접시 앞면에 붙인다: 접시 반두께 0.125 + 공 반지름 0.15 - 살짝 묻힘 0.025)
 		local dishAxis = DISH_ROT:VectorToWorldSpace(Vector3.new(1, 0, 0))
 		Kit.ball(
@@ -153,18 +173,35 @@ local recipe: Kit.Recipe = {
 	finish = function(put, ctx)
 		local room = ctx.room
 		local neon = { material = Enum.Material.Neon }
-		-- 별자리 판의 별 5(북두칠성 느낌)
+		-- 별자리 판의 별 5(북두칠성 느낌): 별 1·2·3 은 한 줄, 3·4·5 는 -45° 한 줄이라 선 2 개로 잇는다
 		for i, p in
 			{
 				Vector2.new(1.4, 2.5),
 				Vector2.new(2, 2.3),
 				Vector2.new(2.6, 2.1),
 				Vector2.new(3.1, 1.6),
-				Vector2.new(3.7, 1.4),
+				Vector2.new(3.6, 1.1),
 			}
 		do
 			Kit.ball(put, `BoardStar{i}`, Vector3.new(p.X, p.Y, BOARD_Z + 0.1), 0.25, WorldPalette.sticker, neon)
 		end
+		for i, l in
+			{
+				{ from = Vector2.new(1.4, 2.5), to = Vector2.new(2.6, 2.1) },
+				{ from = Vector2.new(2.6, 2.1), to = Vector2.new(3.6, 1.1) },
+			}
+		do
+			local dx, dy = l.to.X - l.from.X, l.to.Y - l.from.Y
+			put(
+				`BoardLine{i}`,
+				Vector3.new(math.sqrt(dx * dx + dy * dy), 0.06, 0.06),
+				Vector3.new(l.from.X + dx / 2, l.from.Y + dy / 2, BOARD_Z + 0.09),
+				WorldPalette.lightText,
+				{ rot = CFrame.Angles(0, 0, math.atan2(dy, dx)) }
+			)
+		end
+		-- 달: 판 왼쪽 아래 빈칸의 크림색 보름달
+		Kit.ball(put, "BoardMoon", Vector3.new(1.3, 1.3, BOARD_Z + 0.1), 0.55, WorldPalette.signBoard)
 		-- 바닥 별 점 4(45° 돌린 마름모)
 		local diamond = { material = Enum.Material.Neon, rot = CFrame.Angles(0, math.rad(45), 0) }
 		for i, p in { Vector2.new(6.2, -4.3), Vector2.new(9, -3.6), Vector2.new(0.6, -8.2), Vector2.new(9.5, -10.5) } do

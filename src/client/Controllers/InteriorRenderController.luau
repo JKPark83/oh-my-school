@@ -10,6 +10,9 @@
 	  · 방 하나에 MAX_PARTS_PER_ROOM 개 이하. 전부 Anchored·충돌·쿼리·그림자 없음.
 	  · 그림 id(PropAssets.INTERIOR)가 0 이면 그림만 빠지고 파트는 그대로.
 	  · 주인공 소품은 메시(PropAssets.HERO, hero()). 메시가 없거나 못 불러오면 그 자리를 파트로 짓는다.
+	  · 한글·그림 글자(이모지)·시계 바늘은 판 한 면의 SurfaceGui(label·clock)로 그린다. 파트가 늘지 않는다.
+	  · 방마다 파트 수(폴백/메시): 교실1 14/13·사물함 7/5·과학실 15/10·음악실 16/16·체육관 16/16·운동장 11/9·
+	    교장실 12/10·강당 10/9·복도 7/6·교실2 12/11·급식실 14/12·도서관 14/13·보건실 10/8. 새 메시는 없어 삼각형 합은 그대로.
 	시설이 새로 지어지면 등장 연출이 끝난 뒤(APPEAR_DELAY) 그린다.
 	음악실 피아노 흰 건반(서버 파트 PianoKeys)을 밟으면 그 건반 소리를 낸다. 밟는 사람 화면에서만 울린다(§7.5).
 ]]
@@ -25,6 +28,7 @@ local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local PlotLayout = require(ReplicatedStorage.Shared.PlotLayout)
 local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local DecorConfig = require(ReplicatedStorage.Shared.Config.DecorConfig)
+local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 
 local MeshCache = require(script.Parent.Parent.MeshCache)
 
@@ -106,6 +110,76 @@ local function hero(
 	return true
 end
 
+--- 판 한 면에 그리는 GUI. 파트 0
+local function surface(part: BasePart, face: Enum.NormalId): SurfaceGui
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 1 -- 조명을 받아야 판에 인쇄된 것처럼 보인다
+	gui.Parent = part
+	return gui
+end
+
+--- 판 한 면에 글자 한 장. 이모지면 그림처럼 보인다
+local function label(part: BasePart, face: Enum.NormalId, text: string, color: Color3)
+	local t = Instance.new("TextLabel")
+	t.AnchorPoint = Vector2.new(0.5, 0.5)
+	t.Position = UDim2.fromScale(0.5, 0.5)
+	t.Size = UDim2.fromScale(0.86, 0.8)
+	t.BackgroundTransparency = 1
+	t.Font = Enum.Font.GothamBold
+	t.TextScaled = true
+	t.TextColor3 = color
+	t.Text = text
+	t.Parent = surface(part, face)
+end
+
+--- 벽시계 1 파트: 투명 판 위 GUI 로 둥근 판·테두리·바늘(10시 10분). 북벽 안쪽 면에 걸면 face = Back(+Z)
+local function clock(put: Put, name: string, pos: Vector3, face: Enum.NormalId)
+	local p = put(name, Vector3.new(2.2, 2.2, 0.1), pos, C.white, { transparency = 1 })
+	local dial = Instance.new("Frame")
+	dial.AnchorPoint = Vector2.new(0.5, 0.5)
+	dial.Position = UDim2.fromScale(0.5, 0.5)
+	dial.Size = UDim2.fromScale(0.9, 0.9) -- 테두리 선이 판 밖으로 잘리지 않게
+	dial.BackgroundColor3 = WorldPalette.clockFace
+	dial.Parent = surface(p, face)
+	local round = Instance.new("UICorner")
+	round.CornerRadius = UDim.new(0.5, 0)
+	round.Parent = dial
+	local rim = Instance.new("UIStroke")
+	rim.Thickness = 4
+	rim.Color = WorldPalette.boardDark
+	rim.Parent = dial
+	-- 바늘: 가운데에 둔 투명 틀을 돌리고 그 위쪽 반만 칠한다(Frame 은 제 가운데를 축으로 돈다)
+	for _, hand in { { len = 0.26, deg = 305, w = 0.07 }, { len = 0.4, deg = 60, w = 0.045 } } do
+		local arm = Instance.new("Frame")
+		arm.AnchorPoint = Vector2.new(0.5, 0.5)
+		arm.Position = UDim2.fromScale(0.5, 0.5)
+		arm.Size = UDim2.fromScale(hand.w, hand.len * 2)
+		arm.Rotation = hand.deg
+		arm.BackgroundTransparency = 1
+		arm.Parent = dial
+		local bar = Instance.new("Frame")
+		bar.Size = UDim2.fromScale(1, 0.5)
+		bar.BackgroundColor3 = WorldPalette.boardDark
+		bar.BorderSizePixel = 0
+		bar.Parent = arm
+	end
+end
+
+-- 아이 그림: 색 도화지 + 그림 글자. 교실 1·2·복도 벽
+local DRAWING = Vector3.new(2.2, 1.7, 0.08)
+local DRAWING_PAPER = { WorldPalette.blossom, WorldPalette.lampGlow, WorldPalette.deskDome }
+
+--- 벽에 아이 그림을 x0 부터 3 간격으로 건다. face = 방 쪽 면. 파트 #arts
+local function drawings(put: Put, name: string, x0: number, y: number, z: number, face: Enum.NormalId, arts: { string })
+	for i, art in arts do
+		local paper = put(name .. i, DRAWING, Vector3.new(x0 + (i - 1) * 3, y, z), DRAWING_PAPER[(i - 1) % 3 + 1])
+		label(paper, face, art, WorldPalette.darkText)
+	end
+end
+
 -- ── 방별 소품 ─────────────────────────────────────────────────────
 
 --- 화분(몸통 원기둥 + 잎 구 둘). 파트 3
@@ -143,7 +217,7 @@ local function globeParts(put: Put, name: string, base: Vector3, h: number)
 	})
 end
 
--- 교실 1(Shell, 늘 있다). 방 x −75..−45, z −62.5..−32.5, 바닥 y 0. 벽 두께 1
+-- 교실 1(Shell, 늘 있다). 방 x −75..−45, z −62.5..−32.5, 바닥 y 0. 벽 두께 1. 파트 14(메시면 13)
 local function class1(put: Put)
 	local cx, cz = PlotLayout.CLASS1.X, PlotLayout.CLASS1.Z
 	local hx, hz = PlotLayout.CLASS1_SIZE.X / 2, PlotLayout.CLASS1_SIZE.Z / 2
@@ -184,6 +258,9 @@ local function class1(put: Put)
 	if not hero(put, "Globe", PropAssets.HERO.globe, globeBase, 1.4, 180) then
 		globeParts(put, "Globe", globeBase, 1.4)
 	end
+
+	-- 뒷벽(남) 책꽂이 위 아이 그림 셋(x −54.5..−48.5). 문(x −64..−56)·칠판 시계와 겹치지 않는다
+	drawings(put, "Drawing", cx + 5.5, 6.6, southIn - 0.04, Enum.NormalId.Front, { "🌈", "🐶", "🌻" })
 end
 
 -- 사물함 위: 공·책가방(폴백 = 책 더미)·작은 화분. 몸통 윗면 = 높이 + 위 마감.
@@ -207,7 +284,8 @@ local function locker(put: Put)
 end
 
 -- 과학실: 안 x −44..−16·z −16.5..6.5, 바닥 윗면 0.2. 실험대 W x −40..−32·E x −28..−20, z −8.5..−5.5, 윗면 3.075.
--- 실험대 윗면에서 서버 플라스크(x −38)·비커(x −22) 반대쪽 끝이 빈다. 현미경(동)·플라스크 세트(서)가 남쪽 스툴(+Z)을 본다. 문 옆 소화기
+-- 실험대 윗면에서 서버 플라스크(x −38)·비커(x −22) 반대쪽 끝이 빈다. 현미경(동)·플라스크 세트(서)가 남쪽 스툴(+Z)을 본다. 문 옆 소화기.
+-- 파트 15(메시면 10) = 현미경 3/1 + 시험관 4/1 + 소화기 2 + 모빌 6
 local function science(put: Put)
 	local row = FacilityConfig.BY_ID.science
 	local cx, cz = row.center.X, row.center.Z
@@ -253,6 +331,40 @@ local function science(put: Put)
 		rot = CFrame.Angles(0, 0, math.pi / 2),
 	})
 	put("ExtinguisherTop", Vector3.new(0.3, 0.35, 0.5), Vector3.new(fx, floorTop + 1.75, fz), C.dark)
+
+	-- 태양계 모빌: 방 가운데 높이 11 에 천장 줄·막대, 막대 아래 태양·지구·토성(고리). 키 큰 학생 머리 위라 걸리지 않는다
+	local my = floorTop + 11
+	local ceiling = row.center.Y + row.size.Y
+	put("MobileString", Vector3.new(0.06, ceiling - my, 0.06), Vector3.new(cx, (ceiling + my) / 2, cz), C.dark)
+	put("MobileBar", Vector3.new(6, 0.12, 0.12), Vector3.new(cx, my, cz), C.wood, {
+		shape = Enum.PartType.Cylinder,
+		material = Enum.Material.Wood,
+	})
+	for _, planet in
+		{
+			{ name = "Sun", dx = -2.4, d = 1.4, color = C.tubeB, material = Enum.Material.Neon },
+			{
+				name = "Earth",
+				dx = 0.2,
+				d = 0.9,
+				color = WorldPalette.gateLeaf,
+				material = Enum.Material.SmoothPlastic,
+			},
+			{ name = "Saturn", dx = 2.4, d = 1, color = C.cork, material = Enum.Material.SmoothPlastic },
+		}
+	do
+		put(
+			"Mobile" .. planet.name,
+			Vector3.one * planet.d,
+			Vector3.new(cx + planet.dx, my - 0.06 - planet.d / 2, cz),
+			planet.color,
+			{ shape = Enum.PartType.Ball, material = planet.material }
+		)
+	end
+	put("MobileRing", Vector3.new(0.04, 1.9, 1.9), Vector3.new(cx + 2.4, my - 0.56, cz), C.gold, {
+		shape = Enum.PartType.Cylinder,
+		rot = CFrame.Angles(0.35, 0, math.pi / 2),
+	})
 end
 
 -- 음악실: 업라이트 피아노 디테일. 서버는 몸통(6×4.6×2)·흰 건반 판(줄 SurfaceGui)만 짓는다(Geometry/music.luau).
@@ -447,10 +559,55 @@ local function field(put: Put)
 end
 
 -- 교장실: 안 x 46..74·z −16.5..6.5, 바닥 윗면 0.2. 서버 책상 x 55.5..64.5·z −8..−4.4, 화분 x 49.7..52.3·z −13.3..−10.7,
--- 손님 의자 x 48.7..51.3·z −3.8..−1.2. 서벽 앞 화분과 손님 의자 사이(x 46.3..49·z −10..−4.5)가 빈다. 곁 책상이 방(+X)을 본다
+-- 손님 의자 x 48.7..51.3·z −3.8..−1.2. 서벽 앞 화분과 손님 의자 사이(x 46.3..49·z −10..−4.5)가 빈다. 곁 책상이 방(+X)을 본다.
+-- 큰 책상 아래 카펫·앞 이름패·서류·펜꽂이, 북동 구석(문 x 56..64 동쪽) 교기, 동벽(책장 z −2..6 북쪽) 상장.
+-- 파트 12(메시면 10) = 곁 책상 3/1 + 카펫 2 + 이름패 1 + 서류·펜꽂이 2 + 교기 3 + 상장 1
 local function principal(put: Put)
 	local row = FacilityConfig.BY_ID.principal
 	local floorTop = row.center.Y + ROOM_FLOOR_T
+	local cx, cz = row.center.X, row.center.Z
+	local deskZ, deskTop = cz - 1.2, floorTop + CharacterBuilder.SIT_DESK -- 서버 큰 책상 x 55.5..64.5·z −8..−4.4
+
+	-- 카펫(x 54.2..65.8·z −10.8..−2.2): 금 테두리 위에 파랑. 손님 의자·화분·책장과 떨어져 있다
+	put("RugBorder", Vector3.new(11.6, 0.04, 8.6), Vector3.new(cx, floorTop + 0.02, cz - 1.5), C.gold)
+	put("Rug", Vector3.new(11, 0.06, 8), Vector3.new(cx, floorTop + 0.03, cz - 1.5), WorldPalette.flag, {
+		material = Enum.Material.Fabric,
+	})
+	-- 책상 앞 끝 이름패(손님 쪽 +Z 면에 글자), 서쪽 끝 서류 더미·펜꽂이
+	local plate =
+		put("NamePlate", Vector3.new(2.4, 0.5, 0.35), Vector3.new(cx, deskTop + 0.25, deskZ + 1.5), C.pianoDark, {
+			material = Enum.Material.Wood,
+		})
+	label(plate, Enum.NormalId.Back, "교장 선생님", C.gold)
+	put("Papers", Vector3.new(1.1, 0.15, 1.4), Vector3.new(cx - 2.6, deskTop + 0.075, deskZ - 0.3), C.white)
+	put("PenCup", Vector3.new(0.6, 0.5, 0.5), Vector3.new(cx - 3.7, deskTop + 0.3, deskZ - 0.9), C.bookA, {
+		shape = Enum.PartType.Cylinder,
+		rot = CFrame.Angles(0, 0, math.pi / 2),
+	})
+	-- 교기: 깃대 + 금 꼭지 + 깃발(방 쪽 +Z 면에 학교 그림)
+	local fx, fz = cx + 12, cz - 9.5
+	put("FlagPole", Vector3.new(7, 0.18, 0.18), Vector3.new(fx, floorTop + 3.5, fz), C.steel, {
+		shape = Enum.PartType.Cylinder,
+		rot = CFrame.Angles(0, 0, math.pi / 2),
+		material = Enum.Material.Metal,
+	})
+	put("FlagTop", Vector3.one * 0.45, Vector3.new(fx, floorTop + 7.1, fz), C.gold, {
+		shape = Enum.PartType.Ball,
+		material = Enum.Material.Metal,
+	})
+	local flag = put("Flag", Vector3.new(2.6, 1.7, 0.05), Vector3.new(fx - 1.4, floorTop + 6, fz), WorldPalette.flag, {
+		material = Enum.Material.Fabric,
+	})
+	label(flag, Enum.NormalId.Back, "🏫", WorldPalette.lightText)
+	-- 상장: 동벽 안쪽 면(x 74), 방 쪽 = 로컬 −X(Left)
+	local award = put(
+		"Award",
+		Vector3.new(0.08, 2.4, 3.2),
+		Vector3.new(cx + row.size.X / 2 - 1.04, floorTop + 6, cz - 3.5), -- 교기(z −14.5)와 띄운다
+		WorldPalette.signBoard
+	)
+	label(award, Enum.NormalId.Left, "🏆\n최우수 학교", WorldPalette.darkText)
+
 	local base = Vector3.new(row.center.X - 12.35, floorTop, row.center.Z - 2.25)
 	-- 메시 책상 윗면 = 높이의 약 48% → 앉은 책상 높이에 맞춘다
 	if not hero(put, "Desk", PropAssets.HERO.principaldesk, base, CharacterBuilder.SIT_DESK / 0.48, 90, true) then
@@ -469,7 +626,9 @@ local function principal(put: Put)
 end
 
 -- 강당(2층): 안 x −24..24·z −34..0, 바닥 윗면 18.2. 무대 x −15..15·z −34..−28·윗면 19.4, 종 x −1.5..1.5, 서버 연단 x 6..8.
--- 무대 앞 서쪽(서버 연단과 대칭, x −8.35..−5.65·z −30.7..−28.3)이 빈다. 연단 별이 객석(+Z)을 본다
+-- 무대 앞 서쪽(서버 연단과 대칭, x −8.35..−5.65·z −30.7..−28.3)이 빈다. 연단 별이 객석(+Z)을 본다.
+-- 무대 앞 양 끝(x ±13.2, 옆 커튼 x ±15..23 안쪽) 꽃 화분, 서버 연단(x 6..8·z −30.2..−28.8·윗면 +3.2) 위 마이크.
+-- 파트 10(메시면 9) = 연단 2/1 + 화분 3×2 + 마이크 2
 local AUD_STAGE_H = 1.2 -- Geometry/auditorium.luau STAGE_H
 local function auditorium(put: Put)
 	local row = FacilityConfig.BY_ID.auditorium
@@ -482,15 +641,47 @@ local function auditorium(put: Put)
 			collide = true,
 		})
 	end
+
+	local front = row.center.Z - row.size.Z / 2 + 1 + 6 -- 무대 앞 끝 z −28(무대 깊이 6)
+	for _, side in { -1, 1 } do
+		plant(
+			put,
+			if side < 0 then "StagePlantW" else "StagePlantE",
+			row.center.X + side * 13.2,
+			stageTop,
+			front - 1,
+			1.2
+		)
+	end
+	-- 마이크: 연단 앞 끝에서 말하는 쪽(−Z)으로 기운 대 + 머리
+	local micTilt = CFrame.Angles(-0.4, 0, 0)
+	local micBase = Vector3.new(row.center.X + 7, stageTop + 3.2, front - 1.1)
+	put(
+		"MicStem",
+		Vector3.new(0.08, 0.9, 0.08),
+		micBase + micTilt:VectorToWorldSpace(Vector3.new(0, 0.45, 0)),
+		C.dark,
+		{
+			rot = micTilt,
+		}
+	)
+	put("MicHead", Vector3.one * 0.3, micBase + micTilt:VectorToWorldSpace(Vector3.new(0, 0.95, 0)), C.dark, {
+		shape = Enum.PartType.Ball,
+		material = Enum.Material.Metal,
+	})
 end
 
 -- 복도: 안 x −74..74·z −31.5..−18.5, 바닥 윗면 0.2. 북벽 안쪽 면 x −32.5(교실1 문 −64..−56 과 교실2 문 −24..−16 사이 벽)에
--- 진열대 + 트로피. 스티커 자리(−42.5,−27.5)·줄무늬(z −25.8..−24.2)·교실2 패드(−20,−28.75)에서 떨어진 빈 벽이다
+-- 진열대 + 트로피. 스티커 자리(−42.5,−27.5)·줄무늬(z −25.8..−24.2)·교실2 패드(−20,−28.75)에서 떨어진 빈 벽이다.
+-- 그 위 벽시계, 서쪽 옆(x −45.5..−38.5) 아이 그림 셋. 파트 7(메시면 6)
 local function hall(put: Put)
 	local row = FacilityConfig.BY_ID.hall
 	local floorTop = row.center.Y + ROOM_FLOOR_T
 	local stand = Vector3.new(1.8, 3, 1.4)
 	local x, z = -32.5, row.center.Z - row.size.Z / 2 + 1 + stand.Z / 2
+	local wallIn = row.center.Z - row.size.Z / 2 + 1
+	clock(put, "Clock", Vector3.new(x, floorTop + 8.5, wallIn + 0.05), Enum.NormalId.Back)
+	drawings(put, "Drawing", x - 13, floorTop + 5.5, wallIn + 0.04, Enum.NormalId.Back, { "🚀", "🐱", "☀️" })
 	put("TrophyStand", stand, Vector3.new(x, floorTop + stand.Y / 2, z), C.wood, {
 		material = Enum.Material.Wood,
 		collide = true,
@@ -509,21 +700,74 @@ local function hall(put: Put)
 end
 
 -- 교실 2: 안 x −34..−6·z −61.5..−33.5, 바닥 = Shell 바닥 y 0. 뒷줄 책상 x −22.7..−17.3·z −44.6..−42.4, 서쪽 의자 x −22.3..−20.7.
--- 그 서쪽 통로 가장자리 바닥(x −23.8)에 책가방이 의자(+X)를 본다. 책상·의자·문(x −24..−16, z −32.5)과 겹치지 않는다
+-- 그 서쪽 통로 가장자리 바닥(x −23.8)에 책가방이 의자(+X)를 본다. 책상·의자·문(x −24..−16, z −32.5)과 겹치지 않는다.
+-- 칠판(북벽, 윗변 높이 7) 앞 교탁 + 사과, 칠판 위 시계, 남서 구석 화분, 뒷벽 문 동쪽(x −13.5..−7.5) 아이 그림 셋.
+-- 파트 12(메시면 11) = 책가방 2/1 + 교탁 2 + 사과 1 + 시계 1 + 화분 3 + 그림 3
 local function class2(put: Put)
 	local row = FacilityConfig.BY_ID.class2
-	local x, z = row.center.X - 3.8, row.center.Z + 5.6
-	if not hero(put, "Backpack", PropAssets.HERO.backpack, Vector3.new(x, row.center.Y, z), 1.5, 90) then
-		put("BackpackBody", Vector3.new(0.75, 1.3, 1.0), Vector3.new(x, row.center.Y + 0.65, z), C.cork)
-		put("BackpackPocket", Vector3.new(0.2, 0.55, 0.8), Vector3.new(x + 0.47, row.center.Y + 0.4, z), C.bookA)
+	local cx, cz, y = row.center.X, row.center.Z, row.center.Y
+	local x, z = cx - 3.8, cz + 5.6
+	if not hero(put, "Backpack", PropAssets.HERO.backpack, Vector3.new(x, y, z), 1.5, 90) then
+		put("BackpackBody", Vector3.new(0.75, 1.3, 1.0), Vector3.new(x, y + 0.65, z), C.cork)
+		put("BackpackPocket", Vector3.new(0.2, 0.55, 0.8), Vector3.new(x + 0.47, y + 0.4, z), C.bookA)
 	end
+
+	local northIn, southIn = cz - row.size.Z / 2 + 1, cz + row.size.Z / 2 - 1
+	-- 교탁: 첫 줄 책상(z −52.6)과 칠판 사이
+	local tz = northIn + 3.5
+	put("TeacherDesk", Vector3.new(3.4, 2.7, 1.6), Vector3.new(cx, y + 1.35, tz), C.wood, {
+		material = Enum.Material.Wood,
+		collide = true,
+	})
+	put("TeacherDeskTop", Vector3.new(3.8, 0.2, 2), Vector3.new(cx, y + 2.8, tz), C.pianoDark, {
+		material = Enum.Material.Wood,
+		collide = true,
+	})
+	put("Apple", Vector3.one * 0.45, Vector3.new(cx + 1.1, y + 3.1, tz), WorldPalette.leaf[1], {
+		shape = Enum.PartType.Ball,
+	})
+	clock(put, "Clock", Vector3.new(cx, y + 9, northIn + 0.05), Enum.NormalId.Back)
+	plant(put, "Plant", cx - 12.3, y, southIn - 1.8, 1)
+	drawings(put, "Drawing", cx + 6.5, y + 6.6, southIn - 0.04, Enum.NormalId.Front, { "🦕", "🍎", "⭐" })
 end
 
 -- 급식실: 안 x 6..34·z −61.5..−33.5, 바닥 윗면 0.2. 서버 배식대 x 12..28·z −61.5..−59.5, 식탁·의자 z −49.5..−43.5.
--- 북서 구석(배식대 서쪽 끝과 서벽 사이 x 6..12)이 빈다. 둘째 배식대를 동쪽(+X)으로 돌려 ㄱ자 배식 줄을 만든다
+-- 북서 구석(배식대 서쪽 끝과 서벽 사이 x 6..12)이 빈다. 둘째 배식대를 동쪽(+X)으로 돌려 ㄱ자 배식 줄을 만든다.
+-- 식탁(x 11..17·23..29, z −47.7..−45.3) 자리마다 식판 + 밥, 식탁마다 우유, 동벽(x 34) 오늘의 급식 판.
+-- 파트 14(메시면 12) = 배식대 3/1 + 식판·밥 8 + 우유 2 + 급식 판 1
+local TRAY_COLORS = { WorldPalette.blossom, WorldPalette.lampGlow, WorldPalette.deskDome, C.tubeC }
 local function cafeteria(put: Put)
 	local row = FacilityConfig.BY_ID.cafeteria
 	local floorTop = row.center.Y + ROOM_FLOOR_T
+	local cx, cz = row.center.X, row.center.Z
+	local top = floorTop + CharacterBuilder.SIT_DESK
+	for t, tx in { cx - 6, cx + 6 } do
+		-- 의자는 식탁 중심 z ±2.2 에서 식탁을 본다. 식판은 각 의자 쪽 반에
+		for s, dz in { -0.6, 0.6 } do
+			local tz = cz + 1 + dz
+			put(
+				`Tray{t}{s}`,
+				Vector3.new(1.6, 0.1, 1.05),
+				Vector3.new(tx, top + 0.05, tz),
+				TRAY_COLORS[(t - 1) * 2 + s]
+			)
+			-- 밥: 공을 식판에 반쯤 묻어 그릇에 담긴 밥처럼
+			put(`Rice{t}{s}`, Vector3.one * 0.6, Vector3.new(tx - 0.35, top + 0.15, tz), C.white, {
+				shape = Enum.PartType.Ball,
+			})
+		end
+		local milk = put(`Milk{t}`, Vector3.new(0.4, 0.7, 0.4), Vector3.new(tx + 2.2, top + 0.35, cz + 1), C.white)
+		label(milk, Enum.NormalId.Back, "우유", WorldPalette.flag)
+	end
+	-- 오늘의 급식 판: 동벽 안쪽 면, 방 쪽 = 로컬 −X(Left)
+	local menu = put(
+		"MenuBoard",
+		Vector3.new(0.1, 3.4, 6),
+		Vector3.new(cx + row.size.X / 2 - 1.05, floorTop + 5.5, cz + 1),
+		WorldPalette.boardDark
+	)
+	label(menu, Enum.NormalId.Left, "오늘의 급식\n🍚 🍲 🍗 🥛", WorldPalette.lightText)
+
 	local x, z = 8.2, -57.9
 	if not hero(put, "Counter", PropAssets.HERO.counter, Vector3.new(x, floorTop, z), 6, 90, true) then
 		put("CounterBody", Vector3.new(3.6, 3, 6.4), Vector3.new(x, floorTop + 1.5, z), C.steel, {
@@ -543,20 +787,82 @@ local function cafeteria(put: Put)
 end
 
 -- 도서관: 안 x 46..74·z −61.5..−33.5, 바닥 윗면 0.2. 사서 카운터 x 49.5..54.5·z −40.5..−38.5·윗면 3.2.
--- 카운터 윗면 서쪽 끝이 빈다(「대출·반납」 글자는 앞면이라 안 가린다). 지구본이 방(−Z)을 본다
+-- 카운터 윗면 서쪽 끝이 빈다(「대출·반납」 글자는 앞면이라 안 가린다). 지구본이 방(−Z)을 본다.
+-- 북서 구석(서벽 x 46 과 북쪽 책장 x 50 사이) 둥근 깔개 + 빈백 둘, 열람 탁자(x 54..62·z −48..−45) 위 펼친 책 둘·스탠드,
+-- 남동 구석 화분. 파트 14(메시면 13) = 지구본 2/1 + 깔개 1 + 빈백 2 + 책 4 + 스탠드 2 + 화분 3
 local function library(put: Put)
 	local row = FacilityConfig.BY_ID.library
-	local base = Vector3.new(row.center.X - 9.4, row.center.Y + ROOM_FLOOR_T + 3, row.center.Z + 8)
+	local cx, cz = row.center.X, row.center.Z
+	local floorTop = row.center.Y + ROOM_FLOOR_T
+	local base = Vector3.new(cx - 9.4, floorTop + 3, cz + 8)
 	if not hero(put, "Globe", PropAssets.HERO.globe, base, 1.5, 180) then
 		globeParts(put, "Globe", base, 1.5)
 	end
+
+	-- 책 읽는 구석: 공을 바닥에 반쯤 묻으면 낮은 빈백 언덕이 된다(공 파트는 늘 구라 납작하게 못 만든다)
+	put("ReadingRug", Vector3.new(0.06, 5, 5), Vector3.new(cx - 11.2, floorTop + 0.03, cz - 8), WorldPalette.gateLeaf, {
+		shape = Enum.PartType.Cylinder,
+		rot = CFrame.Angles(0, 0, math.pi / 2),
+		material = Enum.Material.Fabric,
+	})
+	for i, bag in
+		{
+			{ dx = -11.8, dz = -9.1, color = WorldPalette.blossom },
+			{ dx = -10.2, dz = -6.7, color = WorldPalette.lampGlow },
+		}
+	do
+		put(`BeanBag{i}`, Vector3.one * 1.8, Vector3.new(cx + bag.dx, floorTop + 0.45, cz + bag.dz), bag.color, {
+			shape = Enum.PartType.Ball,
+			material = Enum.Material.Fabric,
+		})
+	end
+
+	-- 열람 탁자: 의자 S01(x 55)·S02(x 58) 앞에 펼친 책(표지 + 속지), 동쪽 끝 북쪽에 초록 갓 스탠드
+	local top = floorTop + CharacterBuilder.SIT_DESK
+	for i, book in { { x = cx - 5, color = C.bookA }, { x = cx - 2, color = C.bookC } } do
+		put(`BookCover{i}`, Vector3.new(1.4, 0.05, 0.95), Vector3.new(book.x, top + 0.025, cz + 1.6), book.color)
+		put(`BookPages{i}`, Vector3.new(1.3, 0.06, 0.85), Vector3.new(book.x, top + 0.08, cz + 1.6), C.white)
+	end
+	put("LampStem", Vector3.new(0.15, 0.8, 0.15), Vector3.new(cx + 1.2, top + 0.4, cz + 0.1), C.gold, {
+		material = Enum.Material.Metal,
+	})
+	put("LampShade", Vector3.new(1.2, 0.35, 0.5), Vector3.new(cx + 1.2, top + 0.9, cz + 0.1), WorldPalette.hedge)
+
+	plant(put, "Plant", cx + 11.8, floorTop, cz + 11.3, 1)
 end
 
 -- 보건실: 안 x −74..−46·z −16.5..6.5, 바닥 윗면 0.2. 서버 침대 x −69.6..−66.4·z −6.8..−0.2(머리 북쪽), 북문 x −64..−56.
--- 서버 침대 북쪽 같은 줄(x −68, z −16.15..−10.45)이 빈 바닥이다. 둘째 침대도 머리가 북쪽(yaw 0, 메시 머리맡 = −Z)
+-- 서버 침대 북쪽 같은 줄(x −68, z −16.15..−10.45)이 빈 바닥이다. 둘째 침대도 머리가 북쪽(yaw 0, 메시 머리맡 = −Z).
+-- 두 침대 사이(z −10.45..−6.8) 협탁 + 물컵, 남벽 시력표, 선생님 책상(x −56.5..−51.5·z −12.2..−9.8) 구급상자, 북서 구석 화분.
+-- 파트 10(메시면 8) = 침대 3/1 + 협탁·컵 2 + 시력표 1 + 구급상자 1 + 화분 3
 local function nurse(put: Put)
 	local row = FacilityConfig.BY_ID.nurse
 	local floorTop = row.center.Y + ROOM_FLOOR_T
+	local cx, cz = row.center.X, row.center.Z
+
+	put("Nightstand", Vector3.new(1.4, 2, 1.4), Vector3.new(cx - 8, floorTop + 1, cz - 3.6), C.wood, {
+		material = Enum.Material.Wood,
+		collide = true,
+	})
+	put("Cup", Vector3.new(0.5, 0.35, 0.35), Vector3.new(cx - 8, floorTop + 2.25, cz - 3.6), C.glass, {
+		shape = Enum.PartType.Cylinder,
+		rot = CFrame.Angles(0, 0, math.pi / 2),
+		material = Enum.Material.Glass,
+		transparency = 0.2,
+	})
+	-- 시력표: 남벽 안쪽 면(z 6.5), 방 쪽 = 로컬 −Z(Front). 아래로 갈수록 숫자가 많다
+	local chart = put(
+		"EyeChart",
+		Vector3.new(2.6, 4, 0.08),
+		Vector3.new(cx + 8, floorTop + 5, cz + row.size.Z / 2 - 1.04),
+		C.white
+	)
+	label(chart, Enum.NormalId.Front, "3\n7 4\n1 5 8\n6 2 9 4", WorldPalette.darkText)
+	-- 구급상자: 흰 상자 앞(+Z) 면에 초록 더하기
+	local kit = put("FirstAid", Vector3.new(1.4, 0.9, 1), Vector3.new(cx + 4.4, floorTop + 3.325, cz - 6.2), C.white)
+	label(kit, Enum.NormalId.Back, "+", WorldPalette.hedge)
+	plant(put, "Plant", cx - 12.3, floorTop, cz - 9.6, 1)
+
 	local x, z = row.center.X - 8, -13.3
 	if not hero(put, "Bed", PropAssets.HERO.bed, Vector3.new(x, floorTop, z), 3.2, 0, true) then
 		put("BedFrame", Vector3.new(3.2, 0.8, 5.6), Vector3.new(x, floorTop + 0.4, z), C.steel, {
