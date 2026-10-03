@@ -43,6 +43,9 @@ type HudApi = {
 type PanelApi = {
 	current: () -> string?,
 }
+type DecorApi = {
+	isActive: () -> boolean,
+}
 type PadApi = {
 	padPosition: (facilityId: string) -> Vector3?,
 	-- 아래 셋은 §3.4 계약 밖. PadController 가 덤으로 낸다
@@ -57,6 +60,7 @@ local HudController = (require(script.Parent.HudController) :: any) :: HudApi
 local PadController = (require(script.Parent.PadController) :: any) :: PadApi
 local CameraController = (require(script.Parent.CameraController) :: any) :: CameraApi
 local PanelController = (require(script.Parent.PanelController) :: any) :: PanelApi
+local DecorController = (require(script.Parent.DecorController) :: any) :: DecorApi
 
 local TutorialController = {}
 
@@ -119,7 +123,8 @@ local HUD_FINGER_GAP = 4
 local HUD_FINGER_BOUNCE = 8
 local STUCK_DISTANCE = 12
 local STUCK_FIRST = 30
-local STUCK_SECOND = 60
+local STUCK_SECOND = 60 -- 목표 밖에서 가만히 서 있은 시간(걷는 중·패널·꾸미기 중에는 0 으로)
+local MOVING = 0.1 -- Humanoid.MoveDirection 크기가 이보다 크면 걷는 중
 local PAN_SECONDS = 0.6
 local TICK = 0.25
 local BILLBOARD_DISTANCE = 150
@@ -165,6 +170,7 @@ local pillars: { BasePart } = {}
 local footprints: { BasePart } = {}
 local footprintToken = 0
 local stuck = 0
+local idle = 0 -- 카메라 팬용. 움직이는 동안 팬하면 조작을 빼앗으므로 따로 센다
 local escalated = false
 local tickAccum = 0
 local hudGui: ScreenGui? = nil -- 2D 손가락(PlayerGui 바로 아래)
@@ -687,6 +693,7 @@ local function apply(profile: Types.Profile)
 	currentTarget = target
 	if stageChanged then
 		stuck = 0
+		idle = 0
 		escalated = false
 		hideBubble()
 	end
@@ -751,6 +758,7 @@ local function tick(dt: number)
 	end
 	if (origin - target).Magnitude <= STUCK_DISTANCE then
 		stuck = 0
+		idle = 0
 		escalated = false
 		return
 	end
@@ -760,9 +768,19 @@ local function tick(dt: number)
 		escalate()
 	end
 	if stuck >= STUCK_SECOND then
-		CameraController.panTo(target, PAN_SECONDS)
+		-- 팬은 가만히 서 있을 때만이라(아래) 30초 힌트는 따로 60초마다 다시 켠다
 		stuck = 0
 		escalated = false
+	end
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	local busy = (humanoid ~= nil and humanoid.MoveDirection.Magnitude > MOVING)
+		or PanelController.current() ~= nil
+		or DecorController.isActive()
+	idle = if busy then 0 else idle + step
+	if idle >= STUCK_SECOND then
+		CameraController.panTo(target, PAN_SECONDS)
+		idle = 0
 	end
 end
 
