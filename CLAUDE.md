@@ -53,6 +53,12 @@ luau tools/check_rooms.luau -a "$(for f in $(find src/shared src/client/Rooms -n
 - `CharacterAssets`·`PropAssets` 의 메시·텍스처 ID 는 게임 소유자 계정에 업로드된 것이다. 다른 계정·그룹 게임으로 옮기면 가장 먼저 깨진다.
 - `.claude/skills/` 에 로블록스 스킬 29개가 있다. 일반 로블록스 규칙은 거기서 찾는다.
 
+## 반드시 지킬 규칙(`.claude/rules/`)
+
+`.claude/rules/` 의 파일은 이 문서와 같은 무게의 필수 규칙이다. 작업마다 반드시 지키고, 이 문서와 겹치면 더 엄한 쪽을 따른다. 지키지 못한 항목은 보고에 그 이유와 함께 적는다.
+
+- `feature-detail.md` — 기능 요청은 디테일까지(겉모습·반응·상태·기기·연결·확인).
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
