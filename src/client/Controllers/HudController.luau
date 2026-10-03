@@ -6,6 +6,8 @@
 	    다른 컨트롤러는 profile() / onProfile() 로만 읽는다. 컨트롤러끼리 프로필을 따로 들고 있지 않는다.
 	  ★ 좌표는 812×375 기준 px Offset 이고 UIScale = clamp(min(쓰는 영역 높이 / 375, 폭 / 812), 0.75, 1.6) 로만 키운다(§8.1).
 	    루트 프레임 Size 를 1/scale 로 두어 Scale 1 = 화면 끝이 되게 한다 — 오른쪽 열은 (1, -12) 로 붙는다.
+	  ★ 가장자리 배치(§8.2). 루트는 상단 바 띠까지 덮는다. 카드·오른쪽 열(Top)은 띠 안 y=12 에서, 로블록스 버튼이 있는 왼쪽 열과
+	    카드 아래 칸(Under)은 인셋 아래에서 시작한다. 띠가 카드·오른쪽 열과 겹치는 기기면 Top 도 인셋 아래로 내린다.
 	  ★ 첫 시설 전에는 용돈 칩과 「다음 시설」 카드만 보인다(§2.2 0:00). 나머지는 프로필이 조건을 채울 때 나타난다.
 	    배경음 버튼만 예외다. 배경음은 0:00 부터 울려서 끄는 곳도 처음부터 보여야 한다.
 	  ★ 링 게이지는 원형 UIStroke 대신 얇은 진행바다(모바일 성능 우선). 매 초(Heartbeat 누적) 캐시로 다시 계산한다.
@@ -44,6 +46,14 @@ local SCALE_MAX = 1.6
 local TEXT_MIN = 14
 local TEXT_MAX = 32
 local CORNER = 8
+local EDGE = 12 -- 화면 끝 여백
+local CARD_WIDTH = 200
+local SLOT_Y = 76 -- 카드 아래 칸(인셋 아래 기준). 왼쪽 층 수 칩 아래끝 68 + 8
+local SLOT_BELOW = 140 -- 칸이 차 있을 때 배너 자리(「멋져요」 76..132 + 8)
+local SLOT_Y_LOWERED = 116 -- Top 이 인셋 아래로 내려왔을 때의 칸(배율 칩 아래끝 108 + 8)
+local SLOT_BELOW_LOWERED = 180 -- 그때 칸이 차 있으면 배너 자리(116 + 56 + 8)
+local TOAST_BOTTOM = -47 -- 토스트 아래끝. 엄지 스틱과 점프 버튼 사이
+local TOAST_BOTTOM_DECOR = -134 -- 꾸미기 중(DecorGui 켜짐)엔 ✓🔄X 줄·「n/40」 막대 위로
 
 -- ── 색(§8.1) ──
 local PANEL = Color3.fromRGB(31, 41, 55)
@@ -167,6 +177,9 @@ local Sound: any = nil
 -- ── UI 참조 ──
 local root: Frame
 local rootScale: UIScale
+local underFrame: Frame -- 왼쪽 열·카드 아래 칸(「멋져요」·층 안내·배너). 상단 바 인셋 아래
+local topFrame: Frame -- 카드·오른쪽 열. 상단 바 띠 안(겹치면 인셋 아래)
+local guideSlot: Frame -- 카드 아래 칸. 튜토리얼 층 안내 글이 들어온다
 local coinsChip: Frame
 local coinsLabel: TextLabel
 local coinsDelta: TextLabel
@@ -552,9 +565,9 @@ local function renderCoins(profile: Profile, prev: Profile?)
 	if price then
 		coinsDelta.Text = `-{Format.coins(price)}`
 		coinsDelta.TextTransparency = 0
-		coinsDelta.Position = UDim2.fromOffset(216, 12)
+		coinsDelta.Position = UDim2.fromOffset(216, 4)
 		task.delay(DELTA_SECONDS, function()
-			tween(coinsDelta, FADE_SECONDS, { TextTransparency = 1, Position = UDim2.fromOffset(216, 0) })
+			tween(coinsDelta, FADE_SECONDS, { TextTransparency = 1, Position = UDim2.fromOffset(216, -8) })
 		end)
 	end
 end
@@ -605,6 +618,22 @@ local function renderLikes(profile: Profile, prev: Profile?)
 	end
 end
 
+--- 배너 자리. 칸에 보이는 것(「멋져요」·층 안내)이 있으면 그 밑. Top 이 내려와 있으면 칸도 같이 내려간 값
+local function placeBanner()
+	local slotBusy = likeButton.Visible
+	for _, child in guideSlot:GetChildren() do
+		if child:IsA("GuiObject") and child.Visible then
+			slotBusy = true
+			break
+		end
+	end
+	local lowered = topFrame.Position ~= UDim2.new()
+	local y = if slotBusy
+		then (if lowered then SLOT_BELOW_LOWERED else SLOT_BELOW)
+		else (if lowered then SLOT_Y_LOWERED else SLOT_Y)
+	bannerLabel.Position = UDim2.new(0.5, 0, 0, y)
+end
+
 --- 「멋져요」 버튼. 남의 부지 안 + 그 부지에 주인이 있을 때만. 이미 보낸 주인이면 「보냈어요」로 잠근다
 local function renderLike()
 	local plotId = HudController.currentPlotId()
@@ -622,6 +651,9 @@ local function renderLike()
 	likeLabel.TextColor3 = if sent then MUTED else YELLOW
 	likeButton.AutoButtonColor = not sent
 	likeButton.Visible = true
+	if bannerLabel.Visible then
+		placeBanner()
+	end
 end
 
 -- 판이 찬 순간은 GiftOpened 가 알려 준다(onGift)
@@ -839,6 +871,7 @@ local function showBanner(text: string)
 	local mine = bannerToken
 	bannerLabel.Text = text
 	bannerLabel.TextTransparency = 0
+	placeBanner()
 	bannerLabel.Visible = true
 	local scale = bannerLabel:FindFirstChildOfClass("UIScale")
 	if scale then
@@ -865,21 +898,12 @@ local function buildGui()
 	gui.DisplayOrder = 2
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-	-- 상단 인셋만큼 아래에서 시작하는 안전 영역(스케일 없음)
+	-- 노치 안전 영역 전체(상단 바 띠 포함, 스케일 없음)
 	local safe = Instance.new("Frame")
 	safe.Name = "Safe"
 	safe.Size = UDim2.fromScale(1, 1)
 	safe.BackgroundTransparency = 1
 	safe.Parent = gui
-
-	-- 상단바 인셋은 접속 직후 0 이었다가 나중에 채워진다. 한 번만 읽으면 용돈 칩이 Roblox 버튼 밑에 깔린다
-	local safePadding = Instance.new("UIPadding")
-	local function applyInset()
-		safePadding.PaddingTop = UDim.new(0, GuiService:GetGuiInset().Y)
-	end
-	applyInset()
-	GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(applyInset)
-	safePadding.Parent = safe
 
 	-- 루트: Size 1/scale × UIScale scale = 화면 전체. 안의 Offset 은 812×375 기준 px
 	root = Instance.new("Frame")
@@ -888,8 +912,18 @@ local function buildGui()
 	root.Parent = safe
 	rootScale = makeScale(root)
 
-	-- 용돈 칩 (12, 12) 200×32
-	coinsChip = makePanel(root, "Coins", UDim2.fromOffset(12, 12), UDim2.fromOffset(200, 32))
+	-- 상단 바 인셋은 접속 직후 0 이었다가 나중에 채워진다. Position 은 applyScale 이 인셋이 바뀔 때마다 다시 맞춘다
+	underFrame = Instance.new("Frame")
+	underFrame.Name = "Under"
+	underFrame.Size = UDim2.fromScale(1, 1)
+	underFrame.BackgroundTransparency = 1
+	underFrame.Parent = root
+	topFrame = underFrame:Clone()
+	topFrame.Name = "Top"
+	topFrame.Parent = root
+
+	-- 용돈 칩 (12, 4) 200×32. 여기부터 꾸미기 버튼까지 Under = 상단 바 인셋 아래
+	coinsChip = makePanel(underFrame, "Coins", UDim2.fromOffset(12, 4), UDim2.fromOffset(200, 32))
 	coinsScale = makeScale(coinsChip)
 	local coinsGlyph = makeLabel(coinsChip, "Glyph", Enum.Font.GothamBold, YELLOW)
 	coinsGlyph.Position = UDim2.fromOffset(8, 4)
@@ -905,14 +939,14 @@ local function buildGui()
 	coinsValue.Changed:Connect(function(value)
 		coinsLabel.Text = Format.coins(value)
 	end)
-	coinsDelta = makeLabel(root, "CoinsDelta", Enum.Font.GothamBold, WHITE)
-	coinsDelta.Position = UDim2.fromOffset(216, 12)
+	coinsDelta = makeLabel(underFrame, "CoinsDelta", Enum.Font.GothamBold, WHITE)
+	coinsDelta.Position = UDim2.fromOffset(216, 4)
 	coinsDelta.Size = UDim2.fromOffset(80, 32)
 	coinsDelta.TextXAlignment = Enum.TextXAlignment.Left
 	coinsDelta.TextTransparency = 1
 
-	-- 수입 칩 (12, 52) 160×24
-	incomeChip = makePanel(root, "Income", UDim2.fromOffset(12, 52), UDim2.fromOffset(160, 24))
+	-- 수입 칩 (12, 44) 160×24
+	incomeChip = makePanel(underFrame, "Income", UDim2.fromOffset(12, 44), UDim2.fromOffset(160, 24))
 	incomeScale = makeScale(incomeChip)
 	incomeLabel = makeLabel(incomeChip, "Value", Enum.Font.GothamMedium, GREEN)
 	incomeLabel.Position = UDim2.fromOffset(8, 3)
@@ -920,23 +954,25 @@ local function buildGui()
 	incomeLabel.TextXAlignment = Enum.TextXAlignment.Left
 	incomeChip.Visible = false
 
-	-- 층 수 칩 (180, 52) 120×24 = 수입 칩 오른쪽(카드 왼끝 306 전). 강당 완공 뒤에만. 순위 메달이 붙을 자리까지
-	floorsChip = makePanel(root, "Floors", UDim2.fromOffset(180, 52), UDim2.fromOffset(120, 24))
+	-- 층 수 칩 (180, 44) 120×24 = 수입 칩 오른쪽. 강당 완공 뒤에만. 순위 메달이 붙을 자리까지
+	floorsChip = makePanel(underFrame, "Floors", UDim2.fromOffset(180, 44), UDim2.fromOffset(120, 24))
 	floorsLabel = makeLabel(floorsChip, "Value", Enum.Font.GothamBold, WHITE)
 	floorsLabel.Position = UDim2.fromOffset(6, 3)
 	floorsLabel.Size = UDim2.fromOffset(108, 18)
 	floorsChip.Visible = false
 
-	-- 받은 「멋져요」 칩 (76, 84) 80×24 = 꾸미기 버튼 오른쪽, 수입 칩(..76) 아래. 0 이면 숨김
-	likesChip = makePanel(root, "Likes", UDim2.fromOffset(76, 84), UDim2.fromOffset(80, 24))
+	-- 받은 「멋져요」 칩 (76, 76) 80×24 = 꾸미기 버튼 오른쪽, 수입 칩(..68) 아래. 0 이면 숨김
+	likesChip = makePanel(underFrame, "Likes", UDim2.fromOffset(76, 76), UDim2.fromOffset(80, 24))
 	likesScale = makeScale(likesChip)
 	likesLabel = makeLabel(likesChip, "Value", Enum.Font.GothamBold, YELLOW)
 	likesLabel.Position = UDim2.fromOffset(6, 3)
 	likesLabel.Size = UDim2.fromOffset(68, 18)
 	likesChip.Visible = false
 
-	-- 「멋져요」 버튼 (12, 148) 140×56 = 꾸미기 버튼(84..140) 아래. 남의 부지에서만 보인다
-	likeButton = makeButton(root, "Like", UDim2.fromOffset(12, 148), UDim2.fromOffset(140, 56))
+	-- 「멋져요」 버튼 = 카드 아래 칸 (가운데, 76) 140×56. 남의 부지에서만 보인다(층 안내는 내 부지에서만이라 칸이 안 겹친다).
+	-- 왼쪽 열 아래는 엄지 스틱 자리라 두지 않는다(§8.1)
+	likeButton = makeButton(underFrame, "Like", UDim2.new(0.5, 0, 0, SLOT_Y), UDim2.fromOffset(140, 56))
+	likeButton.AnchorPoint = Vector2.new(0.5, 0)
 	likeLabel = makeLabel(likeButton, "Text", Enum.Font.GothamBold, YELLOW)
 	likeLabel.Position = UDim2.fromOffset(8, 12)
 	likeLabel.Size = UDim2.fromOffset(124, 32)
@@ -964,8 +1000,8 @@ local function buildGui()
 		renderLike()
 	end)
 
-	-- 「꾸미기」 버튼 (12, 84) 56×56. 용돈 칩(12..212, 12..44)·수입 칩(12..172, 52..76) 아래라 겹치지 않는다
-	decorButton = makeButton(root, "Decor", UDim2.fromOffset(12, 84), UDim2.fromOffset(56, 56))
+	-- 「꾸미기」 버튼 (12, 76) 56×56. 용돈 칩(12..212, 4..36)·수입 칩(12..172, 44..68) 아래라 겹치지 않는다
+	decorButton = makeButton(underFrame, "Decor", UDim2.fromOffset(12, 76), UDim2.fromOffset(56, 56))
 	decorStroke = makeStroke(decorButton, YELLOW)
 	decorScale = makeScale(decorButton)
 	local decorGlyph = makeLabel(decorButton, "Glyph", Enum.Font.GothamBold, WHITE)
@@ -994,8 +1030,8 @@ local function buildGui()
 		openPanel(PANEL_DECOR)
 	end)
 
-	-- 「다음 시설」 카드 (306, 12) 200×64, 가운데 정렬
-	card = makeButton(root, "NextFacility", UDim2.new(0.5, 0, 0, 12), UDim2.fromOffset(200, 64))
+	-- 「다음 시설」 카드 (가운데, 12) 200×64. 여기부터 Top = 상단 바 띠 안
+	card = makeButton(topFrame, "NextFacility", UDim2.new(0.5, 0, 0, 12), UDim2.fromOffset(CARD_WIDTH, 64))
 	card.AnchorPoint = Vector2.new(0.5, 0)
 	cardStroke = makeStroke(card, GREEN)
 	cardCaption = makeLabel(card, "Caption", Enum.Font.GothamMedium, MUTED)
@@ -1017,8 +1053,9 @@ local function buildGui()
 	cardBar, cardFill = makeBar(card, "Ring", UDim2.fromOffset(10, 56), UDim2.fromOffset(180, 4), GREEN)
 	card.Activated:Connect(onCardTap)
 
-	-- 스티커판 미니 게이지 (556, 12) 96×64 = 가운데 +150
-	boardChip = makePanel(root, "Board", UDim2.new(0.5, 150, 0, 12), UDim2.fromOffset(96, 64))
+	-- 스티커판 미니 게이지 (오른쪽 -148, 12) 96×64 = 🎵 왼쪽. 가운데 근처를 비운다
+	boardChip = makePanel(topFrame, "Board", UDim2.new(1, -148, 0, 12), UDim2.fromOffset(96, 64))
+	boardChip.AnchorPoint = Vector2.new(1, 0)
 	-- 글자 대신 🎁 + 칸 게이지(글보다 그림). 숫자는 작게 아래에
 	local boardGlyph = makeLabel(boardChip, "Caption", Enum.Font.GothamBold, WHITE)
 	boardGlyph.Position = UDim2.fromOffset(6, 4)
@@ -1032,16 +1069,17 @@ local function buildGui()
 	boardScale = makeScale(boardChip)
 	boardChip.Visible = false
 
-	-- 배율 칩 (556, 84) 96×24
-	multChip = makePanel(root, "Multiplier", UDim2.new(0.5, 150, 0, 84), UDim2.fromOffset(96, 24))
+	-- 배율 칩 (오른쪽 -148, 84) 96×24 = 판 칩 아래
+	multChip = makePanel(topFrame, "Multiplier", UDim2.new(1, -148, 0, 84), UDim2.fromOffset(96, 24))
+	multChip.AnchorPoint = Vector2.new(1, 0)
 	multScale = makeScale(multChip)
 	multLabel = makeLabel(multChip, "Value", Enum.Font.GothamBold, WHITE)
 	multLabel.Position = UDim2.fromOffset(6, 3)
 	multLabel.Size = UDim2.fromOffset(84, 18)
 	multChip.Visible = false
 
-	-- 배경음 버튼 (676, 12) 56×56 = 설정 버튼 왼쪽. 설정 패널 「배경음」 토글과 같은 값을 바꾼다
-	musicButton = makeButton(root, "Music", UDim2.new(1, -80, 0, 12), UDim2.fromOffset(56, 56))
+	-- 배경음 버튼 (오른쪽 -80, 12) 56×56 = 설정 버튼 왼쪽. 설정 패널 「배경음」 토글과 같은 값을 바꾼다
+	musicButton = makeButton(topFrame, "Music", UDim2.new(1, -80, 0, 12), UDim2.fromOffset(56, 56))
 	musicButton.AnchorPoint = Vector2.new(1, 0)
 	musicGlyph = makeLabel(musicButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	musicGlyph.Position = UDim2.fromOffset(12, 12)
@@ -1075,8 +1113,8 @@ local function buildGui()
 		end
 	end)
 
-	-- 오른쪽 버튼 열 (744, 12/80/148) 56×56 — 우하 예약 영역(y ≥ 263)을 넘지 않는다
-	settingsButton = makeButton(root, "Settings", UDim2.new(1, -12, 0, 12), UDim2.fromOffset(56, 56))
+	-- 오른쪽 버튼 열 (오른쪽 -12, 12/80/148) 56×56 — 우하 예약 영역(y ≥ 263)을 넘지 않는다
+	settingsButton = makeButton(topFrame, "Settings", UDim2.new(1, -12, 0, 12), UDim2.fromOffset(56, 56))
 	settingsButton.AnchorPoint = Vector2.new(1, 0)
 	local settingsGlyph = makeLabel(settingsButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	settingsGlyph.Position = UDim2.fromOffset(12, 12)
@@ -1087,7 +1125,7 @@ local function buildGui()
 		openPanel(PANEL_SETTINGS)
 	end)
 
-	codexButton = makeButton(root, "Codex", UDim2.new(1, -12, 0, 80), UDim2.fromOffset(56, 56))
+	codexButton = makeButton(topFrame, "Codex", UDim2.new(1, -12, 0, 80), UDim2.fromOffset(56, 56))
 	codexButton.AnchorPoint = Vector2.new(1, 0)
 	local codexGlyph = makeLabel(codexButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	codexGlyph.Position = UDim2.fromOffset(12, 12)
@@ -1113,7 +1151,7 @@ local function buildGui()
 		openPanel(PANEL_CODEX)
 	end)
 
-	missionButton = makeButton(root, "Missions", UDim2.new(1, -12, 0, 148), UDim2.fromOffset(56, 56))
+	missionButton = makeButton(topFrame, "Missions", UDim2.new(1, -12, 0, 148), UDim2.fromOffset(56, 56))
 	missionButton.AnchorPoint = Vector2.new(1, 0)
 	local missionGlyph = makeLabel(missionButton, "Glyph", Enum.Font.GothamBold, WHITE)
 	missionGlyph.Position = UDim2.fromOffset(12, 8)
@@ -1127,10 +1165,10 @@ local function buildGui()
 		openPanel(PANEL_MISSIONS)
 	end)
 
-	-- 토스트 (406, 300) 406×28 가운데
+	-- 토스트 = 화면 아래 가운데(아래끝 -47) 406×28. 꾸미기 중엔 -134(HudController.toast)
 	toastLabel = makeLabel(root, "Toast", Enum.Font.GothamMedium, WHITE)
-	toastLabel.AnchorPoint = Vector2.new(0.5, 0)
-	toastLabel.Position = UDim2.new(0.5, 0, 0, 300)
+	toastLabel.AnchorPoint = Vector2.new(0.5, 1)
+	toastLabel.Position = UDim2.new(0.5, 0, 1, TOAST_BOTTOM)
 	toastLabel.Size = UDim2.fromOffset(406, 28)
 	toastLabel.BackgroundColor3 = PANEL
 	toastLabel.BackgroundTransparency = PANEL_ALPHA
@@ -1141,14 +1179,29 @@ local function buildGui()
 	toastPadding.PaddingRight = UDim.new(0, 12)
 	toastPadding.Parent = toastLabel
 
-	-- 배너(미션) 카드 아래 가운데, 4초
-	bannerLabel = makeLabel(root, "Banner", Enum.Font.GothamBold, YELLOW)
+	-- 배너(미션) = 카드 아래 칸, 4초. 칸에 「멋져요」·층 안내가 있으면 그 밑(showBanner)
+	bannerLabel = makeLabel(underFrame, "Banner", Enum.Font.GothamBold, YELLOW)
 	bannerLabel.AnchorPoint = Vector2.new(0.5, 0)
-	bannerLabel.Position = UDim2.new(0.5, 0, 0, 120)
+	bannerLabel.Position = UDim2.new(0.5, 0, 0, SLOT_Y)
 	bannerLabel.Size = UDim2.fromOffset(406, 40)
 	bannerLabel.TextStrokeTransparency = 0.4
 	bannerLabel.Visible = false
 	makeScale(bannerLabel)
+
+	-- 카드 아래 칸 (가운데, 76) 406×44. 튜토리얼 층 안내 글이 채운다. 인셋 아래 76 = 왼쪽 층 수 칩(..68) 밑이라
+	-- 폭 406 이어도 왼쪽 열·배율 칩(Top ..108)과 안 겹친다
+	guideSlot = Instance.new("Frame")
+	guideSlot.Name = "GuideSlot"
+	guideSlot.AnchorPoint = Vector2.new(0.5, 0)
+	guideSlot.Position = UDim2.new(0.5, 0, 0, SLOT_Y)
+	guideSlot.Size = UDim2.fromOffset(406, 44)
+	guideSlot.BackgroundTransparency = 1
+	guideSlot.Parent = underFrame
+	guideSlot.ChildAdded:Connect(function()
+		if bannerLabel.Visible then
+			placeBanner()
+		end
+	end)
 
 	-- 스티커판 → 용돈 칩으로 날아가는 코인(선물)
 	flyer = makeLabel(root, "Flyer", Enum.Font.GothamBold, YELLOW)
@@ -1179,6 +1232,25 @@ local function applyScale()
 	local scale = math.clamp(math.min(area.Y / BASE_HEIGHT, area.X / BASE_WIDTH), SCALE_MIN, SCALE_MAX)
 	rootScale.Scale = scale
 	root.Size = UDim2.fromScale(1 / scale, 1 / scale)
+
+	-- Under 는 로블록스 버튼 아래. Top 은 상단 바 띠의 개발자 영역(TopbarInset)이 카드 왼끝·오른쪽 열 오른끝을
+	-- 다 덮을 때만 띠 안에 둔다. 아니면(로블록스 버튼이 넓거나 오른쪽에도 있음) 인셋 아래로 내린다
+	local inset = GuiService.TopbarInset
+	local below = UDim2.fromOffset(0, inset.Height / scale)
+	local safe = root.Parent :: Frame
+	local left, width = safe.AbsolutePosition.X, safe.AbsoluteSize.X
+	local cardLeft = left + width / 2 - CARD_WIDTH / 2 * scale
+	local columnRight = left + width - EDGE * scale
+	underFrame.Position = below
+	local lowered = inset.Min.X + EDGE > cardLeft or inset.Max.X < columnRight
+	topFrame.Position = if lowered then below else UDim2.new()
+	-- Top 이 내려오면 배율 칩(..108)이 칸(76)을 덮으니 칸 줄(「멋져요」·층 안내·배너)도 같이 내린다
+	local slotY = if lowered then SLOT_Y_LOWERED else SLOT_Y
+	likeButton.Position = UDim2.new(0.5, 0, 0, slotY)
+	guideSlot.Position = UDim2.new(0.5, 0, 0, slotY)
+	if bannerLabel.Visible then
+		placeBanner()
+	end
 end
 
 -- ── 공개 API ──
@@ -1279,6 +1351,11 @@ function HudController.decorButtonRect(): (Vector2?, Vector2?)
 	return decorButton.AbsolutePosition, decorButton.AbsoluteSize
 end
 
+--- 카드 아래 칸(Top 안, HUD 스케일을 따른다). 튜토리얼 층 안내 글이 여기 들어온다. 빌드 전이면 nil
+function HudController.guideSlot(): Frame?
+	return if built then guideSlot else nil
+end
+
 --- 「꾸미기」 버튼 테두리 펄스(튜토리얼 꾸미기 단계)
 function HudController.pulseDecorButton(on: boolean)
 	if not built then
@@ -1294,6 +1371,10 @@ function HudController.toast(text: string)
 	end
 	toastToken += 1
 	local mine = toastToken
+	-- 꾸미기 줄(✓🔄X·막대)이 떠 있으면 그 위로. DecorController 는 순환 require 라 GUI 켜짐만 본다
+	local decorGui = player.PlayerGui:FindFirstChild("DecorGui")
+	local decorOn = decorGui ~= nil and decorGui:IsA("ScreenGui") and decorGui.Enabled
+	toastLabel.Position = UDim2.new(0.5, 0, 1, if decorOn then TOAST_BOTTOM_DECOR else TOAST_BOTTOM)
 	toastLabel.Text = text
 	toastLabel.TextTransparency = 0
 	toastLabel.BackgroundTransparency = PANEL_ALPHA

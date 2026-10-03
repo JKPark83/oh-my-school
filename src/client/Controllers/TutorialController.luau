@@ -38,6 +38,7 @@ type HudApi = {
 	isOnOwnPlot: () -> boolean,
 	pulseDecorButton: (on: boolean) -> (),
 	decorButtonRect: () -> (Vector2?, Vector2?),
+	guideSlot: () -> Frame?,
 }
 type PanelApi = {
 	current: () -> string?,
@@ -130,7 +131,6 @@ local GUIDE_ELEVATOR_UP = 5 -- 타는 곳 바닥에서 화살표 앵커까지(+ 
 local GUIDE_PAD_UP = 1
 local GUIDE_ARROW_SIZE = 120
 local GUIDE_ARROW_HEIGHT = 3.5
-local GUIDE_TEXT_Y = 228 -- px(인셋 무시). HUD 배너(인셋 58 + 120, 높이 40) 바로 아래
 
 -- 색(§8.1)
 local COLOR_PANEL = Color3.fromRGB(31, 41, 55)
@@ -459,11 +459,10 @@ end
 local function startGuide(n: number)
 	stopGuide()
 	guideFloor = n
+	-- 글은 HUD 카드 아래 칸을 채운다(HUD 스케일·상단 바 배치를 그대로 따른다. 화면 가운데를 가리지 않게)
 	local label = Instance.new("TextLabel")
 	label.Name = "FloorGuide"
-	label.AnchorPoint = Vector2.new(0.5, 0)
-	label.Position = UDim2.new(0.5, 0, 0, GUIDE_TEXT_Y)
-	label.Size = UDim2.fromOffset(406, 44)
+	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundColor3 = COLOR_PANEL
 	label.BackgroundTransparency = 0.1
 	label.Font = Enum.Font.GothamBold
@@ -477,7 +476,7 @@ local function startGuide(n: number)
 	stroke.Thickness = 3
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Parent = label
-	label.Parent = hudGui
+	label.Parent = HudController.guideSlot()
 	guideLabel = label
 
 	local at = newPart("GuideAnchor", Vector3.new(0.2, 0.2, 0.2), CFrame.new(), 1)
@@ -504,11 +503,10 @@ local function updateGuide()
 	local plotId = HudController.myPlotId()
 	local plot = if plotId then PadController.plotModel(plotId) else nil
 	local origin = rootPosition()
-	local here = if plot
-			and origin
-			and HudController.isOnOwnPlot()
-		then floorAt(plot:GetPivot():PointToObjectSpace(origin).Y)
-		else nil
+	local onOwnPlot = HudController.isOnOwnPlot()
+	-- 남의 부지에선 칸을 「멋져요」가 쓰니 안내 글을 숨긴다
+	label.Visible = onOwnPlot
+	local here = if plot and origin and onOwnPlot then floorAt(plot:GetPivot():PointToObjectSpace(origin).Y) else nil
 	local target: Vector3? = nil -- 화살표 앵커
 	local floorSpot: Vector3? = nil -- 빛기둥 밑동(엘리베이터 타는 곳 바닥). 패드는 패드 장식이 대신한다
 	if here == n then
