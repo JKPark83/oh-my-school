@@ -11,7 +11,10 @@
 
 	조작(주인만. W6 꾸미기 시트가 부른다)
 	  beginPlace(itemId) / beginMove(slot) / cancel() / isActive().
-	  고스트는 캐릭터가 바라보는 방향 앞 2칸(10 스터드)에 격자 스냅해 따라온다. 카메라는 피치 55° 로 고정.
+	  고스트는 캐릭터에서 카메라가 보는 방향(수평) 앞 2칸(10 스터드)에 격자 스냅해 따라온다. 오른손으로 카메라를
+	  돌리면 고스트도 캐릭터 둘레를 돌아 늘 화면 앞쪽에 있다. 카메라는 들어갈 때 55° 로 기울이고, 그 뒤에는
+	  30~80° 안에서 위아래로 둘러볼 수 있다(좌우·줌은 자유).
+	  ✓·🔄·X 는 화면 아래 가운데(이동 조이스틱 영역 오른쪽)에 둔다. 오른쪽 아래는 카메라 드래그 자리로 비운다.
 	  ✓ → PlaceDecor·MoveDecor, 🔄 → 90° 회전, X → 끝, ↩(옮기기에서만) → StoreDecor.
 	  ✓ 를 보내면 고스트를 숨기고 서버 확인(DecorPlaced·DecorStored 또는 Decor 어트리뷰트 변화)을 기다린다.
 	  확인이 오면 모드를 끝낸다. 2초 안에 안 오면 고스트를 되살린다. Deny cell·limit·owned 면 0.2초 페이드 후 끝.
@@ -51,7 +54,7 @@ type DecorPlacement = Types.DecorPlacement
 
 -- 형제 컨트롤러는 형태만 선언하고 any 로 받는다(PadController 와 같은 방식)
 type CameraApi = {
-	lockPitch: (deg: number, seconds: number) -> (),
+	lockPitch: (deg: number, seconds: number, minDeg: number, maxDeg: number) -> (),
 	unlockPitch: (seconds: number) -> (),
 }
 type SoundApi = {
@@ -69,8 +72,10 @@ local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 local DecorController = {}
 
 -- ── 수치(클라 연출 전용. 판정 수치는 DecorConfig·PlotLayout) ──
-local GHOST_AHEAD = 10 -- 스터드. 캐릭터 앞 2칸
+local GHOST_AHEAD = 10 -- 스터드. 카메라가 보는 쪽 캐릭터 앞 2칸
 local PITCH_DEG = 55
+local PITCH_MIN_DEG = 30 -- 이보다 눕히면 고스트가 화면 아래로 빠지기 쉽다
+local PITCH_MAX_DEG = 80
 local PITCH_SECONDS = 0.4
 local LOD_INTERVAL = 1
 local PENDING_TIMEOUT = 2
@@ -101,6 +106,8 @@ local SIZE_CONFIRM = 88
 local SIZE_ROTATE = 72
 local SIZE_CANCEL = 56
 local SIZE_STORE = 40
+-- ✓·🔄·X 줄의 가운데(화면 가로 비율). 왼쪽 40% 이동 조이스틱과 오른쪽 아래 카메라 드래그 자리 사이
+local ACTIONS_X = 0.55
 local BAR_W = 168
 local BAR_H = 8
 local BAR_TEXT_W = 44
@@ -701,7 +708,8 @@ local function followCell(current: Mode, item: DecorConfig.Item): (number, numbe
 	if not pivot or not hrp or not hrp:IsA("BasePart") then
 		return current.cx, current.cz, false
 	end
-	local look = hrp.CFrame.LookVector
+	local cam = Workspace.CurrentCamera
+	local look = if cam then cam.CFrame.LookVector else hrp.CFrame.LookVector
 	local flat = Vector3.new(look.X, 0, look.Z)
 	local ahead = if flat.Magnitude > 1e-3 then flat.Unit * GHOST_AHEAD else Vector3.zero
 	local p = pivot:PointToObjectSpace(hrp.Position + ahead)
@@ -845,7 +853,7 @@ local function enter(kind: "place" | "move", itemId: string, slot: number?, rot:
 	applyHidden()
 	showGui(kind)
 	if not wasActive then
-		CameraController.lockPitch(PITCH_DEG, PITCH_SECONDS)
+		CameraController.lockPitch(PITCH_DEG, PITCH_SECONDS, PITCH_MIN_DEG, PITCH_MAX_DEG)
 	end
 	onHeartbeat()
 end
@@ -1033,19 +1041,21 @@ local function buildGui()
 	rootScale = Instance.new("UIScale")
 	rootScale.Parent = root
 
-	-- 오른쪽 아래 1/3(812×375 기준 x ≥ 541, y ≥ 250) 안. 오른쪽부터 ✓ 🔄 X, X 위에 ↩, ✓·🔄 위에 막대
+	-- 아래 가운데 한 줄(줄 가운데 = 가로 ACTIONS_X). 오른쪽부터 ✓ 🔄 X, X 위에 ↩, ✓·🔄 위에 막대.
+	-- 오른쪽 아래는 오른손 카메라 드래그 자리라 비운다(버튼 위에서 시작한 드래그는 카메라가 못 받는다)
 	local bottom = -MARGIN
-	local xConfirm = -MARGIN
+	local xConfirm = (SIZE_CONFIRM + GAP + SIZE_ROTATE + GAP + SIZE_CANCEL) / 2
 	local xRotate = xConfirm - SIZE_CONFIRM - GAP
 	local xCancel = xRotate - SIZE_ROTATE - GAP
-	confirmButton = makeRoundButton("Confirm", SIZE_CONFIRM, GLYPH_CONFIRM, UDim2.new(1, xConfirm, 1, bottom), GREEN)
-	rotateButton = makeRoundButton("Rotate", SIZE_ROTATE, GLYPH_ROTATE, UDim2.new(1, xRotate, 1, bottom), PANEL)
-	cancelButton = makeRoundButton("Cancel", SIZE_CANCEL, GLYPH_CANCEL, UDim2.new(1, xCancel, 1, bottom), PANEL)
+	confirmButton =
+		makeRoundButton("Confirm", SIZE_CONFIRM, GLYPH_CONFIRM, UDim2.new(ACTIONS_X, xConfirm, 1, bottom), GREEN)
+	rotateButton = makeRoundButton("Rotate", SIZE_ROTATE, GLYPH_ROTATE, UDim2.new(ACTIONS_X, xRotate, 1, bottom), PANEL)
+	cancelButton = makeRoundButton("Cancel", SIZE_CANCEL, GLYPH_CANCEL, UDim2.new(ACTIONS_X, xCancel, 1, bottom), PANEL)
 	storeButton = makeRoundButton(
 		"Store",
 		SIZE_STORE,
 		GLYPH_STORE,
-		UDim2.new(1, xCancel - (SIZE_CANCEL - SIZE_STORE) / 2, 1, bottom - SIZE_CANCEL - 10),
+		UDim2.new(ACTIONS_X, xCancel - (SIZE_CANCEL - SIZE_STORE) / 2, 1, bottom - SIZE_CANCEL - 10),
 		PANEL
 	)
 
@@ -1053,7 +1063,7 @@ local function buildGui()
 	bar = Instance.new("CanvasGroup")
 	bar.Name = "Count"
 	bar.AnchorPoint = Vector2.new(1, 1)
-	bar.Position = UDim2.new(1, xConfirm, 1, bottom - SIZE_CONFIRM - 8)
+	bar.Position = UDim2.new(ACTIONS_X, xConfirm, 1, bottom - SIZE_CONFIRM - 8)
 	bar.Size = UDim2.fromOffset(BAR_TEXT_W + BAR_W, BAR_GROUP_H)
 	bar.BackgroundTransparency = 1
 	bar.Parent = root

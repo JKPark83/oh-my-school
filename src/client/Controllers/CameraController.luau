@@ -3,8 +3,12 @@
 	카메라. 기획서 §9.1(흔들림)·§9.5·개선계획 §5.5(층 완공 축하 오빗)·§8.4(흔들림 끔).
 
 	평소에는 로블록스 기본 카메라(Custom)를 그대로 쓴다. 줌 8~120, FOV 65.
-	직접 CFrame 으로 굴리는 것은 연출 중(panTo/orbit/cutTo)뿐이고, restore() 로 Custom 에 돌아온다.
-	꾸미기 모드의 lockPitch/unlockPitch 는 Custom 을 두고 피치만 매 프레임 덮어쓴다.
+	연출(panTo/orbit/cutTo)도 CameraType 은 Custom 그대로 두고 updateFx(Camera+1)에서 CFrame 만 덮어쓴다.
+	restore() 는 덮어쓰기를 멈출 뿐이다. 꾸미기 모드의 lockPitch/unlockPitch 도 같은 방식이다.
+
+	★ Scriptable 로 바꾸지 않는다. 바꿨다 돌아오면 PlayerModule CameraInput 이 손가락 기록을 지운다.
+	  그러면 누르고 있던 이동 조이스틱 손가락이 카메라 손가락으로 다시 잡혀, 오른손 드래그가
+	  두 손가락 핀치(줌 아웃)가 된다(폰 줌 버그).
 
 	★ 흔들림은 트라우마 모델이다. shake(t) 는 트라우마를 더하고, 실제 흔들림 크기는 트라우마² 다.
 	  작은 충격은 거의 안 보이고 큰 충격은 확 보인다. 트라우마는 초당 DECAY 만큼 줄어든다.
@@ -38,7 +42,7 @@ local SHAKE_FREQ = 18 -- 노이즈 주파수(Hz)
 local FOV_PUNCH_DEPTH = 6
 local FOV_PUNCH_SECONDS = 0.3
 
--- panTo: 목표를 바라본 뒤 이만큼 있다가 Custom 으로 돌아온다
+-- panTo: 목표를 바라본 뒤 이만큼 있다가 기본 카메라로 돌아온다
 local PAN_HOLD = 1.2
 
 -- orbit: seconds 동안 이 각도만큼 돈다(층 완공 축하는 학교를 한 바퀴 돈다)
@@ -76,38 +80,18 @@ local function camera(): Camera?
 	return Workspace.CurrentCamera
 end
 
-local function currentHumanoid(): Humanoid?
-	local character = player.Character
-	return if character then character:FindFirstChildOfClass("Humanoid") else nil
-end
-
-local function goScriptable(state: Scripted)
-	local cam = camera()
-	if not cam then
-		return
-	end
+local function startScripted(state: Scripted)
 	scriptedToken += 1
 	scripted = state
-	cam.CameraType = Enum.CameraType.Scriptable
 end
 
---- Custom 카메라로 복귀. 진행 중인 연출은 버린다
+--- 기본 카메라로 복귀. 진행 중인 연출은 버린다(기본 카메라는 마지막 연출 방향에서 이어 간다)
 function CameraController.restore()
 	scriptedToken += 1
 	scripted = nil
-	local cam = camera()
-	if not cam then
-		return
-	end
-	cam.CameraType = Enum.CameraType.Custom
-	local humanoid = currentHumanoid()
-	if humanoid then
-		cam.CameraSubject = humanoid
-	end
-	cam.FieldOfView = FIELD_OF_VIEW
 end
 
---- seconds 동안 지금 자리에서 worldPos 를 바라보도록 돌린 뒤 PAN_HOLD 후 Custom 복귀
+--- seconds 동안 지금 자리에서 worldPos 를 바라보도록 돌린 뒤 PAN_HOLD 후 기본 카메라로 복귀
 function CameraController.panTo(worldPos: Vector3, seconds: number)
 	local cam = camera()
 	if not cam then
@@ -118,7 +102,7 @@ function CameraController.panTo(worldPos: Vector3, seconds: number)
 	end
 	local from = cam.CFrame
 	local to = CFrame.lookAt(from.Position, worldPos)
-	goScriptable({ kind = "pan", from = from, to = to, t0 = os.clock(), seconds = math.max(seconds, 0.01) })
+	startScripted({ kind = "pan", from = from, to = to, t0 = os.clock(), seconds = math.max(seconds, 0.01) })
 	local mine = scriptedToken
 	task.delay(seconds + PAN_HOLD, function()
 		if scriptedToken == mine then
@@ -135,7 +119,7 @@ function CameraController.orbit(center: Vector3, radius: number, pitchDeg: numbe
 	end
 	local offset = cam.CFrame.Position - center
 	local angle0 = math.atan2(offset.X, offset.Z)
-	goScriptable({
+	startScripted({
 		kind = "orbit",
 		center = center,
 		radius = radius,
@@ -148,7 +132,7 @@ end
 
 --- 즉시 이 CFrame 으로. restore() 전까지 머문다
 function CameraController.cutTo(cframe: CFrame)
-	goScriptable({ kind = "hold", cframe = cframe })
+	startScripted({ kind = "hold", cframe = cframe })
 end
 
 --- 트라우마를 더한다(0~1). 실제 흔들림은 트라우마² 에 비례
@@ -186,11 +170,20 @@ local function orbitCFrame(state: Orbit, now: number): CFrame
 end
 
 --[[
-	피치 고정(꾸미기 모드, 개선계획 §3.5 #10). 기본 카메라(Custom)는 그대로 두고 매 프레임 피치만 덮어쓴다.
-	요(yaw)·줌·초점은 기본 카메라 것을 쓴다. 기본 카메라는 다음 프레임 우리 CFrame 에서 이어서 계산하므로
-	드래그 회전은 그대로 먹고 피치만 다시 눌린다. 연출(scripted) 중에는 건드리지 않는다.
+	피치 범위(꾸미기 모드, 개선계획 §3.5 #10). 기본 카메라(Custom)는 그대로 두고 피치만 덮어쓴다.
+	들어갈 때 to 로 기울인 뒤에는 min~max 를 벗어날 때만 끝으로 되돌려, 그 안에서는 위아래 드래그가 먹는다.
+	요(yaw)·줌·초점은 기본 카메라 것을 쓴다. 기본 카메라는 다음 프레임 우리 CFrame 에서 이어서 계산한다.
+	연출(scripted) 중에는 건드리지 않는다.
 ]]
-type PitchLock = { from: number, to: number, t0: number, seconds: number, release: boolean }
+type PitchLock = {
+	from: number,
+	to: number,
+	min: number,
+	max: number,
+	t0: number,
+	seconds: number,
+	release: boolean,
+}
 local pitchLock: PitchLock? = nil
 local savedPitch = 0 -- lockPitch 직전 각도. unlockPitch 가 여기로 돌아간다
 
@@ -202,6 +195,13 @@ end
 local function applyPitch(cam: Camera, lock: PitchLock, now: number)
 	local alpha = math.clamp((now - lock.t0) / lock.seconds, 0, 1)
 	local pitch = lock.from + (lock.to - lock.from) * (1 - (1 - alpha) ^ 2)
+	if alpha >= 1 and not lock.release then
+		local current = currentPitch(cam)
+		pitch = math.clamp(current, lock.min, lock.max)
+		if pitch == current then
+			return -- 범위 안이면 기본 카메라(드래그) 그대로
+		end
+	end
 	local focus = cam.Focus.Position
 	local dist = (cam.CFrame.Position - focus).Magnitude
 	local look = cam.CFrame.LookVector
@@ -220,8 +220,8 @@ local function applyPitch(cam: Camera, lock: PitchLock, now: number)
 	end
 end
 
---- 피치를 deg 로 seconds 동안 옮긴 뒤 unlockPitch 전까지 붙잡는다
-function CameraController.lockPitch(deg: number, seconds: number)
+--- 피치를 deg 로 seconds 동안 옮긴 뒤 unlockPitch 전까지 minDeg~maxDeg 안에 둔다
+function CameraController.lockPitch(deg: number, seconds: number, minDeg: number, maxDeg: number)
 	local cam = camera()
 	if not cam then
 		return
@@ -230,7 +230,15 @@ function CameraController.lockPitch(deg: number, seconds: number)
 	if not pitchLock or pitchLock.release then
 		savedPitch = if pitchLock then pitchLock.to else now
 	end
-	pitchLock = { from = now, to = math.rad(deg), t0 = os.clock(), seconds = math.max(seconds, 0.01), release = false }
+	pitchLock = {
+		from = now,
+		to = math.rad(deg),
+		min = math.rad(minDeg),
+		max = math.rad(maxDeg),
+		t0 = os.clock(),
+		seconds = math.max(seconds, 0.01),
+		release = false,
+	}
 end
 
 --- lockPitch 직전 각도로 seconds 동안 돌아간 뒤 기본 카메라에 맡긴다
@@ -242,6 +250,8 @@ function CameraController.unlockPitch(seconds: number)
 	pitchLock = {
 		from = currentPitch(cam),
 		to = savedPitch,
+		min = savedPitch,
+		max = savedPitch,
 		t0 = os.clock(),
 		seconds = math.max(seconds, 0.01),
 		release = true,
