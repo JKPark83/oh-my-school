@@ -91,7 +91,7 @@ local function keyLines(keys: Part)
 end
 
 local function wallOpts(): BuildKit.Opts
-	return { color = COLOR_WALL, material = Enum.Material.Concrete, fade = true }
+	return { color = COLOR_WALL, material = Enum.Material.Plaster, fade = true }
 end
 
 --- 벽 4(북벽은 문 양옆 두 조각 + 상인방) · 지붕 · 바닥 = 파트 8개. 바닥과 상인방을 돌려준다.

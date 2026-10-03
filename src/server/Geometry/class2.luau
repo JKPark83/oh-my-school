@@ -88,7 +88,7 @@ local function buildRoom(model: Model, plotCFrame: CFrame, row: FacilityConfig.F
 			name,
 			size,
 			at(plotCFrame, x, wy, z),
-			{ color = COLOR_PRIMARY, material = MATERIAL, fade = true }
+			{ color = COLOR_PRIMARY, material = Enum.Material.Plaster, fade = true }
 		)
 	end
 	local north = wall("WallN", Vector3.new(row.size.X, h, WALL_T), cx, y, cz - hz + WALL_T / 2)

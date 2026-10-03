@@ -79,7 +79,7 @@ local function attach(parent: Instance, name: string, cf: CFrame): Attachment
 end
 
 local function wallOpts(): BuildKit.Opts
-	return { color = C.wall, material = Enum.Material.Concrete, fade = true }
+	return { color = C.wall, material = Enum.Material.Plaster, fade = true }
 end
 
 --- 벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 파트 8개. 바닥판·벽은 부품 1, 상인방·지붕은 부품 2

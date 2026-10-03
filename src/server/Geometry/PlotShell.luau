@@ -180,7 +180,7 @@ local function wallWithDoor(
 	doorAt: number,
 	fixed: number
 ): (Part, Part)
-	local opts = { color = C.wall, material = Enum.Material.Concrete, fade = true }
+	local opts = { color = C.wall, material = Enum.Material.Plaster, fade = true }
 	local d0, d1 = doorAt - DOOR_W / 2, doorAt + DOOR_W / 2
 	local function seg(suffix: string, a: number, b: number, y: number, h: number): Part
 		local len = b - a
@@ -213,7 +213,7 @@ local function solidWall(
 		name,
 		size,
 		plotCFrame * CFrame.new(pos),
-		{ color = C.wall, material = Enum.Material.Concrete, fade = true }
+		{ color = C.wall, material = Enum.Material.Plaster, fade = true }
 	)
 end
 

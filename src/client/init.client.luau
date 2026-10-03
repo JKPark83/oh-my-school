@@ -20,6 +20,9 @@ type Profile = Types.Profile
 
 local Controllers = script:WaitForChild("Controllers")
 
+-- PBR 재질은 리모트와 상관없다. 먼저 불러오기를 건다(실패해도 기본 재질 폴백)
+require(script:WaitForChild("MaterialSetup")).Start()
+
 -- 서버가 RemoteEvents 폴더를 만든 뒤에야 나머지가 의미 있다
 Remotes.wait()
 

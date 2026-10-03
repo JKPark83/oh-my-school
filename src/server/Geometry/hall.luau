@@ -60,7 +60,7 @@ local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, op
 end
 
 local function wallOpts(): BuildKit.Opts
-	return { color = C.wall, material = Enum.Material.Concrete, fade = true }
+	return { color = C.wall, material = Enum.Material.Plaster, fade = true }
 end
 
 --- X 방향 긴 벽 하나를 문 자리마다 끊는다. 문 n개 → 벽 조각 n+1 + 상인방 n

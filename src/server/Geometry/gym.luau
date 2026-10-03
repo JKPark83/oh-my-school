@@ -67,7 +67,7 @@ local function attachment(parent: Instance, name: string, cf: CFrame): Attachmen
 end
 
 local function wallOpts(): BuildKit.Opts
-	return { color = COLOR_WALL, material = Enum.Material.Concrete, fade = true }
+	return { color = COLOR_WALL, material = Enum.Material.Plaster, fade = true }
 end
 
 --- 벽 4(서벽은 문 양옆 두 조각 + 상인방) · 아치 지붕 3 = 파트 9개. 상인방을 돌려준다.
@@ -229,7 +229,7 @@ function gym.build(plotCFrame: CFrame): Model
 	for _, side in { { name = "N", dz = -15 }, { name = "S", dz = 15 } } do
 		part(model, "Mat" .. side.name, Vector3.new(6, 0.3, 4), at(plotCFrame, cx + 7, floorTop + 0.15, cz + side.dz), {
 			color = COLOR_SECONDARY,
-			material = MATERIAL,
+			material = Enum.Material.Fabric,
 		})
 	end
 	part(model, "VaultBox", Vector3.new(3, 3.5, 2), at(plotCFrame, cx + 7, floorTop + 1.75, cz), {

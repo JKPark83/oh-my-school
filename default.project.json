@@ -40,20 +40,20 @@
         "Technology": "Future",
         "ClockTime": 10,
         "GeographicLatitude": 37.5,
-        "Brightness": 1.5,
+        "Brightness": 2,
         "ExposureCompensation": 0,
         "OutdoorAmbient": [
-          0.34,
-          0.35,
-          0.39
+          0.42,
+          0.41,
+          0.4
         ],
         "Ambient": [
-          0.15,
-          0.15,
-          0.17
+          0.22,
+          0.2,
+          0.19
         ],
-        "EnvironmentDiffuseScale": 0.45,
-        "EnvironmentSpecularScale": 0.1,
+        "EnvironmentDiffuseScale": 0.6,
+        "EnvironmentSpecularScale": 0.65,
         "GlobalShadows": true,
         "ShadowSoftness": 0.35
       },
@@ -63,25 +63,65 @@
           "Density": 0.08,
           "Offset": 0.25,
           "Color": [
-            0.85,
+            0.88,
             0.86,
-            0.83
+            0.81
           ],
           "Decay": [
             0.42,
             0.45,
             0.5
           ],
-          "Glare": 0,
+          "Glare": 0.1,
           "Haze": 0.2
         }
       },
       "Bloom": {
         "$className": "BloomEffect",
         "$properties": {
-          "Intensity": 0.25,
-          "Size": 18,
-          "Threshold": 1.7
+          "Intensity": 0.35,
+          "Size": 24,
+          "Threshold": 1.9
+        }
+      },
+      "Grade": {
+        "$className": "ColorCorrectionEffect",
+        "$properties": {
+          "Brightness": 0.02,
+          "Contrast": 0.1,
+          "Saturation": 0.15,
+          "TintColor": [
+            1,
+            0.98,
+            0.95
+          ]
+        }
+      },
+      "SunRays": {
+        "$className": "SunRaysEffect",
+        "$properties": {
+          "Intensity": 0.04,
+          "Spread": 0.6
+        }
+      }
+    },
+    "MaterialService": {
+      "$className": "MaterialService",
+      "SchoolFloorWood": {
+        "$className": "MaterialVariant",
+        "$properties": {
+          "BaseMaterial": "WoodPlanks",
+          "ColorMap": "rbxassetid://81564696405599",
+          "NormalMap": "rbxassetid://106757572612786",
+          "RoughnessMap": "rbxassetid://130664980043850",
+          "MetalnessMap": "rbxassetid://120292081449561",
+          "StudsPerTile": 10
+        },
+        "$attributes": {
+          "ColorMap": "rbxassetid://81564696405599",
+          "NormalMap": "rbxassetid://106757572612786",
+          "RoughnessMap": "rbxassetid://130664980043850",
+          "MetalnessMap": "rbxassetid://120292081449561"
         }
       }
     },

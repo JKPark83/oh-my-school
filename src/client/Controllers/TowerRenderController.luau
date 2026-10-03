@@ -98,6 +98,7 @@ local POP_SECONDS = 0.35
 local MAX_ROOM_PARTS = 60
 local MAX_ROOF_PARTS = 45 -- 옥상 방 하나(가까운 부지는 늘 그리니 층 방보다 적게)
 local DECK_H = 0.3 -- 먼 부지 옥상 방 바닥판
+local FLOOR_WOOD = Color3.fromRGB(255, 236, 210) -- 마루 맵이 이미 갈색이라 거의 흰색으로 곱한다
 local SIGN_FORMAT = "%s %d층 %s" -- 「{icon} {n}층 {방이름}」
 local RANK_COLORS = {
 	Color3.fromRGB(255, 200, 40), -- 금
@@ -273,6 +274,7 @@ local function buildFloor(
 		ghost.CastShadow = false
 	elseif not isNear then
 		local block = part(m, "Block", pivot, boxCenter, boxSize, room.wall)
+		block.Material = Enum.Material.Plaster
 		block.CanQuery = true
 		addWindows(block, LONG_LEN)
 	else
@@ -286,6 +288,7 @@ local function buildFloor(
 				Vector3.new(s.X, WALL_H, s.Y),
 				room.wall
 			)
+			wall.Material = Enum.Material.Plaster
 			wall.CanCollide = true -- 내 캐릭터가 층 밖으로 걸어 나가지 않게(클라 물리)
 			wall.CanQuery = true -- 가림 페이드 레이
 			if name == "WallS" then
@@ -520,7 +523,9 @@ local function recipePut(m: Model, origin: CFrame): (Rooms.Put, () -> number)
 		p.Size = size
 		p.CFrame = origin * CFrame.new(pos) * (o.rot or CFrame.identity)
 		p.Color = color
-		p.Material = o.material or Enum.Material.SmoothPlastic
+		-- 나무색 파트는 기본 PBR 나뭇결(Wood). 칠한 가구·메시는 SmoothPlastic 그대로
+		local woody = not mesh and (color == WorldPalette.wood or color == WorldPalette.benchWood)
+		p.Material = o.material or (if woody then Enum.Material.Wood else Enum.Material.SmoothPlastic)
 		p.Transparency = o.transparency or 0
 		p.Anchored = true
 		p.CanCollide = o.collide == true
@@ -601,6 +606,18 @@ local function buildInterior(pivot: CFrame, key: string, n: number, room: RoomCo
 	local m = newModel(pivot, n, key)
 	local count = runRecipe(m, pivot * CFrame.new(RoomConfig.origin(n)), room, n, stage)
 	assert(count <= MAX_ROOM_PARTS, `TowerRender {room.id}: 방 안 {count}개 > {MAX_ROOM_PARTS}`)
+	-- 마루. 서버 바닥판은 아랫면이 아래층 천장이고 옆면이 외벽 띠라 돌 그대로 두고, 방 안을 그릴 때만 윗면에 얇게 깐다.
+	-- 서버 바닥판 윗면은 floorY + 0.05(Tower LIFT)라 그만큼 올린다(y 0.03~0.07). 바닥판에 0.02 묻어 깜빡이지 않고,
+	-- 레시피 깔개(y 0~0.1)보다 낮다. WoodPlanks 는 MaterialSetup 이 덮는다
+	local floor = part(
+		m,
+		"FloorWood",
+		pivot,
+		RoomConfig.origin(n) + Vector3.new(0, 0.05, 0),
+		Vector3.new(LONG_LEN - WALL_T * 2, 0.04, SHORT_LEN),
+		FLOOR_WOOD
+	)
+	floor.Material = Enum.Material.WoodPlanks
 	-- 천장등. 위층 바닥판이 그림자를 드리워 방 안이 Ambient 만으로는 새카맣다(BuildKit 천장등과 같은 색·밝기).
 	-- 방 안은 캐릭터가 있는 층 ±1 만 그리니 켜지는 등도 그만큼뿐이다
 	local lamp = part(
