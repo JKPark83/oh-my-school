@@ -4,7 +4,7 @@
 
 	  ★ 프로필의 유일한 클라이언트 사본이다. ProfileSync 는 setProfile 하나로만 들어오고(seq 가 크지 않으면 버림),
 	    다른 컨트롤러는 profile() / onProfile() 로만 읽는다. 컨트롤러끼리 프로필을 따로 들고 있지 않는다.
-	  ★ 좌표는 812×375 기준 px Offset 이고 UIScale = clamp(viewportHeight / 375, 0.9, 1.6) 로만 키운다(§8.1).
+	  ★ 좌표는 812×375 기준 px Offset 이고 UIScale = clamp(min(쓰는 영역 높이 / 375, 폭 / 812), 0.75, 1.6) 로만 키운다(§8.1).
 	    루트 프레임 Size 를 1/scale 로 두어 Scale 1 = 화면 끝이 되게 한다 — 오른쪽 열은 (1, -12) 로 붙는다.
 	  ★ 첫 시설 전에는 용돈 칩과 「다음 시설」 카드만 보인다(§2.2 0:00). 나머지는 프로필이 조건을 채울 때 나타난다.
 	    배경음 버튼만 예외다. 배경음은 0:00 부터 울려서 끄는 곳도 처음부터 보여야 한다.
@@ -35,8 +35,11 @@ type Listener = (Profile) -> ()
 export type SyncPacket = { seq: number, profile: Profile }
 
 -- ── 기준 치수(§8.1) ──
+local BASE_WIDTH = 812
 local BASE_HEIGHT = 375
-local SCALE_MIN = 0.9
+-- 폰 가로(노치·상단 바를 뺀 안전 영역 ~660×290)에서 0.9 로는 기준 폭 812 가 넘쳐 선물판과 🎵 가 겹치고 화면을 많이 가렸다
+-- (2026-10-03 실기기). 0.75 면 56 버튼이 42pt 로 로블록스 상단 버튼(44)과 비슷하다
+local SCALE_MIN = 0.75
 local SCALE_MAX = 1.6
 local TEXT_MIN = 14
 local TEXT_MAX = 32
@@ -1168,9 +1171,12 @@ local function buildGui()
 end
 
 local function applyScale()
-	local camera = Workspace.CurrentCamera
-	local height = if camera then camera.ViewportSize.Y else BASE_HEIGHT
-	local scale = math.clamp(height / BASE_HEIGHT, SCALE_MIN, SCALE_MAX)
+	-- 루트가 실제로 쓰는 영역(노치 안전 영역에서 상단 바를 뺀 것) 기준. 폭도 봐서 기준 812 가 가로로 넘치지 않게 한다
+	local area = (root.Parent :: Frame).AbsoluteSize - Vector2.new(0, GuiService:GetGuiInset().Y)
+	if area.X <= 0 or area.Y <= 0 then
+		return -- 아직 화면에 붙기 전. AbsoluteSize 가 바뀌면 다시 온다
+	end
+	local scale = math.clamp(math.min(area.Y / BASE_HEIGHT, area.X / BASE_WIDTH), SCALE_MIN, SCALE_MAX)
 	rootScale.Scale = scale
 	root.Size = UDim2.fromScale(1 / scale, 1 / scale)
 end
@@ -1404,10 +1410,10 @@ function HudController.Start()
 	Sound = link("SoundController")
 
 	applyScale()
-	local camera = Workspace.CurrentCamera
-	if camera then
-		camera:GetPropertyChangedSignal("ViewportSize"):Connect(applyScale)
-	end
+	-- 화면 회전·창 크기·상단 바 인셋이 바뀌면 안전 영역 크기가 바뀐다
+	local safe = root.Parent :: Frame
+	safe:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyScale)
+	GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(applyScale)
 
 	-- 부지 배정·캐릭터 교체 때 카드 상태(우리 학교로)를 바로 맞춘다
 	player:GetAttributeChangedSignal(Keys.ATTR_PLOT):Connect(function()

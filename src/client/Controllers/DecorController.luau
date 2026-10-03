@@ -91,8 +91,9 @@ local POP_SECONDS = 0.35
 local POP_WAIT = 1 -- DecorPlaced 뒤 Decor 어트리뷰트가 이 안에 안 오면 연출을 버린다
 
 -- ── 화면(812×375 기준 px, HudController 와 같은 UIScale 규칙) ──
+local BASE_WIDTH = 812
 local BASE_HEIGHT = 375
-local SCALE_MIN = 0.9
+local SCALE_MIN = 0.75
 local SCALE_MAX = 1.6
 local MARGIN = 12
 local GAP = 12
@@ -549,8 +550,8 @@ end
 
 local function applyScale()
 	local cam = Workspace.CurrentCamera
-	local height = if cam then cam.ViewportSize.Y else BASE_HEIGHT
-	local scale = math.clamp(height / BASE_HEIGHT, SCALE_MIN, SCALE_MAX)
+	local size = if cam then cam.ViewportSize else Vector2.new(BASE_WIDTH, BASE_HEIGHT)
+	local scale = math.clamp(math.min(size.Y / BASE_HEIGHT, size.X / BASE_WIDTH), SCALE_MIN, SCALE_MAX)
 	rootScale.Scale = scale
 	root.Size = UDim2.fromScale(1 / scale, 1 / scale)
 end
