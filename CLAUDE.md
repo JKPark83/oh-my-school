@@ -47,7 +47,7 @@ luau tools/check_rooms.luau -a "$(for f in $(find src/shared src/client/Rooms -n
 
 - 클라→서버 리모트는 전부 `RemoteGuard.wrap` 으로 받는다. 서버가 판정한다. `AssemblyLinearVelocity` 같은 클라 소유 값을 믿지 않는다.
 - 방문객이 주인을 느리게 하거나 주인 화면을 가리는 것은 없어야 한다(§7.5). 연출·카드·소리는 주인 화면에서만.
-- Robux 결제·유료 무작위 아이템·출석/오프라인 보상·자유 텍스트 입력·빨강 같은 부정 피드백은 넣지 않는다. 화면에는 Username 대신 DisplayName 만 쓴다(§12.2).
+- Robux 결제·유료 무작위 아이템·출석/오프라인 보상·자유 텍스트 입력·빨강 같은 부정 피드백은 넣지 않는다(예외: 꾸미기 배치 고스트는 놓을 수 없으면 반투명 빨강). 화면에는 Username 대신 DisplayName 만 쓴다(§12.2).
 - 새 파일은 `--!strict`. 주석·문서·커밋 메시지는 한국어, 식별자는 영어. 커밋은 `type(scope): 요약`, 본문에 "왜".
 - 메시·텍스처 업로드는 허용한다(에셋 품질 우선). id 는 `CharacterAssets`(학생)·`PropAssets`(창 텍스처·소품 메시·주인공 소품 `HERO`·Creator Store 모델 출처 표)에만 적고(예외: 바닥 PBR MaterialVariant 는 스크립트가 못 만들어 `default.project.json` 의 `MaterialService` 에 둔다. 맵 uri 는 속성과 같은 이름의 `$attributes` 에 한 번 더 적는다 — 클라 `MaterialSetup` 이 그걸로 불러오기를 확인한다), id 0 이거나 불러오기에 실패하면 파트 폴백이 반드시 동작해야 한다. Creator Store 모델은 광장 비핵심 소품 ≤ 3개, 안의 스크립트는 전부 지운다.
 - `CharacterAssets`·`PropAssets` 의 메시·텍스처 ID 는 게임 소유자 계정에 업로드된 것이다. 다른 계정·그룹 게임으로 옮기면 가장 먼저 깨진다.

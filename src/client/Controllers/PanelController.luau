@@ -289,16 +289,19 @@ local function silhouette(parent: Instance, size: UDim2, position: UDim2?, color
 end
 
 --- 원형 진행 링. 반원 두 개를 UIGradient 로 돌려 채운다. set(0~1)
+--- Border 선은 원 바깥에 그려지므로 원을 두께만큼 안으로 들여야 반쪽 클립이 선을 자르지 않는다
 local function makeRing(parent: Instance, size: number, thickness: number, color: Color3): (Frame, (number) -> ())
 	local holder = frame(parent, "Ring", UDim2.fromOffset(size, size))
-	local track = frame(holder, "Track", UDim2.fromScale(1, 1))
+	local inner = size - thickness * 2
+	local track = frame(holder, "Track", UDim2.fromOffset(inner, inner), UDim2.fromOffset(thickness, thickness))
 	corner(track, 999)
-	stroke(track, SURFACE, thickness)
+	stroke(track, DARK, thickness)
 
 	local function half(name: string, x: number, circleX: number): UIGradient
 		local clip = frame(holder, name, UDim2.fromScale(0.5, 1), UDim2.fromScale(x, 0))
 		clip.ClipsDescendants = true
-		local circle = frame(clip, "Circle", UDim2.fromOffset(size, size), UDim2.fromOffset(circleX, 0))
+		local circle =
+			frame(clip, "Circle", UDim2.fromOffset(inner, inner), UDim2.fromOffset(circleX + thickness, thickness))
 		corner(circle, 999)
 		local s = stroke(circle, color, thickness)
 		local g = Instance.new("UIGradient")

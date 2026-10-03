@@ -17,8 +17,9 @@
 	  확인이 오면 모드를 끝낸다. 2초 안에 안 오면 고스트를 되살린다. Deny cell·limit·owned 면 0.2초 페이드 후 끝.
 	  꾸미기 모드 안에서 내 부지의 놓인 물건을 탭하면 그 물건 옮기기로 넘어간다(모드 밖 탭은 무시).
 
-	실패 표시(빨강·흔들림 없음)
-	  서버와 같은 DecorGrid.canPlace 로 먼저 판정한다. 놓을 수 없으면 고스트 회색 + ✓ 흐림.
+	놓기 표시(흔들림 없음. 빨강은 배치 미리보기에서만 쓴다, 기획서 §12.2 예외)
+	  서버와 같은 DecorGrid.canPlace 로 먼저 판정한다. 놓을 수 있으면 고스트 반투명 초록 + ✓ 초록,
+	  없으면 고스트 반투명 빨강 + ✓ 어둡게.
 	  겹친 물건에는 노란 윤곽선이 1Hz 보다 느리게 깜빡이고, 40개가 차면 배치 수 막대가 가득 찬 채 천천히 깜빡인다.
 	  흐린 ✓ 를 누르면 「뿅」(nudge) + 가장 가까운 놓을 수 있는 칸으로 0.2초 스르르 옮긴다(없으면 소리만).
 
@@ -78,7 +79,6 @@ local FADE_SECONDS = 0.2
 local BLINK_HALF = 0.6 -- 반 주기. 한 번 깜빡 1.2초(≤1Hz)
 local HIGHLIGHT_OUTLINE = 0.4
 local HIGHLIGHT_DIM = 0.9
-local GHOST_BAD_TRANSPARENCY = 0.65
 local GHOST_OUTLINE = 0.3
 local TAP_DISTANCE = 500
 local SOUND_NUDGE = "nudge"
@@ -102,21 +102,23 @@ local SIZE_CANCEL = 56
 local SIZE_STORE = 40
 local BAR_W = 168
 local BAR_H = 8
+local BAR_TEXT_W = 44
+local BAR_GROUP_H = 18
 
 local GLYPH_CONFIRM = "✓"
 local GLYPH_ROTATE = "🔄"
 local GLYPH_CANCEL = "X"
 local GLYPH_STORE = "↩"
 
--- 색(기획서 §8.1). 빨강 없음
+-- 색(기획서 §8.1). 빨강은 놓을 수 없는 고스트에만
 local PANEL = Color3.fromRGB(31, 41, 55)
 local PANEL_ALPHA = 0.15
 local GREEN = Color3.fromRGB(52, 211, 153)
+local RED = Color3.fromRGB(248, 113, 113)
 local YELLOW = Color3.fromRGB(251, 191, 36)
 local WHITE = Color3.fromRGB(255, 255, 255)
 local TRACK = Color3.fromRGB(55, 65, 81)
-local GREY = Color3.fromRGB(156, 163, 175)
-local DIM_ALPHA = 0.6 -- 흐린 ✓ 배경 투명도
+local DIM_ALPHA = 0.6 -- 흐린 ✓ 글자 투명도
 
 -- 서버 거부 중 고스트를 보관함으로 되돌리는 것(§3.5)
 local RETURN_REASONS: { [string]: boolean } = { cell = true, limit = true, owned = true }
@@ -126,7 +128,7 @@ type PlotRender = {
 	models: { [number]: Model },
 }
 
-type GhostPart = { part: BasePart, color: Color3, transparency: number }
+type GhostPart = { part: BasePart }
 
 type Mode = {
 	kind: "place" | "move",
@@ -179,7 +181,8 @@ local rotateButton: TextButton
 local cancelButton: TextButton
 local storeButton: TextButton
 local bar: CanvasGroup
-local barCells: { Frame } = {}
+local barFill: Frame
+local barText: TextLabel
 local barTween: Tween? = nil
 
 -- ── 부지 읽기 ────────────────────────────────────────────────────
@@ -571,14 +574,14 @@ local function renderBar()
 		return
 	end
 	local count = if myPlotId then #readPlaced(myPlotId) else 0
-	for i, cell in barCells do
-		cell.BackgroundColor3 = if i <= count then GREEN else TRACK
-	end
+	local max = DecorConfig.MAX_PLACED
+	barFill.Size = UDim2.fromScale(math.clamp(count / max, 0, 1), 1)
+	barText.Text = `{count}/{max}`
 end
 
 local function setConfirmEnabled(ok: boolean)
-	confirmButton.BackgroundTransparency = if ok then PANEL_ALPHA else DIM_ALPHA
-	confirmButton.BackgroundColor3 = if ok then GREEN else GREY
+	confirmButton.BackgroundTransparency = if ok then 0 else PANEL_ALPHA
+	confirmButton.BackgroundColor3 = if ok then GREEN else PANEL
 	confirmButton.TextTransparency = if ok then 0 else DIM_ALPHA
 	confirmButton.AutoButtonColor = ok
 end
@@ -664,7 +667,8 @@ local function makeGhost(item: DecorConfig.Item): (Model, { GhostPart }, Highlig
 	local parts: { GhostPart } = {}
 	for _, part in ghost:GetDescendants() do
 		if part:IsA("BasePart") then
-			table.insert(parts, { part = part, color = part.Color, transparency = part.Transparency })
+			part.Material = Enum.Material.SmoothPlastic -- 잔디·돌 무늬 없이 초록·빨강만 보이게
+			table.insert(parts, { part = part })
 		end
 	end
 	-- 벽 뒤로 가려져도 윤곽은 보이게(§3.5 #10)
@@ -680,10 +684,11 @@ local function makeGhost(item: DecorConfig.Item): (Model, { GhostPart }, Highlig
 end
 
 local function paintGhost(current: Mode)
+	local tint = if current.ok then GREEN else RED
 	for _, g in current.parts do
-		g.part.Color = if current.ok then g.color else GREY
-		g.part.Transparency = if current.ok then g.transparency else math.max(g.transparency, GHOST_BAD_TRANSPARENCY)
+		g.part.Color = tint
 	end
+	current.outline.OutlineColor = tint
 end
 
 --- 캐릭터 앞 GHOST_AHEAD 스터드를 발자국 가운데로 삼는 원점 칸. 부지 밖이면 inside = false
@@ -1043,25 +1048,41 @@ local function buildGui()
 		PANEL
 	)
 
-	-- 배치 수 막대(MAX_PLACED 칸)
+	-- 배치 수(「n/40」 + 채움 막대). 가득 차면 통째로 천천히 깜빡인다
 	bar = Instance.new("CanvasGroup")
 	bar.Name = "Count"
 	bar.AnchorPoint = Vector2.new(1, 1)
 	bar.Position = UDim2.new(1, xConfirm, 1, bottom - SIZE_CONFIRM - 8)
-	bar.Size = UDim2.fromOffset(BAR_W, BAR_H)
+	bar.Size = UDim2.fromOffset(BAR_TEXT_W + BAR_W, BAR_GROUP_H)
 	bar.BackgroundTransparency = 1
 	bar.Parent = root
-	local max = DecorConfig.MAX_PLACED
-	for i = 1, max do
-		local cell = Instance.new("Frame")
-		cell.Name = `C{i}`
-		cell.Position = UDim2.fromScale((i - 1) / max, 0)
-		cell.Size = UDim2.new(1 / max, -1, 1, 0)
-		cell.BackgroundColor3 = TRACK
-		cell.BorderSizePixel = 0
-		cell.Parent = bar
-		barCells[i] = cell
-	end
+	barText = Instance.new("TextLabel")
+	barText.Name = "Text"
+	barText.Size = UDim2.fromOffset(BAR_TEXT_W - 6, BAR_GROUP_H)
+	barText.BackgroundTransparency = 1
+	barText.Font = Enum.Font.GothamBold
+	barText.TextSize = 14
+	barText.TextColor3 = WHITE
+	barText.TextStrokeTransparency = 0.5
+	barText.TextXAlignment = Enum.TextXAlignment.Right
+	barText.Parent = bar
+	local track = Instance.new("Frame")
+	track.Name = "Track"
+	track.AnchorPoint = Vector2.new(0, 0.5)
+	track.Position = UDim2.new(0, BAR_TEXT_W, 0.5, 0)
+	track.Size = UDim2.fromOffset(BAR_W, BAR_H)
+	track.BackgroundColor3 = TRACK
+	track.BorderSizePixel = 0
+	track.Parent = bar
+	local trackCorner = Instance.new("UICorner")
+	trackCorner.CornerRadius = UDim.new(0.5, 0)
+	trackCorner.Parent = track
+	barFill = Instance.new("Frame")
+	barFill.Name = "Fill"
+	barFill.BackgroundColor3 = GREEN
+	barFill.BorderSizePixel = 0
+	barFill.Parent = track
+	trackCorner:Clone().Parent = barFill
 
 	confirmButton.Activated:Connect(onConfirm)
 	rotateButton.Activated:Connect(onRotate)
