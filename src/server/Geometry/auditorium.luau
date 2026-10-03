@@ -1,7 +1,7 @@
 --!strict
 --[[
 	강당(시설 14, 2층) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 26개(바닥을 계단 구멍 때문에 3조각으로 나눠 한도 25 를 1 넘김), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 26개(바닥을 계단 구멍 때문에 3조각으로 나눠 한도 25 를 1 넘김), 전부 BuildKit.part(의자 판은 BuildKit.seat).
 	  치수·위치는 FacilityConfig 행(center (0,18,-17.5) / size 50×18×35, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  바닥 판은 y=18 위에 얹히므로 방 바닥 높이 = 18 + FLOOR_T. 벽·지붕은 fade. 문은 남쪽(+Z) 폭 8 → 층계참 쪽.
 	  무대는 북쪽 끝(부지 로컬 z -32.5 근처). 무대 위 금색 종(Bell)은 장식이다.
@@ -66,6 +66,21 @@ local partIndex = 1
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
 	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
+end
+
+--- part 의 Seat 판. 학생 자리(seatIndex)는 Disabled 라 플레이어가 학생과 겹쳐 앉지 않는다
+local function partSeat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	opts: BuildKit.Opts,
+	seatIndex: number
+): Seat
+	opts.cframe = cf.Rotation
+	local p = BuildKit.seat(parent, name, size, cf.Position, opts, BuildKit.studentSeat(script.Name, seatIndex))
 	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
 	return p
 end
@@ -253,7 +268,8 @@ function auditorium.build(plotCFrame: CFrame): Model
 	-- 벤치 5줄 + 좌석 Attachment 25개. 모두 무대(-Z) 를 본다
 	local benchX = (SEAT_COLS[1] + SEAT_COLS[#SEAT_COLS]) / 2
 	for r, rz in SEAT_ROWS do
-		part(
+		-- 벤치 하나 = Seat 하나(가운데에 한 명만 앉는다). 막는 기준은 그 줄 가운데 자리
+		partSeat(
 			model,
 			"Bench" .. r,
 			Vector3.new(BENCH_W, SEAT_H, BENCH_D),
@@ -261,7 +277,8 @@ function auditorium.build(plotCFrame: CFrame): Model
 			{
 				color = COLOR_BENCH,
 				material = Enum.Material.Wood,
-			}
+			},
+			(r - 1) * #SEAT_COLS + math.ceil(#SEAT_COLS / 2)
 		)
 		for c, sx in SEAT_COLS do
 			attachment(seats, seatName((r - 1) * #SEAT_COLS + c), at(plotCFrame, sx, floorTop, rz))
@@ -297,7 +314,6 @@ function auditorium.build(plotCFrame: CFrame): Model
 			color = COLOR_GOLD,
 			material = Enum.Material.Metal,
 			shape = Enum.PartType.Ball,
-			collide = false,
 		}
 	)
 

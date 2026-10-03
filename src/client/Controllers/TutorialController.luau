@@ -11,8 +11,9 @@
 	  가까이 가면 타이머가 0 으로 돌아간다. 단계 ⑥(끝)도 다음 패드를 대상으로 에스컬레이션만 한다.
 	★ 단계 ⑤(꾸미기)는 월드 대상이 없다. HUD 「꾸미기」 버튼 옆 2D 손가락 + 버튼 펄스. 시트를 열거나 처음 놓으면 끝.
 	  에스컬레이션은 30초 뒤 말풍선을 한 번 더 띄우는 것뿐이다(팬할 월드 위치가 없다).
-	★ 층 안내: 층 방을 완공하면(profile.floors 가 늘면) 층 패드가 새 층으로 옮겨 간다. 화면 위 글 + 큰 「⬇」 화살표·빛기둥으로
-	  지금 층의 엘리베이터 → 새 층의 층 패드를 차례로 가리키고, 그 패드에 올라서면 끝. 튜토리얼 단계와 따로 돈다.
+	★ 층 안내: 층 방을 완공하면(profile.floors 가 늘면) 층 패드가 새 층으로, 방의 뼈대(부품 1)를 사면 짓는 층(옥상) 방 안으로
+	  옮겨 간다. 화면 위 글 + 큰 「⬇」 화살표·빛기둥으로 지금 층의 엘리베이터 → 그 층의 층 패드를 차례로 가리키고,
+	  그 패드에 올라서면 끝. 튜토리얼 단계와 따로 돈다.
 	★ 모듈 최상위 부작용 없음. Start() 에서 폴더·앵커를 만든다.
 ]]
 
@@ -130,6 +131,7 @@ local TICK = 0.25
 local BILLBOARD_DISTANCE = 150
 -- 층 안내
 local GUIDE_DELAY = 2.5 -- 층 완공 축하(카드·학생 등장)가 지나간 뒤에 띄운다
+local GUIDE_PART_DELAY = 1 -- 뼈대(부품 1)가 솟는 것을 잠깐 본 뒤에 띄운다(축하가 없어 짧다)
 local GUIDE_DONE_DISTANCE = 3 -- 층 패드에서 수평 이만큼 안이면 끝
 local GUIDE_FLOOR_SLACK = 1 -- 캐릭터 층 판정: 그 층 바닥보다 이만큼 아래까지 그 층
 local GUIDE_ELEVATOR_UP = 5 -- 타는 곳 바닥에서 화살표 앵커까지(+ GUIDE_ARROW_HEIGHT = 표지판 바로 위)
@@ -177,7 +179,9 @@ local hudGui: ScreenGui? = nil -- 2D 손가락(PlayerGui 바로 아래)
 local hudFinger: Frame? = nil
 local decorSeen = false -- 이번 접속에서 꾸미기 시트를 열었다
 local guideFloor: number? = nil -- 층 안내 중이면 새로 지은 층
-local guideFloorCount = -1 -- 마지막으로 본 강당 + 층 방 수(-1 = 아직 모름)
+local guideFloorCount = -1 -- 마지막으로 본 강당 + 층 방 + 옥상 방 수(-1 = 아직 모름)
+local guidePlace = "" -- 안내 글의 층 이름(「{n}층」·「옥상」)
+local guideTowerParts = -1 -- 마지막으로 본 짓는 방 부품 수(-1 = 아직 모름)
 local guideLabel: TextLabel? = nil
 local guideAnchor: BasePart? = nil
 local guideArrow: BillboardGui? = nil
@@ -462,9 +466,10 @@ local function floorAt(y: number): number
 	return n
 end
 
-local function startGuide(n: number)
+local function startGuide(n: number, place: string)
 	stopGuide()
 	guideFloor = n
+	guidePlace = place
 	-- 글은 HUD 카드 아래 칸을 채운다(HUD 스케일·상단 바 배치를 그대로 따른다. 화면 가운데를 가리지 않게)
 	local label = Instance.new("TextLabel")
 	label.Name = "FloorGuide"
@@ -521,10 +526,10 @@ local function updateGuide()
 			stopGuide()
 			return
 		end
-		label.Text = `{n}층 발판에서 계속 지어요!`
+		label.Text = `{guidePlace} 발판에서 계속 지어요!`
 		target = if pad then pad + Vector3.new(0, GUIDE_PAD_UP, 0) else nil
 	else
-		label.Text = `엘리베이터를 타고 {n}층으로 가요!`
+		label.Text = `엘리베이터를 타고 {guidePlace}으로 가요!`
 		if here and plot then
 			local spot = PlotLayout.elevatorSpot(here)
 			local base = plot:GetPivot() * Vector3.new(spot.X, RoomConfig.floorY(here), spot.Z)
@@ -542,18 +547,43 @@ local function updateGuide()
 	end
 end
 
---- 강당·층 방이 새로 서면(완공) 축하가 지나간 뒤 안내를 켠다. 첫 프로필은 기준만 잡는다
+--[[
+	강당·층 방·옥상 방이 새로 서면(완공) 축하가 지나간 뒤 안내를 켠다(다 지은 맨 위 층의 층 패드로.
+	옥상 방을 다 지으면 옥상에 있던 패드가 그 층으로 내려간다).
+	방의 뼈대(부품 1)를 사면 층 패드가 짓는 층(옥상 방이면 옥상) 방 안으로 옮겨 가니 그 층으로 안내한다.
+	첫 프로필은 기준만 잡는다
+]]
 local function watchFloors(profile: Types.Profile)
-	local count = #profile.floors + (if profile.facilities.auditorium then 1 else 0)
+	local roofCount = 0
+	for _, built in profile.rooftop do
+		if built then
+			roofCount += 1
+		end
+	end
+	local count = #profile.floors + roofCount + (if profile.facilities.auditorium then 1 else 0)
 	if guideFloorCount >= 0 and count > guideFloorCount then
 		local n = RoomConfig.topFloor(#profile.floors)
 		task.delay(GUIDE_DELAY, function()
 			if guideFloorCount == count then
-				startGuide(n)
+				startGuide(n, `{n}층`)
 			end
 		end)
 	end
 	guideFloorCount = count
+
+	local parts = profile.towerParts
+	local kind = RoomConfig.buildingKind(profile.towerRoom, parts)
+	if guideTowerParts == 0 and parts == 1 and kind then
+		local n = if kind == "floor"
+			then RoomConfig.topFloor(#profile.floors) + 1
+			else RoomConfig.roofFloor(#profile.floors, profile.towerRoom, parts)
+		task.delay(GUIDE_PART_DELAY, function()
+			if guideTowerParts == parts then
+				startGuide(n, if kind == "floor" then `{n}층` else "옥상")
+			end
+		end)
+	end
+	guideTowerParts = parts
 end
 
 -- ── 단계 계산(§2.1) ─────────────────────────────────────────────

@@ -58,7 +58,13 @@ local recipe: Kit.Recipe = {
 				{ x = 0, z = -2.25, c = WorldPalette.pad },
 			}
 		do
-			put(`MatTile{k}`, Vector3.new(2, 0.12, 2), MAT + Vector3.new(tile.x, 0.06, tile.z), tile.c)
+			put(
+				`MatTile{k}`,
+				Vector3.new(2, 0.12, 2),
+				MAT + Vector3.new(tile.x, 0.06, tile.z),
+				tile.c,
+				{ collide = false }
+			)
 		end
 		put("MatRobot", Vector3.new(1.2, 1, 1.2), MAT + Vector3.new(-2.25, 0.62, 2.25), room.accent)
 		Kit.lowTable(put, "PrinterTable", PRINTER.X, PRINTER.Z, 4, 2, PRINTER_TOP, WorldPalette.signBoard)
@@ -159,7 +165,7 @@ local recipe: Kit.Recipe = {
 				)
 			end
 		end
-		put("CableCover", Vector3.new(14, 0.1, 0.8), Vector3.new(-9, 0.05, -1.5), room.accent)
+		put("CableCover", Vector3.new(14, 0.1, 0.8), Vector3.new(-9, 0.05, -1.5), room.accent, { collide = false })
 	end,
 }
 return recipe

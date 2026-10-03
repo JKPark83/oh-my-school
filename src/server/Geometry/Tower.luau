@@ -6,7 +6,8 @@
 	  FloorNN   층마다 바닥판(3층부터. 짓는 중인 층 방은 부품 1 부터 그 층 바닥판도)
 	  Roof      맨 위 판 = 옥상 바닥. 층이 0 이면 강당 지붕 바로 위
 	  RoofRail1~4  Roof 둘레 투명 충돌 벽(옥상에서 떨어지지 않게. 난간 모양은 클라가 그린다)
-	  TowerPad  층 패드(PAD_TAG, FacilityId "tower"). 다 지은 맨 위 층 바닥 위(층 방이 없으면 강당)
+	  TowerPad  층 패드(PAD_TAG, FacilityId "tower"). 부품 1(뼈대)은 다 지은 맨 위 층 바닥(층 방이 없으면 강당)의
+	            TOWER_PAD_XZ, 부품 2~4 는 짓는 층(옥상 방이면 옥상) 방 안 partPads 자리(1층 시설 패드처럼 옮겨 다닌다)
 	  ElevatorF1·ElevatorF2  1층(현관)·2층(강당) 엘리베이터 앵커(투명, 충돌 없음)
 	엘리베이터 프롬프트(이름 ElevatorPrompt)는 바닥판·Roof 의 Attachment "Elevator" 와 1·2층 앵커에 단다.
 	누르면 클라가 층 버튼 패널을 연다(서버는 RideElevator 만 판정한다).
@@ -57,17 +58,6 @@ for _, room in RoomConfig.LIST do
 	if room.kind == "roof" then
 		ROOF_KINDS += 1
 	end
-end
-
---- 층 방을 짓는 중인가(부품 1 이상 산 floor 방). 이때 그 층 바닥판이 서고 Roof 가 한 층 위로 간다
-local function buildingFloor(towerRoom: string, towerParts: number): boolean
-	local room = RoomConfig.BY_ID[towerRoom]
-	return towerParts >= 1 and room ~= nil and room.kind == "floor"
-end
-
---- Roof(옥상 바닥)가 있는 층
-function Tower.roofFloor(floorCount: number, towerRoom: string, towerParts: number): number
-	return RoomConfig.topFloor(floorCount) + (if buildingFloor(towerRoom, towerParts) then 2 else 1)
 end
 
 --- n층 바닥 윗면 y(부지 로컬). 3층부터 LIFT 를 더한다
@@ -162,7 +152,8 @@ function Tower.refresh(
 		return
 	end
 
-	local roofN = Tower.roofFloor(#floors, towerRoom, towerParts)
+	-- 층 방을 짓는 중(부품 1 이상)이면 그 층 바닥판이 서고 Roof 가 한 층 위로 간다
+	local roofN = RoomConfig.roofFloor(#floors, towerRoom, towerParts)
 	-- Roof 가 내려가면(짓던 층 방을 버림: DevCheat) 그 위 바닥판을 치운다
 	for _, child in folder:GetChildren() do
 		local n = tonumber(string.match(child.Name, "^Floor(%d+)$"))
@@ -210,9 +201,15 @@ function Tower.refresh(
 		end
 	end
 
-	-- 층 패드: 다 지은 맨 위 층 바닥(층 방이 없으면 강당). 짓는 층·옥상은 완공 전에 갈 수 없다
-	local padN = RoomConfig.topFloor(#floors)
-	local padCenter = Vector3.new(PlotLayout.TOWER_PAD_XZ.X, Tower.floorTop(padN) + PAD_LIFT, PlotLayout.TOWER_PAD_XZ.Y)
+	-- 층 패드: 부품 1 은 다 지은 맨 위 층 바닥(층 방이 없으면 강당)의 TOWER_PAD_XZ.
+	-- 부품 2~4 는 짓는 층(옥상 방이면 옥상) 방 안 partPads 자리. 엘리베이터로 그 층에 간다(RoomConfig.canRide)
+	local padN, padXZ = RoomConfig.topFloor(#floors), PlotLayout.TOWER_PAD_XZ
+	local spot = RoomConfig.padLocal(towerRoom, towerParts)
+	if spot then
+		padN = if RoomConfig.buildingKind(towerRoom, towerParts) == "floor" then padN + 1 else roofN
+		padXZ = FOOT_CENTER + spot -- 방 원점(origin) x·z = 발자국 중심
+	end
+	local padCenter = Vector3.new(padXZ.X, Tower.floorTop(padN) + PAD_LIFT, padXZ.Y)
 	local pad, newPad = ensure(folder, plotCFrame, Tower.PAD, PAD_SIZE, padCenter, {
 		color = WorldPalette.pad,
 		transparency = 1, -- 모양은 클라가 그린다(PlotShell 패드와 같다)

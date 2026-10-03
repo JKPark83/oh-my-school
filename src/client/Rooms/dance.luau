@@ -72,9 +72,10 @@ local recipe: Kit.Recipe = {
 		-- 서쪽 벽 긴 벤치(좌석 4개가 다 이 위). 등받이는 좌석 상자 뒤
 		put(
 			"ChairBench",
-			Vector3.new(BENCH_X1 - BENCH_X0, 1.4, 15),
+			Vector3.new(15, 1.4, BENCH_X1 - BENCH_X0),
 			Vector3.new((BENCH_X0 + BENCH_X1) / 2, 0.7, 0),
-			WorldPalette.benchWood
+			WorldPalette.benchWood,
+			{ rot = CFrame.Angles(0, math.rad(270), 0), seat = true } -- 동쪽(마루)을 보고 앉는다
 		)
 		put("BenchBack", Vector3.new(0.5, 2.2, 15), Vector3.new(-Kit.X_IN + 0.25, 2.5, 0), WorldPalette.benchWood)
 		speaker(put, ctx.ready, 1, -8)
@@ -93,6 +94,7 @@ local recipe: Kit.Recipe = {
 		-- 방 마루(WoodPlanks)와 무늬가 겹치지 않게 Wood
 		put("DanceFloor", Vector3.new(27.8, 0.1, 25.6), Vector3.new(-1.5, 0.05, 0), rgb(214, 172, 120), {
 			material = Enum.Material.Wood,
+			collide = false,
 		})
 		-- 물병 선반 위 3
 		for i, color in { WorldPalette.star, PINK, WorldPalette.leaf[1] } do

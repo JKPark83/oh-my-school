@@ -20,7 +20,7 @@ local PINK = WorldPalette.blossom
 -- 조리대 가운데(x, z). 좌석[1]~[4] 의 북쪽 2.6
 local COUNTERS = { Vector2.new(-13, -8.6), Vector2.new(-5, -8.6), Vector2.new(-13, 3.4), Vector2.new(-5, 3.4) }
 local COUNTER_TOP = Kit.SIT_DESK
-local TABLE = Vector2.new(5, -5.5) -- 시식 탁자
+local TABLE = Vector2.new(5, -5.7) -- 시식 탁자
 
 local recipe: Kit.Recipe = {
 	big = function(put, ctx)
@@ -167,6 +167,7 @@ local recipe: Kit.Recipe = {
 		-- 조리 구역 타일 바닥(연하늘)
 		put("TileFloor", Vector3.new(16, 0.1, 20), Vector3.new(-9, 0.05, -2.5), WorldPalette.star, {
 			material = Enum.Material.CeramicTiles,
+			collide = false,
 		})
 		Kit.plant(put, "Plant", -17.5, 12.5, WorldPalette.trunk, WorldPalette.hedge)
 	end,

@@ -81,9 +81,15 @@ local recipe: Kit.Recipe = {
 		-- 천장 조명 트러스(조명 스탠드 위를 가로지른다, 천장에 붙는다)
 		put("Truss", Vector3.new(16, 0.4, 0.4), Vector3.new(DESK.x, Kit.CEIL - 0.2, -4), WorldPalette.lampIron)
 		-- 남동쪽 손님 인터뷰 자리: 소파(앉는 판 + 등받이, 서쪽을 본다) + 낮은 탁자
-		put("Sofa", Vector3.new(2.2, 1.4, 5), Vector3.new(10, 0.7, 10), WorldPalette.sticker, { collide = true })
-		put("SofaBack", Vector3.new(0.6, 3, 5), Vector3.new(11.4, 1.5, 10), WorldPalette.sticker)
-		Kit.lowTable(put, "GuestTable", 7, 10, 2, 3, 1.4, WorldPalette.signBoard)
+		put(
+			"Sofa",
+			Vector3.new(5, 1.4, 2.2),
+			Vector3.new(10, 0.7, 10.3),
+			WorldPalette.sticker,
+			{ rot = CFrame.Angles(0, math.rad(90), 0), seat = true } -- 서쪽을 보고 앉는다(등받이 동쪽)
+		)
+		put("SofaBack", Vector3.new(0.6, 3, 5), Vector3.new(11.4, 1.5, 10.3), WorldPalette.sticker) -- 통로(폭 4) 밖
+		Kit.lowTable(put, "GuestTable", 7, 10.3, 2, 3, 1.4, WorldPalette.signBoard)
 	end,
 
 	props = function(put, ctx)

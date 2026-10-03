@@ -59,6 +59,7 @@ local TOWER_PAD = Keys.TOWER_PAD
 local TOWER_FACILITY = Keys.TOWER_PAD_ID
 local TEXT_CHOOSE_ROOM = "방 고르기"
 local TEXT_TOWER_TOP = "최고 높이!"
+local TEXT_NEXT_FLOOR = "다음 층"
 
 -- 색(기획서 §8.1)
 local COLOR_PANEL = Color3.fromRGB(31, 41, 55)
@@ -155,7 +156,7 @@ type Ring = {
 	pulse: Tween?,
 }
 
-type TowerDecor = { folder: Folder, gui: SurfaceGui, label: TextLabel, emitter: ParticleEmitter }
+type TowerDecor = { folder: Folder, gui: SurfaceGui, caption: TextLabel, label: TextLabel, emitter: ParticleEmitter }
 
 type PadEntry = {
 	part: BasePart,
@@ -396,6 +397,8 @@ local function updateRing(entry: PadEntry)
 			local top = RoomConfig.topFloor(#profile.floors)
 			local roof = if room then room.kind == "roof" else top >= RoomConfig.MAX_FLOOR
 			entry.decor.label.Text = if roof then "옥상" else `{top + 1}층`
+			-- 뼈대를 산 뒤에는 패드가 그 층 안에 있다: 「다음 층」 대신 「공사 중」
+			entry.decor.caption.Text = if profile.towerParts >= 1 then RoomConfig.TEXT_BUILDING else TEXT_NEXT_FLOOR
 		end
 	else
 		local nextIndex = if profile then profile.buildParts + 1 else 1
@@ -567,7 +570,7 @@ local function buildDecor(entry: PadEntry): TowerDecor
 	gui.CanvasSize = Vector2.new(pad.Size.X, pad.Size.Z) * DECOR_TEXT_PIXELS
 	gui.LightInfluence = 0
 	gui.Parent = guiFolder
-	local caption = newLabel(gui, "다음 층", 30, COLOR_WHITE)
+	local caption = newLabel(gui, TEXT_NEXT_FLOOR, 30, COLOR_WHITE)
 	caption.Size = UDim2.fromScale(1, 0.3)
 	caption.Position = UDim2.fromScale(0, 0.12)
 	local label = newLabel(gui, "", 80, COLOR_WHITE)
@@ -575,7 +578,7 @@ local function buildDecor(entry: PadEntry): TowerDecor
 	label.Position = UDim2.fromScale(0, 0.4)
 	label.TextStrokeColor3 = COLOR_GOLD
 	label.TextStrokeTransparency = 0
-	return { folder = folder, gui = gui, label = label, emitter = emitter }
+	return { folder = folder, gui = gui, caption = caption, label = label, emitter = emitter }
 end
 
 local function applyPad(entry: PadEntry)

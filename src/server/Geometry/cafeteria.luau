@@ -1,7 +1,7 @@
 --!strict
 --[[
 	급식실(시설 6) — 30×30 방 + 배식대·식탁. 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part(의자 판은 BuildKit.seat).
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 8. 배식대(몸통+상판+식판 3) = 5. 식탁 2(상판+다리) = 4. 의자 4(좌판 블록+등받이) = 8.
 	  바닥판은 Shell 바닥 위에 얹는 얇은 판이라 방 바닥 높이 = center.Y + FLOOR_T 이고 자리 Attachment 는 그 높이.
 	  식탁마다 마주 앉는 자리 둘: S01·S03 은 −Z 를, S02·S04 는 +Z 를 본다(Attachment LookVector).
@@ -65,6 +65,21 @@ local partIndex = 1
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
 	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
+end
+
+--- put 의 Seat 판. 학생 자리(seatIndex)는 Disabled 라 플레이어가 학생과 겹쳐 앉지 않는다
+local function putSeat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	opts: BuildKit.Opts,
+	seatIndex: number
+): Seat
+	opts.cframe = cf.Rotation
+	local p = BuildKit.seat(parent, name, size, cf.Position, opts, BuildKit.studentSeat(script.Name, seatIndex))
 	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
 	return p
 end
@@ -172,7 +187,6 @@ function cafeteria.build(plotCFrame: CFrame): Model
 			{
 				color = color,
 				material = Enum.Material.SmoothPlastic,
-				collide = false,
 			}
 		)
 	end
@@ -202,10 +216,10 @@ function cafeteria.build(plotCFrame: CFrame): Model
 			local rot = if facing < 0 then CFrame.identity else CFrame.Angles(0, math.pi, 0)
 			local base = at(plotCFrame, x, floorY, tableZ - facing * CHAIR_DZ, rot)
 			local chairName = string.format("Chair%02d", seatIndex)
-			put(model, chairName .. "Seat", CHAIR_SEAT, base * CFrame.new(0, CHAIR_SEAT.Y / 2, 0), {
+			putSeat(model, chairName .. "Seat", CHAIR_SEAT, base * CFrame.new(0, CHAIR_SEAT.Y / 2, 0), {
 				color = COLOR_SECONDARY,
 				material = MATERIAL,
-			})
+			}, seatIndex)
 			-- 등받이는 보는 방향의 반대(로컬 +Z)
 			put(
 				model,

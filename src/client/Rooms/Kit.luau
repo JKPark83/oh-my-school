@@ -18,7 +18,8 @@ export type PutOpts = {
 	shape: Enum.PartType?,
 	rot: CFrame?,
 	transparency: number?,
-	collide: boolean?, -- 바닥에 놓인 큰 가구만 true
+	collide: boolean?, -- 기본 충돌. false = 통과(두께 ≤ 0.15 깔개, 통로 위 머리 높이(바닥 +5) 위에 매단 장식)
+	seat: boolean?, -- 앉을 수 있는 Seat 로 만든다(앞 = −Z). 학생 자리 위 Seat 는 TowerRender 가 Disabled
 	mesh: PropAssets.MeshAsset?, -- 준비됐으면 그 메시(원래 텍스처), 아니면 보통 파트. Kit.hero 가 쓴다
 }
 export type Put = (name: string, size: Vector3, pos: Vector3, color: Color3, opts: PutOpts?) -> BasePart
@@ -77,7 +78,7 @@ end
 	돌려준다. 부르는 쪽은 false 일 때 파트로 같은 자리에 짓는다(폴백이 늘 있어야 한다):
 	    if not Kit.hero(put, ctx.ready, "Easel1", PropAssets.HERO.easel, Vector3.new(x, 0, z), 5) then ...파트... end
 	base = 밑면 가운데, h = 높이(메시 비율 그대로 키운다), yaw = 도(0 = 메시 앞이 +Z 남쪽, 180 = 북쪽).
-	collide = 바닥에 놓인 큰 가구만 true(충돌은 상자).
+	collide = 기본 충돌(MeshCache 가 상자 충돌로 불러온다). false 는 머리 위에 매단 것만.
 ]]
 function Kit.hero(
 	put: Put,
@@ -102,11 +103,11 @@ function Kit.deskTop(s: Vector3, yaw: number?): Vector3
 	return around(s, yawOf(yaw), Vector3.new(0, Kit.SIT_DESK, -DESK_AHEAD))
 end
 
---- 의자 1 파트(Chair{i}). 벤치·스툴 대신 써도 된다(학생은 앉는 포즈뿐)
+--- 의자 1 파트(Chair{i}, Seat). 벤치·스툴 대신 써도 된다(학생은 앉는 포즈뿐)
 function Kit.chair(put: Put, i: number, s: Vector3, color: Color3, yaw: number?)
 	local h = Kit.SIT_HIP - 0.15
 	local r = yawOf(yaw)
-	put(`Chair{i}`, Vector3.new(2, h, 2), around(s, r, Vector3.new(0, h / 2, 0.2)), color, { rot = r })
+	put(`Chair{i}`, Vector3.new(2, h, 2), around(s, r, Vector3.new(0, h / 2, 0.2)), color, { rot = r, seat = true })
 end
 
 --- 좌석 한 벌 3 파트: 의자 + 책상판 + 앞판(충돌)
@@ -172,9 +173,15 @@ function Kit.board(put: Put, name: string, side: Side, along: number, y: number,
 	put(name, wallSize(sideways, w, h, 0.2), pos, color)
 end
 
---- 깔개 1 파트(높이 0.1, 좌석 상자 아래라 학생과 겹쳐도 된다)
+--- 깔개 1 파트(높이 0.1, 좌석 상자 아래라 학생과 겹쳐도 된다. 충돌 없음)
 function Kit.rug(put: Put, name: string, x: number, z: number, w: number, d: number, color: Color3)
-	put(name, Vector3.new(w, 0.1, d), Vector3.new(x, 0.05, z), color, { material = Enum.Material.Fabric })
+	put(
+		name,
+		Vector3.new(w, 0.1, d),
+		Vector3.new(x, 0.05, z),
+		color,
+		{ material = Enum.Material.Fabric, collide = false }
+	)
 end
 
 --- 세운 원기둥 1 파트. pos = 가운데

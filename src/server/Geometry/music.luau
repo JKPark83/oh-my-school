@@ -1,7 +1,7 @@
 --!strict
 --[[
 	음악실(시설 10) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 21개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 21개(≤25), 전부 BuildKit.part(의자 판은 BuildKit.seat).
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위 얇은 판이라
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
@@ -55,6 +55,21 @@ local partIndex = 1
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
 	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
+end
+
+--- part 의 Seat 판. 학생 자리(seatIndex)는 Disabled 라 플레이어가 학생과 겹쳐 앉지 않는다
+local function partSeat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	opts: BuildKit.Opts,
+	seatIndex: number
+): Seat
+	opts.cframe = cf.Rotation
+	local p = BuildKit.seat(parent, name, size, cf.Position, opts, BuildKit.studentSeat(script.Name, seatIndex))
 	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
 	return p
 end
@@ -174,13 +189,14 @@ local function buildChair(
 	z: number,
 	yaw: number,
 	color: Color3,
-	material: Enum.Material
+	material: Enum.Material,
+	seatIndex: number
 )
 	local base = at(plotCFrame, x, floorTop, z, CFrame.Angles(0, yaw, 0))
-	part(parent, name .. "Seat", Vector3.new(1.8, 0.4, 1.8), base * CFrame.new(0, SIT_HIP - 0.2, 0), {
+	partSeat(parent, name .. "Seat", Vector3.new(1.8, 0.4, 1.8), base * CFrame.new(0, SIT_HIP - 0.2, 0), {
 		color = color,
 		material = material,
-	})
+	}, seatIndex)
 	part(parent, name .. "Back", Vector3.new(1.8, 1.8, 0.3), base * CFrame.new(0, SIT_HIP + 0.9, 0.75), {
 		color = color,
 		material = material,
@@ -224,10 +240,10 @@ function music.build(plotCFrame: CFrame): Model
 
 	-- 피아노 의자(secondary) S01: 건반 앞에서 북쪽(피아노)을 본다
 	local bz = pz + 3.4
-	part(model, "PianoBenchSeat", Vector3.new(3, 0.4, 1.4), at(plotCFrame, px, floorTop + SIT_HIP - 0.2, bz), {
+	partSeat(model, "PianoBenchSeat", Vector3.new(3, 0.4, 1.4), at(plotCFrame, px, floorTop + SIT_HIP - 0.2, bz), {
 		color = COLOR_SECONDARY,
 		material = MATERIAL,
-	})
+	}, 1)
 	part(
 		model,
 		"PianoBenchBase",
@@ -243,7 +259,7 @@ function music.build(plotCFrame: CFrame): Model
 	-- 부품 4. 의자 S02: 피아노 옆(동쪽), 보면대를 향해 북쪽을 본다
 	partIndex = 4
 	local chairX, chairZ = cx + 5, cz - 1
-	buildChair(model, "Chair", plotCFrame, chairX, floorTop, chairZ, 0, COLOR_WOOD, Enum.Material.Wood)
+	buildChair(model, "Chair", plotCFrame, chairX, floorTop, chairZ, 0, COLOR_WOOD, Enum.Material.Wood, 2)
 	attachment(seats, seatName(2), at(plotCFrame, chairX, floorTop, chairZ))
 
 	-- 보면대: 의자 앞. 둥근 받침 + 기둥 + 기울인 작은 판
@@ -257,14 +273,13 @@ function music.build(plotCFrame: CFrame): Model
 	part(model, "StandPost", Vector3.new(0.16, 3.4, 0.16), at(plotCFrame, chairX, floorTop + 1.7, chairZ - 3), {
 		color = COLOR_STEEL,
 		material = Enum.Material.Metal,
-		collide = false,
 	})
 	part(
 		model,
 		"StandBoard",
 		Vector3.new(1.6, 1.1, 0.08),
 		at(plotCFrame, chairX, floorTop + 3.8, chairZ - 3.1, CFrame.Angles(-0.3, 0, 0)),
-		{ color = COLOR_DARK, material = Enum.Material.Metal, collide = false }
+		{ color = COLOR_DARK, material = Enum.Material.Metal }
 	)
 
 	-- 큰북(secondary): 동쪽 구석. 스피커: 남서쪽

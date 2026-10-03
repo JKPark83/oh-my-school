@@ -1348,7 +1348,10 @@ local function buildRoom(content: Frame)
 	end
 end
 
---- 그 부지 PlotState 로 층 버튼을 만든다. 다 지은 층과(옥상 방이 있으면) 옥상만. 짓는 층은 완공 뒤에 뜬다(도착 판정은 서버)
+--[[
+	그 부지 PlotState 로 층 버튼을 만든다. RoomConfig.canRide 가 허락하는 층만:
+	다 지은 층, 뼈대(부품 1)를 산 짓는 층(「공사 중」), 옥상 방이 있거나 옥상 방을 짓는 중이면 옥상. 도착 판정은 서버
+]]
 local function buildElevator(content: Frame, payload: any)
 	local plotId = if typeof(payload) == "table" and type(payload.plot) == "number" then payload.plot else nil
 	local scroll = titledScroll(content, "엘리베이터")
@@ -1363,25 +1366,30 @@ local function buildElevator(content: Frame, payload: any)
 		return RoomConfig.fromCsv(if type(raw) == "string" then raw else "")
 	end
 	local floors = csvOf(Keys.ATTR_FLOORS)
-	local towerRoom = state:GetAttribute(Keys.ATTR_TOWER_ROOM)
-	local towerParts = state:GetAttribute(Keys.ATTR_TOWER_PARTS)
-	local building = type(towerRoom) == "string"
-		and type(towerParts) == "number"
-		and towerParts >= 1
-		and RoomConfig.BY_ID[towerRoom] ~= nil
-		and RoomConfig.BY_ID[towerRoom].kind == "floor"
-	local top = RoomConfig.topFloor(#floors)
+	local rawRoom = state:GetAttribute(Keys.ATTR_TOWER_ROOM)
+	local rawParts = state:GetAttribute(Keys.ATTR_TOWER_PARTS)
+	local towerRoom = if type(rawRoom) == "string" then rawRoom else ""
+	local towerParts = if type(rawParts) == "number" then rawParts else 0
+	local hasRooftop = #csvOf(Keys.ATTR_ROOFTOP) > 0
+	local kind = RoomConfig.buildingKind(towerRoom, towerParts)
+	local roofN = RoomConfig.roofFloor(#floors, towerRoom, towerParts)
 	local auditorium = FacilityConfig.BY_ID.auditorium
 	local stops: { { floor: number, text: string } } = {
 		{ floor = 1, text = "1층" },
 		{ floor = 2, text = `2층 {if auditorium then auditorium.name else ""}` },
 	}
-	for n = RoomConfig.FIRST_FLOOR, top do
-		local room = RoomConfig.BY_ID[RoomConfig.roomOfFloor(floors, n) or ""]
-		table.insert(stops, { floor = n, text = `{n}층 {if room then room.name else ""}` })
-	end
-	if #csvOf(Keys.ATTR_ROOFTOP) > 0 then
-		table.insert(stops, { floor = top + (if building then 2 else 1), text = "옥상" })
+	for n = RoomConfig.FIRST_FLOOR, roofN do
+		if RoomConfig.canRide(n, #floors, hasRooftop, towerRoom, towerParts) then
+			local text: string
+			if n == roofN then
+				text = if kind == "roof" then `옥상 {RoomConfig.TEXT_BUILDING}` else "옥상"
+			else
+				local id = RoomConfig.roomOfFloor(floors, n)
+				local room = RoomConfig.BY_ID[id or towerRoom]
+				text = `{n}층 {if room then room.name else ""}` .. (if id then "" else ` {RoomConfig.TEXT_BUILDING}`)
+			end
+			table.insert(stops, { floor = n, text = text })
+		end
 	end
 	for i, stop in stops do
 		local b = button(scroll, `Floor{stop.floor}`, stop.text, UDim2.new(1, -12, 0, ELEVATOR_ROW))

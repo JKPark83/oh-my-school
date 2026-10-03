@@ -40,7 +40,8 @@ local recipe: Kit.Recipe = {
 			"Deck",
 			Vector3.new(z.x1 - z.x0, 0.1, z.z1 - z.z0),
 			Vector3.new((z.x0 + z.x1) / 2, 0.05, (z.z0 + z.z1) / 2),
-			WorldPalette.boardDark
+			WorldPalette.boardDark,
+			{ collide = false }
 		)
 		-- 돔: 원통 받침 + 구(윗반구가 보인다) + 남쪽 슬릿 + 동쪽 문
 		Kit.cylinder(put, "DomeBase", Vector3.new(DOME.X, DOME_BASE_H / 2, DOME.Y), DOME_D, DOME_BASE_H, room.wall)
@@ -91,7 +92,7 @@ local recipe: Kit.Recipe = {
 		-- 의자: 학생 스툴(접안렌즈 뒤)·벤치(좌석 2·3, Chair*)·스툴(좌석 4)
 		Kit.chair(put, 1, room.seats[1], WorldPalette.wood, room.seatYaw)
 		local h = Kit.SIT_HIP - 0.15
-		put("ChairBench", Vector3.new(5, h, 2), Vector3.new(3.1, h / 2, -5.3), WorldPalette.wood)
+		put("ChairBench", Vector3.new(5, h, 2), Vector3.new(3.1, h / 2, -5.3), WorldPalette.wood, { seat = true })
 		Kit.chair(put, 4, room.seats[4], WorldPalette.wood, room.seatYaw)
 		-- 안테나: 기둥 + 기울인 접시
 		Kit.cylinder(put, "AntennaPole", Vector3.new(ANTENNA.X, 1.1, ANTENNA.Y), 0.3, 2.2, WorldPalette.pole)

@@ -17,7 +17,8 @@
 	         가까운 부지 부품 2~4 = Rooms 레시피 big/+props/+finish(≤ 45 파트, assert), 완공이면 "Sign" 파트에 이름 간판.
 	         먼 부지 부품 ≥ 2 = 구역 바닥판 1 + 완공이면 학생 의자 1(옥상 학생은 어디서나 보인다).
 	  I{n}   방 안(Rooms.get 레시피): 캐릭터가 서 있는 부지의 그 층 ±1 층만(옥상은 R{id} 가 그린다).
-	         부품 2 = big, 3 = +props, 완공 = +finish. 방 하나 ≤ 60 파트(assert). 바닥 큰 가구(opts.collide)만 충돌한다.
+	         부품 2 = big, 3 = +props, 완공 = +finish. 방 하나 ≤ 60 파트(assert). 가구는 기본 충돌(opts.collide = false 만 통과),
+	         의자는 Seat(opts.seat, 학생 자리 것은 Disabled).
 	  E{n}   엘리베이터 문(9 파트, 서버 프롬프트 자리 뒤 벽에 등을 댄다): 가까운 부지는 1층·2층·옥상, 캐릭터가 선 부지는 그 층 ±1.
 	         프롬프트가 뜨면 문이 열리고 사라지면 닫힌다(PromptShown·PromptHidden, 내 화면만).
 	  레시피 파트에 opts.mesh 가 있으면 MeshPart(처음엔 파트로 짓고 메시가 준비되면 다시 짓는다. id 0·실패 = 파트).
@@ -502,8 +503,64 @@ local function meshReady(asset: PropAssets.MeshAsset): boolean
 	return MeshCache.get(asset) ~= nil
 end
 
---- 레시피 put. origin = 방 로컬 원점(월드). 만든 파트 수는 두 번째 반환 함수로
-local function recipePut(m: Model, origin: CFrame): (Rooms.Put, () -> number)
+--[[
+	탑 방 의자(클라 전용 Seat) 앉히기. 서버에 없는 Seat 는 엔진이 닿아도·Seat:Sit 으로도 앉히지 않는다(2026-10-03 Studio Play 확인).
+	로컬 캐릭터는 클라가 물리를 가지므로 엔진 SeatWeld 와 같은 모양의 Weld + Humanoid.Sit 으로 직접 앉힌다.
+	일어나면(점프 등 Sit = false) Weld 를 지운다. 방을 다시 지을 때는 renderPlot 이 같은 이름 의자에 다시 앉힌다
+]]
+local SIT_COOLDOWN = 0.6 -- 일어난 직후 같은 자리에 다시 앉지 않게(엔진 Seat 와 비슷한 느낌)
+local seatWeld: Weld? = nil
+local unsitAt = 0
+
+local function sitLocal(seat: Seat)
+	local character = player.Character
+	local hum = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	local hrp = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if seat.Disabled or not hum or not hrp or not hrp:IsA("BasePart") then
+		return
+	end
+	if hum.Sit or hum.SeatPart or hum.Health <= 0 or os.clock() - unsitAt < SIT_COOLDOWN then
+		return
+	end
+	local w = Instance.new("Weld")
+	w.Name = "SeatWeld"
+	w.Part0 = seat
+	w.Part1 = hrp
+	-- 엔진 SeatWeld 와 같은 축. 엉덩이 높이는 HRP 크기에 비례(기본 R15 에서 엔진 값 1.32 와 같다)
+	w.C0 = CFrame.new(0, seat.Size.Y / 2, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+	w.C1 = CFrame.new(0, -0.66 * hrp.Size.Y, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+	w.Parent = seat
+	seatWeld = w
+	hum.Sit = true
+	local conn: RBXScriptConnection
+	conn = hum:GetPropertyChangedSignal("Sit"):Connect(function()
+		if not hum.Sit then
+			conn:Disconnect()
+			unsitAt = os.clock()
+			w:Destroy()
+			if seatWeld == w then
+				seatWeld = nil
+			end
+		end
+	end)
+	w.Destroying:Connect(function()
+		if conn.Connected then
+			conn:Disconnect()
+			if seatWeld == w then
+				seatWeld = nil
+			end
+			if hum.Sit then
+				hum.Sit = false
+			end
+		end
+	end)
+end
+
+--[[
+	레시피 put. origin = 방 로컬 원점(월드). 만든 파트 수는 두 번째 반환 함수로.
+	taken = 방 학생이 앉는 좌석(방 로컬). 가운데가 그 좌석 가까이인 Seat 는 Disabled(플레이어가 학생과 겹쳐 앉지 않게)
+]]
+local function recipePut(m: Model, origin: CFrame, taken: Vector3?): (Rooms.Put, () -> number)
 	local count = 0
 	local function put(name: string, size: Vector3, pos: Vector3, color: Color3, opts: Rooms.PutOpts?): BasePart
 		count += 1
@@ -513,7 +570,7 @@ local function recipePut(m: Model, origin: CFrame): (Rooms.Put, () -> number)
 		if mesh then
 			p = mesh:Clone()
 		else
-			local plain = Instance.new("Part")
+			local plain: Part = if o.seat then Instance.new("Seat") else Instance.new("Part")
 			plain.Shape = o.shape or Enum.PartType.Block
 			plain.TopSurface = Enum.SurfaceType.Smooth
 			plain.BottomSurface = Enum.SurfaceType.Smooth
@@ -528,10 +585,25 @@ local function recipePut(m: Model, origin: CFrame): (Rooms.Put, () -> number)
 		p.Material = o.material or (if woody then Enum.Material.Wood else Enum.Material.SmoothPlastic)
 		p.Transparency = o.transparency or 0
 		p.Anchored = true
-		p.CanCollide = o.collide == true
+		p.CanCollide = o.collide ~= false
 		p.CanQuery = false
 		p.CanTouch = false
 		p.CastShadow = false
+		if p:IsA("Seat") then
+			local seat = p
+			seat.CanTouch = true -- 닿으면 앉힌다(sitLocal)
+			if taken then
+				-- 앉는 자리 = Seat 가운데. 학생 좌석에서 2 안이면 겹친다(긴 벤치 끝 학생은 괜찮다)
+				local d = (origin * taken) - seat.Position
+				seat.Disabled = math.abs(d.X) < 2 and math.abs(d.Z) < 2
+			end
+			seat.Touched:Connect(function(hit: BasePart)
+				local character = player.Character
+				if character and hit:IsDescendantOf(character) then
+					sitLocal(seat)
+				end
+			end)
+		end
 		p.Parent = m
 		return p
 	end
@@ -540,9 +612,20 @@ local function recipePut(m: Model, origin: CFrame): (Rooms.Put, () -> number)
 	end
 end
 
---- 레시피를 부품 단계까지(2 = big, 3 = +props, 4 = +finish). 만든 파트 수를 돌려준다
-local function runRecipe(m: Model, origin: CFrame, room: RoomConfig.Room, n: number, stage: number): number
-	local put, count = recipePut(m, origin)
+--[[
+	레시피를 부품 단계까지(2 = big, 3 = +props, 4 = +finish). 만든 파트 수를 돌려준다.
+	hasStudent = 이 층에 방 학생이 앉는다(같은 방을 또 지은 층은 학생이 없어 그 의자도 비워 둔다, Seats.roomSeat)
+]]
+local function runRecipe(
+	m: Model,
+	origin: CFrame,
+	room: RoomConfig.Room,
+	n: number,
+	stage: number,
+	hasStudent: boolean
+): number
+	local row = if hasStudent and room.student then StudentConfig.BY_ID[room.student] else nil
+	local put, count = recipePut(m, origin, if row then room.seats[row.seat.index] else nil)
 	local recipe = Rooms.get(room.id)
 	local ctx = { room = room, floor = n, ready = meshReady }
 	if stage >= 2 then
@@ -575,7 +658,7 @@ local function buildRoofRoom(pivot: CFrame, roofN: number, room: RoomConfig.Room
 			box.Color = room.wall
 		end
 	elseif isNear then
-		local count = runRecipe(m, pivot * CFrame.new(o), room, roofN, stage)
+		local count = runRecipe(m, pivot * CFrame.new(o), room, roofN, stage, true)
 		assert(count <= MAX_ROOF_PARTS, `TowerRender {room.id}: 옥상 방 {count}개 > {MAX_ROOF_PARTS}`)
 		local sign = m:FindFirstChild("Sign")
 		if done and sign and sign:IsA("BasePart") then
@@ -602,9 +685,16 @@ local function buildRoofRoom(pivot: CFrame, roofN: number, room: RoomConfig.Room
 end
 
 --- 방 안. Rooms 레시피를 부품 단계까지(2 = big, 3 = +props, 4 = +finish)
-local function buildInterior(pivot: CFrame, key: string, n: number, room: RoomConfig.Room, stage: number): Model
+local function buildInterior(
+	pivot: CFrame,
+	key: string,
+	n: number,
+	room: RoomConfig.Room,
+	stage: number,
+	hasStudent: boolean
+): Model
 	local m = newModel(pivot, n, key)
-	local count = runRecipe(m, pivot * CFrame.new(RoomConfig.origin(n)), room, n, stage)
+	local count = runRecipe(m, pivot * CFrame.new(RoomConfig.origin(n)), room, n, stage, hasStudent)
 	assert(count <= MAX_ROOM_PARTS, `TowerRender {room.id}: 방 안 {count}개 > {MAX_ROOM_PARTS}`)
 	-- 마루. 서버 바닥판은 아랫면이 아래층 천장이고 옆면이 외벽 띠라 돌 그대로 두고, 방 안을 그릴 때만 윗면에 얇게 깐다.
 	-- 서버 바닥판 윗면은 floorY + 0.05(Tower LIFT)라 그만큼 올린다(y 0.03~0.07). 바닥판에 0.02 묻어 깜빡이지 않고,
@@ -743,7 +833,7 @@ local function renderPlot(plotId: number)
 	end
 
 	-- 엘리베이터 문: 가까운 부지는 1층(현관)·2층(강당)·옥상, 캐릭터가 선 부지는 그 층 ±1 도.
-	-- 갈 수 있는 층에만 단다(짓는 층·옥상 방 없는 옥상은 없다)
+	-- 갈 수 있는 층에만 단다(부품 1 이상 산 짓는 층은 있다. 옥상 방도 짓는 옥상 방도 없는 옥상은 없다)
 	local stops: { [number]: boolean } = {}
 	if isNear then
 		stops[1], stops[2], stops[roofN] = true, true, true
@@ -754,7 +844,7 @@ local function renderPlot(plotId: number)
 		end
 	end
 	for n in stops do
-		if not RoomConfig.canRide(n, #st.floors, #st.rooftop > 0, roofN) then
+		if not RoomConfig.canRide(n, #st.floors, #st.rooftop > 0, st.room, st.parts) then
 			stops[n] = nil
 		end
 	end
@@ -774,10 +864,13 @@ local function renderPlot(plotId: number)
 			local room, stage = floorRoom(n)
 			if room and stage >= 2 then
 				local key = `I{n}`
+				-- 방 학생은 그 방이 처음 지어진 층에만 앉는다(짓는 중인 방은 아직 floors 에 없으니 이 층이 첫 층)
+				local first = table.find(st.floors, room.id)
+				local hasStudent = first == nil or first + 2 == n
 				want[key] = {
 					sig = `{room.id}|{stage}|{meshVersion}`,
 					build = function()
-						return buildInterior(pivot, key, n, room, stage)
+						return buildInterior(pivot, key, n, room, stage, hasStudent)
 					end,
 				}
 			end
@@ -805,11 +898,18 @@ local function renderPlot(plotId: number)
 		if e.sigs[key] ~= w.sig then
 			rebuilt[key] = true
 			local old = e.nodes[key]
+			-- 앉아 있던 의자가 다시 지어지면(부품 구매·메시 늦은 로드) 새 방의 같은 이름 의자에 다시 앉힌다
+			local sat = seatWeld and seatWeld.Part0
+			local resit = if old and sat and sat:IsDescendantOf(old) then sat.Name else nil
 			if old then
 				old:Destroy()
 			end
 			local node = w.build()
 			node.Parent = e.folder
+			local again = if resit then node:FindFirstChild(resit, true) else nil
+			if again and again:IsA("Seat") then
+				sitLocal(again)
+			end
 			e.nodes[key] = node
 			e.sigs[key] = w.sig
 		end

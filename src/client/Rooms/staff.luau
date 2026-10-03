@@ -25,9 +25,21 @@ local recipe: Kit.Recipe = {
 	big = function(put, ctx) -- 33 파트
 		local seats = ctx.room.seats
 		-- 선생님 책상 구역 깔개(회청 가구와 갈색 바닥 사이 색 덩어리). Kit.rug 는 Fabric 이라 직접 놓는다
-		put("StaffRug", Vector3.new(11, 0.1, 13), Vector3.new(-12.5, 0.05, -1), WorldPalette.deskDome)
+		put(
+			"StaffRug",
+			Vector3.new(11, 0.1, 13),
+			Vector3.new(-12.5, 0.05, -1),
+			WorldPalette.deskDome,
+			{ collide = false }
+		)
 		-- 방 가운데 분홍 깔개 + 둥근 숙제 제출 탁자(통로 사이 빈 바닥을 채운다)
-		put("CenterRug", Vector3.new(8, 0.1, 7), HOMEWORK + Vector3.new(0, 0.05, 0), WorldPalette.blossom)
+		put(
+			"CenterRug",
+			Vector3.new(8, 0.1, 7),
+			HOMEWORK + Vector3.new(0, 0.05, 0),
+			WorldPalette.blossom,
+			{ collide = false }
+		)
 		Kit.cylinder(put, "HomeworkTable", HOMEWORK + Vector3.new(0, H - 0.15, 0), 4, 0.3, WorldPalette.benchWood)
 		Kit.cylinder(
 			put,
@@ -55,7 +67,13 @@ local recipe: Kit.Recipe = {
 		Kit.lowTable(put, "MeetTable", 0, MEET_Z, 7, 3, H, WorldPalette.benchWood)
 		Kit.chair(put, 1, seats[1], WorldPalette.boardDark)
 		Kit.chair(put, 6, seats[6], WorldPalette.boardDark)
-		put("MeetBench", Vector3.new(5, Kit.SIT_HIP - 0.15, 2), Vector3.new(0, 0.7, MEET_Z - 3), WorldPalette.boardDark)
+		put(
+			"MeetBench",
+			Vector3.new(5, Kit.SIT_HIP - 0.15, 2),
+			Vector3.new(0, 0.7, MEET_Z - 3),
+			WorldPalette.boardDark,
+			{ rot = CFrame.Angles(0, math.pi, 0), seat = true } -- 남쪽(탁자)을 보고 앉는다
+		)
 		-- 정수기(북서 모서리): 몸통 + 물통(몸통 윗면에 올린다)
 		put(
 			"WaterCooler",
@@ -142,7 +160,8 @@ local recipe: Kit.Recipe = {
 				`CeilingLight{k}`,
 				Vector3.new(6, 0.3, 2),
 				p + Vector3.new(0, Kit.CEIL - 0.15, 0),
-				WorldPalette.lampGlow
+				WorldPalette.lampGlow,
+				{ collide = false } -- 천장에 붙어 머리 위
 			)
 		end
 	end,

@@ -1,7 +1,7 @@
 --!strict
 --[[
 	보건실(시설 8) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 24개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 24개(≤25), 전부 BuildKit.part(의자 판은 BuildKit.seat).
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade.
 	  지붕은 박공(쐐기 2, 용마루 X 방향, 처마 0.5). 문 없는 남·동·서벽 바깥 면에 창 텍스처(PropAssets, id 0 이면 없음). 바닥은 Shell 바닥 위에 얹는 얇은 판이라
@@ -56,6 +56,21 @@ local partIndex = 1
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
 	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
+end
+
+--- part 의 Seat 판. 학생 자리(seatIndex)는 Disabled 라 플레이어가 학생과 겹쳐 앉지 않는다
+local function partSeat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	opts: BuildKit.Opts,
+	seatIndex: number
+): Seat
+	opts.cframe = cf.Rotation
+	local p = BuildKit.seat(parent, name, size, cf.Position, opts, BuildKit.studentSeat(script.Name, seatIndex))
 	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
 	return p
 end
@@ -157,13 +172,14 @@ local function buildChair(
 	z: number,
 	yaw: number,
 	color: Color3,
-	material: Enum.Material
+	material: Enum.Material,
+	seatIndex: number
 )
 	local base = at(plotCFrame, x, floorTop, z, CFrame.Angles(0, yaw, 0))
-	part(parent, name .. "Seat", Vector3.new(1.8, 0.4, 1.8), base * CFrame.new(0, SIT_HIP - 0.2, 0), {
+	partSeat(parent, name .. "Seat", Vector3.new(1.8, 0.4, 1.8), base * CFrame.new(0, SIT_HIP - 0.2, 0), {
 		color = color,
 		material = material,
-	})
+	}, seatIndex)
 	part(parent, name .. "Back", Vector3.new(1.8, 1.8, 0.3), base * CFrame.new(0, SIT_HIP + 0.9, 0.75), {
 		color = color,
 		material = material,
@@ -228,7 +244,7 @@ function nurse.build(plotCFrame: CFrame): Model
 	-- 부품 4. 의자 S01: 침대 옆에서 침대(-X)를 본다
 	partIndex = 4
 	local chairX, chairZ = cx - 4.6, cz + 3
-	buildChair(model, "Chair", plotCFrame, chairX, floorTop, chairZ, math.pi / 2, COLOR_WOOD, Enum.Material.Wood)
+	buildChair(model, "Chair", plotCFrame, chairX, floorTop, chairZ, math.pi / 2, COLOR_WOOD, Enum.Material.Wood, 1)
 	attachment(seats, seatName(1), at(plotCFrame, chairX, floorTop, chairZ, CFrame.Angles(0, math.pi / 2, 0)))
 
 	-- 보건 선생님 책상: 동쪽, 문 옆

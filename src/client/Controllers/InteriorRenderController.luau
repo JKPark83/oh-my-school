@@ -3,11 +3,12 @@
 	InteriorRenderController — 방 안 작은 소품(클라이언트 전용). 기획서 §12.1 「방 안 소품」.
 
 	서버 시설 파트는 예산(시설 ≤25) 때문에 더 늘릴 수 없다. 방이 비어 보이지 않게 화분·게시판·현미경 같은
-	작은 소품을 클라가 로컬 파트로 그린다. 판정·충돌이 없는 장식이라 서버가 알 필요가 없다.
+	작은 소품을 클라가 로컬 파트로 그린다. 판정이 없는 장식이라 서버가 알 필요가 없다.
 	  · Workspace.InteriorFx/PlotNN 아래에 그린다. 부지 로컬 → 월드는 Plots.PlotNN 피벗.
 	  · 교실 1(Shell)은 늘, 시설 소품은 그 시설이 지어진 부지에서만(PlotState Facilities CSV).
 	  · LOD: 내 부지 + 가까운 부지로 모두 DecorConfig.NEAR_COUNT 개(DecorController 와 같은 규칙).
-	  · 방 하나에 MAX_PARTS_PER_ROOM 개 이하. 전부 Anchored·충돌·쿼리·그림자 없음.
+	  · 방 하나에 MAX_PARTS_PER_ROOM 개 이하. 전부 Anchored·쿼리·그림자 없음. 충돌은 기본으로 켠다(건물 안 물건은 다 막힌다,
+	    2026-10-03). collide = false 는 두께 ≤ 0.15 깔개뿐.
 	  · 그림 id(PropAssets.INTERIOR)가 0 이면 그림만 빠지고 파트는 그대로.
 	  · 주인공 소품은 메시(PropAssets.HERO, hero()). 메시가 없거나 못 불러오면 그 자리를 파트로 짓는다.
 	  · 한글·그림 글자(이모지)·시계 바늘은 판 한 면의 SurfaceGui(label·clock)로 그린다. 파트가 늘지 않는다.
@@ -80,7 +81,7 @@ type PutOpts = {
 	shape: Enum.PartType?,
 	rot: CFrame?,
 	transparency: number?,
-	collide: boolean?, -- 바닥에 놓인 큰 가구만 true(메시도 충돌은 상자)
+	collide: boolean?, -- 기본 충돌. false = 통과(두께 ≤ 0.15 깔개만). 메시도 충돌은 상자
 	mesh: PropAssets.MeshAsset?, -- 준비됐으면 그 메시(원래 텍스처). hero() 가 쓴다
 }
 type Recipe = (put: Put) -> ()
@@ -569,9 +570,12 @@ local function principal(put: Put)
 	local deskZ, deskTop = cz - 1.2, floorTop + CharacterBuilder.SIT_DESK -- 서버 큰 책상 x 55.5..64.5·z −8..−4.4
 
 	-- 카펫(x 54.2..65.8·z −10.8..−2.2): 금 테두리 위에 파랑. 손님 의자·화분·책장과 떨어져 있다
-	put("RugBorder", Vector3.new(11.6, 0.04, 8.6), Vector3.new(cx, floorTop + 0.02, cz - 1.5), C.gold)
+	put("RugBorder", Vector3.new(11.6, 0.04, 8.6), Vector3.new(cx, floorTop + 0.02, cz - 1.5), C.gold, {
+		collide = false,
+	})
 	put("Rug", Vector3.new(11, 0.06, 8), Vector3.new(cx, floorTop + 0.03, cz - 1.5), WorldPalette.flag, {
 		material = Enum.Material.Fabric,
+		collide = false,
 	})
 	-- 책상 앞 끝 이름패(손님 쪽 +Z 면에 글자), 서쪽 끝 서류 더미·펜꽂이
 	local plate =
@@ -804,6 +808,7 @@ local function library(put: Put)
 		shape = Enum.PartType.Cylinder,
 		rot = CFrame.Angles(0, 0, math.pi / 2),
 		material = Enum.Material.Fabric,
+		collide = false,
 	})
 	for i, bag in
 		{
@@ -957,7 +962,7 @@ local function drawRoom(parent: Folder, pivot: CFrame, id: string, recipe: Recip
 		p.Material = if opts and opts.material then opts.material else Enum.Material.SmoothPlastic
 		p.Transparency = if opts and opts.transparency then opts.transparency else 0
 		p.Anchored = true
-		p.CanCollide = opts ~= nil and opts.collide == true
+		p.CanCollide = opts == nil or opts.collide ~= false
 		p.CanQuery = false
 		p.CanTouch = false
 		p.CastShadow = false

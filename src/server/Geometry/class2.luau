@@ -1,7 +1,7 @@
 --!strict
 --[[
 	교실 2(시설 5) — 30×30 방 + 책걸상. 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part(의자 판은 BuildKit.seat).
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방) + 지붕 = 7. 바닥은 Shell 바닥을 그대로 쓴다(교실 1 과 같다).
 	  칠판은 파트 대신 북벽 안쪽 면 SurfaceGui 의 초록 Frame 이다(파트 예산 때문).
 	  2인 책상 3(상판+앞판) + 의자 6(좌판 블록+등받이) = 18. 줄 간격 4, 자리 x = center.X ± 1.5. 전부 칠판(−Z)을 본다.
@@ -62,6 +62,21 @@ local partIndex = 1
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
 	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
+end
+
+--- put 의 Seat 판. 학생 자리(seatIndex)는 Disabled 라 플레이어가 학생과 겹쳐 앉지 않는다
+local function putSeat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	opts: BuildKit.Opts,
+	seatIndex: number
+): Seat
+	opts.cframe = cf.Rotation
+	local p = BuildKit.seat(parent, name, size, cf.Position, opts, BuildKit.studentSeat(script.Name, seatIndex))
 	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
 	return p
 end
@@ -188,10 +203,10 @@ function class2.build(plotCFrame: CFrame): Model
 			local x = cx + dx
 			local seatZ = z + SEAT_DZ
 			local chairName = string.format("Chair%02d", seatIndex)
-			put(model, chairName .. "Seat", CHAIR_SEAT, at(plotCFrame, x, floorY + CHAIR_SEAT.Y / 2, seatZ), {
+			putSeat(model, chairName .. "Seat", CHAIR_SEAT, at(plotCFrame, x, floorY + CHAIR_SEAT.Y / 2, seatZ), {
 				color = C.chair,
 				material = Enum.Material.SmoothPlastic,
-			})
+			}, seatIndex)
 			put(
 				model,
 				chairName .. "Back",

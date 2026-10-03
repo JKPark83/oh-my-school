@@ -151,22 +151,41 @@ local recipe: Kit.Recipe = {
 		put("CheckInStripe", Vector3.new(6, 0.6, 0.2), Vector3.new(s2.X, 2, s2.Z - 2.7), room.accent)
 		-- 활주로 깔개 + 가운데 흰 선(깔개 윗면에 얹힌다)
 		Kit.rug(put, "Runway", 0, 1.5, 18, 3.2, WorldPalette.boardDark)
-		put("RunwayLine", Vector3.new(14, 0.04, 0.3), Vector3.new(0, 0.12, 1.5), WorldPalette.trim)
-		-- 활주로 위 천장 비행기(코가 서쪽 세계 지도 쪽). 줄이 몸통 밑면부터 천장까지 꿰뚫는다
+		put("RunwayLine", Vector3.new(14, 0.04, 0.3), Vector3.new(0, 0.12, 1.5), WorldPalette.trim, { collide = false })
+		-- 활주로 위 천장 비행기(코가 서쪽 세계 지도 쪽). 줄이 몸통 밑면부터 천장까지 꿰뚫는다. 머리 위라 충돌 없음
 		Kit.cylinder(
 			put,
 			"PlaneString",
 			Vector3.new(2, (11.8 + Kit.CEIL) / 2, 1.5),
 			0.08,
 			Kit.CEIL - 11.8,
-			WorldPalette.pole
+			WorldPalette.pole,
+			{ collide = false }
 		)
-		if not Kit.hero(put, ctx.ready, "Airplane", PropAssets.HERO.airplane, Vector3.new(2, 11.8, 1.5), 2.2, 90) then
+		if
+			not Kit.hero(
+				put,
+				ctx.ready,
+				"Airplane",
+				PropAssets.HERO.airplane,
+				Vector3.new(2, 11.8, 1.5),
+				2.2,
+				90,
+				false
+			)
+		then
 			put("PlaneBody", Vector3.new(6, 1.4, 1.4), Vector3.new(2, 12.5, 1.5), WorldPalette.trim, {
 				shape = Enum.PartType.Cylinder, -- 축 X 그대로 눕는다
+				collide = false,
 			})
-			put("PlaneWing", Vector3.new(1.6, 0.2, 6.4), Vector3.new(2.2, 12.4, 1.5), room.accent)
-			put("PlaneTail", Vector3.new(1, 1.4, 0.2), Vector3.new(4.6, 13.3, 1.5), WorldPalette.sticker)
+			put("PlaneWing", Vector3.new(1.6, 0.2, 6.4), Vector3.new(2.2, 12.4, 1.5), room.accent, { collide = false })
+			put(
+				"PlaneTail",
+				Vector3.new(1, 1.4, 0.2),
+				Vector3.new(4.6, 13.3, 1.5),
+				WorldPalette.sticker,
+				{ collide = false }
+			)
 		end
 		-- 메시 가게가 계산대 묶음을 1 파트로 줄인 자리: 서쪽 벽 여행 엽서 3 + 체크인 줄 서기 띠(기둥 2 + 띠)
 		if ctx.ready(PropAssets.HERO.stall) then

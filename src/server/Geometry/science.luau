@@ -1,7 +1,7 @@
 --!strict
 --[[
 	과학실(시설 9) 지오메트리 — 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 23개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 23개(≤25), 전부 BuildKit.part(의자 판은 BuildKit.seat).
 	  치수·위치는 FacilityConfig 행(center/size, 부지 로컬)에서 읽고 plotCFrame 으로 월드 변환한다.
 	  방 30×25: 벽(북벽은 문 폭 8 을 비운 두 조각 + 상인방)·지붕은 fade. 바닥은 Shell 바닥 위 얇은 판이라
 	  방 바닥 높이 = center.Y + FLOOR_T 이고 좌석·문 Attachment 는 그 높이에 둔다.
@@ -58,6 +58,21 @@ local partIndex = 1
 local function part(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
 	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
+end
+
+--- part 의 Seat 판. 학생 자리(seatIndex)는 Disabled 라 플레이어가 학생과 겹쳐 앉지 않는다
+local function partSeat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	opts: BuildKit.Opts,
+	seatIndex: number
+): Seat
+	opts.cframe = cf.Rotation
+	local p = BuildKit.seat(parent, name, size, cf.Position, opts, BuildKit.studentSeat(script.Name, seatIndex))
 	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
 	return p
 end
@@ -162,7 +177,8 @@ local function buildBench(
 	suffix: string,
 	x: number,
 	floorTop: number,
-	z: number
+	z: number,
+	seatIndex: number
 ): CFrame
 	part(model, "BenchTop" .. suffix, Vector3.new(8, 0.5, 3), at(plotCFrame, x, floorTop + SIT_DESK - 0.25, z), {
 		color = COLOR_PRIMARY,
@@ -180,12 +196,13 @@ local function buildBench(
 
 	-- 스툴: 실험대 남쪽, 북쪽(-Z)을 보고 앉는다
 	local sz = z + 2.9
-	part(
+	partSeat(
 		model,
 		"Stool" .. suffix,
 		Vector3.new(0.3, 1.6, 1.6),
 		at(plotCFrame, x, floorTop + SIT_HIP - 0.15, sz, CFrame.Angles(0, 0, math.pi / 2)),
-		{ color = COLOR_DARK, shape = Enum.PartType.Cylinder }
+		{ color = COLOR_DARK, shape = Enum.PartType.Cylinder },
+		seatIndex
 	)
 	part(
 		model,
@@ -222,8 +239,8 @@ function science.build(plotCFrame: CFrame): Model
 	-- 부품 3. 실험대 둘 + 스툴 둘(S01 서쪽, S02 동쪽)
 	partIndex = 3
 	local benchZ = cz - 2
-	attachment(seats, seatName(1), buildBench(model, plotCFrame, "W", cx - 6, floorTop, benchZ))
-	attachment(seats, seatName(2), buildBench(model, plotCFrame, "E", cx + 6, floorTop, benchZ))
+	attachment(seats, seatName(1), buildBench(model, plotCFrame, "W", cx - 6, floorTop, benchZ, 1))
+	attachment(seats, seatName(2), buildBench(model, plotCFrame, "E", cx + 6, floorTop, benchZ, 2))
 
 	-- 부품 4. 서쪽 실험대 위 플라스크(원뿔 대신 구 + 목) 와 동쪽 실험대 위 비커
 	partIndex = 4
@@ -233,19 +250,16 @@ function science.build(plotCFrame: CFrame): Model
 		material = Enum.Material.Glass,
 		transparency = 0.4,
 		shape = Enum.PartType.Ball,
-		collide = false,
 	})
 	part(model, "FlaskNeck", Vector3.new(0.4, 0.8, 0.4), at(plotCFrame, cx - 8, topY + 1.5, benchZ), {
 		color = COLOR_GLASS,
 		material = Enum.Material.Glass,
 		transparency = 0.4,
-		collide = false,
 	})
 	part(model, "Beaker", Vector3.new(1, 1.2, 1), at(plotCFrame, cx + 8, topY + 0.6, benchZ), {
 		color = COLOR_LIQUID,
 		material = Enum.Material.Glass,
 		transparency = 0.3,
-		collide = false,
 	})
 
 	-- 개수대: 남쪽 벽 앞
@@ -256,7 +270,6 @@ function science.build(plotCFrame: CFrame): Model
 	part(model, "SinkTap", Vector3.new(0.3, 1.2, 0.3), at(plotCFrame, cx + 6, floorTop + 3.2, southZ - 0.4), {
 		color = COLOR_STEEL,
 		material = Enum.Material.Metal,
-		collide = false,
 	})
 
 	-- 시약 선반: 서쪽 벽. 주기율표 포스터: 남쪽 벽

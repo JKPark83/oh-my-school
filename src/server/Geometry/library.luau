@@ -1,7 +1,7 @@
 --!strict
 --[[
 	도서관(시설 7) — 30×30 방 + 책장·열람 탁자. 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 25개(≤25), 전부 BuildKit.part(의자 판은 BuildKit.seat).
 	  벽 4(남벽은 문 양옆 두 조각 + 상인방)·지붕·바닥판 = 8. 북벽 책장 3 + 책 3 = 6. 동벽 책장 1 + 책 1 = 2.
 	  열람 탁자(상판+받침) = 2. 의자 3(좌판 블록+등받이) = 6. 사서 카운터 1.
 	  책은 책장 앞면에 얹은 판 하나다(파트 예산). 판 앞면에 책등 그림 Texture(BuildKit.bookshelf, 파트 아님)를 붙이고,
@@ -74,6 +74,21 @@ local partIndex = 1
 local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, opts: BuildKit.Opts): Part
 	opts.cframe = cf.Rotation
 	local p = BuildKit.part(parent, name, size, cf.Position, opts)
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
+end
+
+--- put 의 Seat 판. 학생 자리(seatIndex)는 Disabled 라 플레이어가 학생과 겹쳐 앉지 않는다
+local function putSeat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	opts: BuildKit.Opts,
+	seatIndex: number
+): Seat
+	opts.cframe = cf.Rotation
+	local p = BuildKit.seat(parent, name, size, cf.Position, opts, BuildKit.studentSeat(script.Name, seatIndex))
 	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
 	return p
 end
@@ -180,7 +195,6 @@ function library.build(plotCFrame: CFrame): Model
 			{
 				color = C.books[i],
 				material = Enum.Material.SmoothPlastic,
-				collide = false,
 			}
 		)
 		BuildKit.bookshelf(books, Enum.NormalId.Back) -- +Z = 방 안쪽
@@ -201,7 +215,6 @@ function library.build(plotCFrame: CFrame): Model
 		{
 			color = C.books[2],
 			material = Enum.Material.SmoothPlastic,
-			collide = false,
 		}
 	)
 	BuildKit.bookshelf(booksE, Enum.NormalId.Front) -- Y 90° 회전이라 −Z 가 월드 −X = 방 안쪽
@@ -227,10 +240,10 @@ function library.build(plotCFrame: CFrame): Model
 		local x = tableX + dx
 		local seatZ = tableZ + CHAIR_DZ
 		local chairName = string.format("Chair%02d", seatIndex)
-		put(model, chairName .. "Seat", CHAIR_SEAT, at(plotCFrame, x, floorY + CHAIR_SEAT.Y / 2, seatZ), {
+		putSeat(model, chairName .. "Seat", CHAIR_SEAT, at(plotCFrame, x, floorY + CHAIR_SEAT.Y / 2, seatZ), {
 			color = COLOR_SECONDARY,
 			material = MATERIAL,
-		})
+		}, seatIndex)
 		put(
 			model,
 			chairName .. "Back",

@@ -42,7 +42,7 @@ local recipe: Kit.Recipe = {
 		-- 빈백 2: 앉는 몸통 + 뒤 등받이 공(Fabric 은 색이 어둡게 묻혀서 기본 재질)
 		for k, c in { WorldPalette.blossom, room.accent } do
 			local s = seats[k + 2]
-			put(`Chair{k + 2}`, Vector3.new(2.2, 1.4, 2.2), s + Vector3.new(0, 0.7, 0), c)
+			put(`Chair{k + 2}`, Vector3.new(2.2, 1.4, 2.2), s + Vector3.new(0, 0.7, 0), c, { seat = true })
 			Kit.ball(put, `Chair{k + 2}Back`, s + Vector3.new(0, 1.4, 1.4), 2.2, c)
 		end
 		-- 낮잠 매트 2
@@ -131,8 +131,8 @@ local recipe: Kit.Recipe = {
 	finish = function(put, ctx) -- 18 파트
 		local room = ctx.room
 		-- 깔개는 기본 재질(Kit.rug 의 Fabric 은 색이 어둡게 묻힌다)
-		put("BlockRug", Vector3.new(8, 0.1, 6), Vector3.new(-13, 0.05, 8.5), WorldPalette.star)
-		put("ReadRug", Vector3.new(9, 0.1, 5), Vector3.new(-2.5, 0.05, 10), WorldPalette.sticker)
+		put("BlockRug", Vector3.new(8, 0.1, 6), Vector3.new(-13, 0.05, 8.5), WorldPalette.star, { collide = false })
+		put("ReadRug", Vector3.new(9, 0.1, 5), Vector3.new(-2.5, 0.05, 10), WorldPalette.sticker, { collide = false })
 		-- 매트 위 이불
 		for k, x in { -15.2, -9.2 } do
 			put(

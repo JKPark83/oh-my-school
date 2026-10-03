@@ -14,7 +14,7 @@
 	  e 좌석은 바닥(y 0)·방(구역) 안이고, 그 아래 Chair* 윗면이 앉는 높이(SIT_HIP-0.4 ~ SIT_HIP)다
 	  f 뜬 파트 없음: 바닥 위, 다른 파트 윗면~안(가로 겹침), 벽 안쪽 면·천장에 붙음(층 방만). 허용 0.15
 	  g 빨강 없음: 색상 H < 15° 또는 > 345° 이면서 채도 S > 0.5 금지
-	  h 충돌 파트(opts.collide)가 좌석 상자에 겹치지 않고, 통로(폭 4, 도착 자리 → 방 가운데·옥상은 구역 가운데)를 막지 않는다
+	  h 충돌 파트(opts.collide ~= false, 의자·책상 빼고)가 좌석 상자에 겹치지 않고, 통로(폭 4, 도착 자리 → 방 가운데·옥상은 구역 가장자리까지)를 막지 않는다
 	방마다 두 번 돈다: 폴백(ctx.ready = false, 전부 파트)과 메시(ctx.ready = true, Kit.hero 메시는 그 크기 상자).
 	회전은 AABB 로 감싼다(공 = 지름 min(size), 원기둥 = 축 X·지름 min(Y, Z)).
 ]]
@@ -316,7 +316,21 @@ local Rooms = req(node("src/client/Rooms"))
 local RoomConfig = req(node("src/shared/Config/RoomConfig"))
 local Kit = Rooms.Kit
 
-type Box = { name: string, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, collide: boolean }
+type Box = {
+	name: string,
+	x0: number,
+	x1: number,
+	y0: number,
+	y1: number,
+	z0: number,
+	z1: number,
+	collide: boolean,
+	part: number, -- 이 파트가 생기는 부품(2 = big, 3 = props, 4 = finish)
+}
+
+local PAD_HALF = 2 -- 패드 4×4(Tower PAD_SIZE)
+local PAD_GAP = 2
+local HEAD = 5 -- 이 높이 이상에서 시작하는 파트(천장에 매단 것)는 패드 위 사람과 안 닿는다
 
 local failures = 0
 local function fail(roomId: string, rule: string, msg: string)
@@ -375,6 +389,7 @@ local function checkRoom(room: any, meshes: boolean)
 	local id = room.id
 	local roof = room.kind == "roof"
 	local boxes: { Box } = {}
+	local phase = 2
 	local function put(name: string, size: any, pos: any, color: any, opts: any?): any
 		local o = opts or {}
 		local shape = o.shape and o.shape.Name or "Block"
@@ -400,7 +415,8 @@ local function checkRoom(room: any, meshes: boolean)
 			y1 = pos.Y + hy,
 			z0 = pos.Z - hz,
 			z1 = pos.Z + hz,
-			collide = o.collide == true,
+			collide = o.collide ~= false,
+			part = phase,
 		}
 		table.insert(boxes, b)
 		local h, s = hsv(color)
@@ -418,7 +434,9 @@ local function checkRoom(room: any, meshes: boolean)
 		end,
 	}
 	recipe.big(put, ctx)
+	phase = 3
 	recipe.props(put, ctx)
+	phase = 4
 	recipe.finish(put, ctx)
 
 	-- a
@@ -466,7 +484,7 @@ local function checkRoom(room: any, meshes: boolean)
 		-- d·h(좌석)
 		for _, sb in seatBoxes do
 			if over(b.x0, b.x1, sb.x0, sb.x1) and over(b.y0, b.y1, sb.y0, sb.y1) and over(b.z0, b.z1, sb.z0, sb.z1) then
-				if b.collide then
+				if b.collide and not (string.sub(b.name, 1, 5) == "Chair" or string.sub(b.name, 1, 4) == "Desk") then
 					fail(id, "h", `충돌 파트 {boxStr(b)} 가 좌석 {sb.i} 상자에 겹친다`)
 				elseif not (string.sub(b.name, 1, 5) == "Chair" or string.sub(b.name, 1, 4) == "Desk") then
 					fail(id, "d", `{boxStr(b)} 가 좌석 {sb.i} 상자(위 0.3~4.3)에 겹친다`)
@@ -505,6 +523,10 @@ local function checkRoom(room: any, meshes: boolean)
 			local steps = math.ceil(seg.Magnitude / 0.25)
 			for k = 0, steps do
 				local p = Kit.ARRIVAL + seg * (k / steps)
+				-- 옥상 방 구역 안은 가구가 꽉 찬 전시라 통로는 구역 가장자리까지만 본다
+				if roof and p.X > zone.x0 - 2 and p.X < zone.x1 + 2 and p.Y > zone.z0 - 2 and p.Y < zone.z1 + 2 then
+					break
+				end
 				if p.X > b.x0 - 2 and p.X < b.x1 + 2 and p.Y > b.z0 - 2 and p.Y < b.z1 + 2 then
 					fail(
 						id,
@@ -552,6 +574,61 @@ local function checkRoom(room: any, meshes: boolean)
 			fail(id, "e", `좌석 {sb.i} {s} 아래 앉을 Chair* (윗면 {Kit.SIT_HIP - 0.4}~{Kit.SIT_HIP})가 없다`)
 		end
 	end
+	-- i
+	local pads = room.partPads or {}
+	if #pads ~= RoomConfig.PARTS - 1 then
+		fail(id, "i", `부품 패드 {#pads}개(부품 2~{RoomConfig.PARTS} 자리 {RoomConfig.PARTS - 1}개여야)`)
+	end
+	for i, p in pads do
+		local k = i + 1
+		local x0, x1, z0, z1 = p.X - PAD_HALF, p.X + PAD_HALF, p.Z - PAD_HALF, p.Z + PAD_HALF
+		local where = string.format("부품 %d 패드 (%.1f, %.1f)", k, p.X, p.Z)
+		if math.abs(p.Y) > EPS then
+			fail(id, "i", `{where} 가 바닥(y 0) 위가 아니다`)
+		end
+		if roof then
+			if math.max(-x0, x1) > RAIL_IN.X + EPS or math.max(-z0, z1) > RAIL_IN.Y + EPS then
+				fail(id, "i", `{where} 가 옥상 난간 밖이다`)
+			end
+			for _, other in RoomConfig.LIST do
+				local oz = other.zone
+				if oz and over(x0, x1, oz.x0, oz.x1) and over(z0, z1, oz.z0, oz.z1) then
+					fail(id, "i", `{where} 가 옥상 방 {other.id} 구역에 겹친다`)
+				end
+			end
+		elseif x0 < zone.x0 - EPS or x1 > zone.x1 + EPS or z0 < zone.z0 - EPS or z1 > zone.z1 + EPS then
+			fail(id, "i", `{where} 가 방 밖이다`)
+		end
+		if x1 > Kit.CLEAR.X + EPS and z1 > Kit.CLEAR.Y + EPS then
+			fail(id, "i", `{where} 가 가구 금지 구역(엘리베이터 도착·부품 1 패드)에 겹친다`)
+		end
+		if x1 > Kit.PILLAR.X + EPS and z0 < Kit.PILLAR.Y - EPS then
+			fail(id, "i", `{where} 가 엘리베이터 기둥에 겹친다`)
+		end
+		for _, sb in seatBoxes do
+			if over(x0, x1, sb.x0, sb.x1) and over(z0, z1, sb.z0, sb.z1) then
+				fail(id, "i", `{where} 가 좌석 {sb.i} 에 겹친다`)
+			end
+		end
+		for _, b in boxes do
+			if
+				b.part <= k
+				and b.y1 > TOUCH
+				and b.y0 < HEAD
+				and over(x0, x1, b.x0, b.x1)
+				and over(z0, z1, b.z0, b.z1)
+			then
+				fail(id, "i", `{where} 가 {boxStr(b)}(부품 {b.part})에 겹친다`)
+			end
+		end
+		for j = i + 1, #pads do
+			local q = pads[j]
+			if math.max(math.abs(p.X - q.X), math.abs(p.Z - q.Z)) < PAD_HALF * 2 + PAD_GAP - EPS then
+				fail(id, "i", `{where} 와 부품 {j + 1} 패드가 {PAD_GAP} 보다 가깝다`)
+			end
+		end
+	end
+
 	print(
 		string.format(
 			"%-12s %-6s %s 파트 %2d/%d  좌석 %d",

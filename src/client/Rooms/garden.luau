@@ -40,7 +40,7 @@ local recipe: Kit.Recipe = {
 			Vector3.new(z.x1 - z.x0, 0.1, z.z1 - z.z0),
 			Vector3.new((z.x0 + z.x1) / 2, 0.05, (z.z0 + z.z1) / 2),
 			WorldPalette.benchWood,
-			{ material = Enum.Material.WoodPlanks }
+			{ material = Enum.Material.WoodPlanks, collide = false }
 		)
 		-- 동쪽 끝 돌 테두리(옥상 바닥과 데크 경계)
 		put("DeckEdge", Vector3.new(0.4, 0.2, z.z1 - z.z0), Vector3.new(z.x1 - 0.2, 0.1, 0), WorldPalette.stone)
@@ -55,7 +55,7 @@ local recipe: Kit.Recipe = {
 		-- 학생 스툴(텃밭 앞) + 등받이 벤치(좌석 2~4, Chair* = 좌석 상자 안 허용)
 		Kit.chair(put, 1, room.seats[1], WorldPalette.wood, room.seatYaw)
 		local h = Kit.SIT_HIP - 0.15
-		put("ChairBench", Vector3.new(9, h, 2), Vector3.new(-13, h / 2, 6.2), WorldPalette.wood)
+		put("ChairBench", Vector3.new(9, h, 2), Vector3.new(-13, h / 2, 6.2), WorldPalette.wood, { seat = true })
 		put("ChairBenchBack", Vector3.new(9, 1.6, 0.3), Vector3.new(-13, h + 0.8, 7.1), WorldPalette.wood)
 		-- 화단 상자(충돌) + 흙판
 		for i, b in BEDS do

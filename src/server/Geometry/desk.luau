@@ -1,7 +1,7 @@
 --!strict
 --[[
 	책걸상(시설 1) — 교실 1 안 가구. 계획서 §3.6 규약.
-	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 24개(≤25), 전부 BuildKit.part.
+	  build(plotCFrame) → Model. 모델 이름 = 시설 id = 이 모듈 이름. 파트 24개(≤25), 전부 BuildKit.part(의자 판은 BuildKit.seat).
 	  교실 1 의 벽·지붕·남문은 Shell 에 있으므로 여기는 2인 책상 3 + 의자 6 만 놓는다.
 	  줄 간격 4(center.Z −4·0·+4), 자리 x = center.X ± 1.5. 전부 칠판(−Z)을 본다.
 	  Seats/S01~S06 = 의자 아래 바닥 중심, LookVector −Z. 1줄 왼쪽부터 번호를 매긴다.
@@ -58,6 +58,21 @@ local function put(parent: Instance, name: string, size: Vector3, cf: CFrame, op
 	return p
 end
 
+--- put 의 Seat 판. 학생 자리(seatIndex)는 Disabled 라 플레이어가 학생과 겹쳐 앉지 않는다
+local function putSeat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	opts: BuildKit.Opts,
+	seatIndex: number
+): Seat
+	opts.cframe = cf.Rotation
+	local p = BuildKit.seat(parent, name, size, cf.Position, opts, BuildKit.studentSeat(script.Name, seatIndex))
+	p:SetAttribute(Keys.ATTR_PART_INDEX, partIndex)
+	return p
+end
+
 --- 월드 CFrame 을 그대로 가진 Attachment(부모가 BasePart 가 아니다)
 local function attach(parent: Instance, name: string, cf: CFrame): Attachment
 	local att = Instance.new("Attachment")
@@ -110,10 +125,17 @@ function desk.build(plotCFrame: CFrame): Model
 				color = COLOR_STEEL,
 				material = Enum.Material.Metal,
 			})
-			put(model, chairName .. "Seat", CHAIR_SEAT, at(plotCFrame, x, floorY + SIT_HIP - CHAIR_SEAT.Y / 2, cz), {
-				color = COLOR_SECONDARY,
-				material = MATERIAL,
-			})
+			putSeat(
+				model,
+				chairName .. "Seat",
+				CHAIR_SEAT,
+				at(plotCFrame, x, floorY + SIT_HIP - CHAIR_SEAT.Y / 2, cz),
+				{
+					color = COLOR_SECONDARY,
+					material = MATERIAL,
+				},
+				seatIndex
+			)
 			put(
 				model,
 				chairName .. "Back",

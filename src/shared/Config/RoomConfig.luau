@@ -24,6 +24,9 @@ export type Room = {
 	seats: { Vector3 }, -- 방 로컬 좌표(바닥 높이 y 0). 학생 자리는 StudentConfig seat 번호
 	seatYaw: number?, -- 좌석 방향(도). 기본 0 = −Z(북쪽) 보고 앉는다
 	zone: Zone?, -- 옥상 방만: 이 방 가구를 놓는 옥상 구역(방 로컬). 층 방은 벽 안쪽 전체
+	-- 부품 2·3·4 패드 자리(방 로컬 x·z, y 0 = 그 층 바닥 윗면). 1층 시설 partPads 처럼 방 여기저기.
+	-- 옥상 방은 구역이 가구로 차 있어 옥상 빈 바닥(모든 옥상 구역 밖)에 둔다. 규칙은 tools/check_rooms.luau (i)
+	partPads: { Vector3 },
 }
 export type Zone = { x0: number, x1: number, z0: number, z1: number }
 
@@ -31,6 +34,7 @@ RoomConfig.FIRST_FLOOR = 3
 RoomConfig.MAX_FLOOR = 30 -- P2 실측으로 확정
 RoomConfig.PARTS = 4
 RoomConfig.PART_NAMES = { "뼈대", "큰 가구", "소품", "마무리 장식" }
+RoomConfig.TEXT_BUILDING = "공사 중" -- 엘리베이터 패널: 짓는 중인 층 「{n}층 {방이름} 공사 중」·「옥상 공사 중」
 RoomConfig.PART_WEIGHTS = { 0.1, 0.2, 0.3, 0.4 } -- 단계 가격을 부품 4개로 나눈 비율(시뮬이 이미 나눠 STEPS 에 넣었다)
 
 local function C(r: number, g: number, b: number): Color3
@@ -57,6 +61,7 @@ local LIST: { Room } = {
 			Vector3.new(-13, 0, 8.6),
 			Vector3.new(-7, 0, 8.6),
 		},
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-8, 0, -2), Vector3.new(-3.5, 0, 10) },
 	},
 	{
 		id = "computer",
@@ -75,6 +80,7 @@ local LIST: { Room } = {
 			Vector3.new(-9, 0, 4),
 			Vector3.new(-4, 0, 4),
 		},
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-8, 0, -11.5), Vector3.new(-6, 0, 10) },
 	},
 	{
 		id = "broadcast",
@@ -93,6 +99,7 @@ local LIST: { Room } = {
 			Vector3.new(-4, 0, 6),
 		},
 		seatYaw = 180,
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-10.5, 0, -10.5), Vector3.new(-6, 0, 11.5) },
 	},
 	{
 		id = "cooking",
@@ -107,9 +114,10 @@ local LIST: { Room } = {
 			Vector3.new(-5, 0, -6),
 			Vector3.new(-13, 0, 6),
 			Vector3.new(-5, 0, 6),
-			Vector3.new(3.5, 0, -2.9),
-			Vector3.new(6.5, 0, -2.9),
+			Vector3.new(3.5, 0, -3.1), -- 통로(폭 4) 밖
+			Vector3.new(6.5, 0, -3.1),
 		},
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-8.5, 0, -4.5), Vector3.new(-6, 0, 10) },
 	},
 	{
 		id = "dance",
@@ -126,6 +134,7 @@ local LIST: { Room } = {
 			Vector3.new(-16.5, 0, 6),
 		},
 		seatYaw = 270, -- 동쪽(춤추는 마루)을 본다
+		partPads = { Vector3.new(6.5, 0, 2), Vector3.new(-10.5, 0, -9), Vector3.new(-6, 0, 9.5) },
 	},
 	{
 		id = "robot",
@@ -142,6 +151,7 @@ local LIST: { Room } = {
 			Vector3.new(-8, 0, 10),
 			Vector3.new(-2, 0, 10),
 		},
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-8, 0, -9), Vector3.new(-1.5, 0, 4.5) },
 	},
 	{
 		id = "english",
@@ -159,6 +169,7 @@ local LIST: { Room } = {
 			Vector3.new(-9, 0, 8),
 			Vector3.new(-3, 0, 8),
 		},
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-7.5, 0, -7.5), Vector3.new(-6, 0, 12) },
 	},
 	{
 		id = "care",
@@ -176,6 +187,7 @@ local LIST: { Room } = {
 			Vector3.new(-0.5, 0, 10),
 			Vector3.new(8, 0, 11.5),
 		},
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-4.5, 0, -9), Vector3.new(-8.5, 0, 10) },
 	},
 	{
 		id = "staff",
@@ -194,6 +206,7 @@ local LIST: { Room } = {
 			Vector3.new(-10, 0, 3),
 			Vector3.new(1.5, 0, 12),
 		},
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-8, 0, -10.5), Vector3.new(-6, 0, 10) },
 	},
 	{
 		id = "exhibit",
@@ -211,6 +224,7 @@ local LIST: { Room } = {
 			Vector3.new(-11, 0, 8),
 			Vector3.new(-7, 0, 8),
 		},
+		partPads = { Vector3.new(6, 0, 2), Vector3.new(-8, 0, -10.5), Vector3.new(-6, 0, 12) },
 	},
 	{
 		id = "garden",
@@ -228,6 +242,7 @@ local LIST: { Room } = {
 			Vector3.new(-13, 0, 6),
 			Vector3.new(-10, 0, 6),
 		},
+		partPads = { Vector3.new(0.5, 0, -0.5), Vector3.new(6.5, 0, 5), Vector3.new(0.5, 0, 11.5) },
 	},
 	{
 		id = "observatory",
@@ -245,6 +260,7 @@ local LIST: { Room } = {
 			Vector3.new(4.4, 0, -5.5),
 			Vector3.new(10, 0, -8.8),
 		},
+		partPads = { Vector3.new(8, 0, 0), Vector3.new(2, 0, 3.5), Vector3.new(7.5, 0, 10) },
 	},
 }
 
@@ -396,10 +412,46 @@ function RoomConfig.topFloor(floorCount: number): number
 	return 2 + floorCount
 end
 
---- 엘리베이터로 갈 수 있는 층인가: 다 지은 층(1 ~ 맨 위 층), 옥상(roofN)은 옥상 방이 하나라도 있을 때만.
---- 짓는 중인 층은 완공 뒤에 간다
-function RoomConfig.canRide(n: number, floorCount: number, hasRooftop: boolean, roofN: number): boolean
-	return (n >= 1 and n <= RoomConfig.topFloor(floorCount)) or (hasRooftop and n == roofN)
+--- 짓는 방의 종류. 짓는 방이 없거나 부품 1(뼈대)도 안 샀으면 nil
+function RoomConfig.buildingKind(towerRoom: string, towerParts: number): ("floor" | "roof")?
+	local room = BY_ID[towerRoom]
+	return if room and towerParts >= 1 then room.kind else nil
+end
+
+--- 옥상(맨 위 판)이 있는 층. 층 방을 짓는 중(부품 1 이상)이면 그 층 위
+function RoomConfig.roofFloor(floorCount: number, towerRoom: string, towerParts: number): number
+	return RoomConfig.topFloor(floorCount)
+		+ (if RoomConfig.buildingKind(towerRoom, towerParts) == "floor" then 2 else 1)
+end
+
+--[[
+	엘리베이터로 갈 수 있는 층인가: 다 지은 층(1 ~ 맨 위 층), 짓는 중인 층(부품 1 이상 산 층 방 = topFloor + 1),
+	옥상(roofFloor)은 옥상 방이 하나라도 있거나 옥상 방을 짓는 중(부품 1 이상)일 때.
+	서버 RideElevator·클라 엘리베이터 패널·문이 같은 함수를 쓴다(개선계획 §5.4)
+]]
+function RoomConfig.canRide(
+	n: number,
+	floorCount: number,
+	hasRooftop: boolean,
+	towerRoom: string,
+	towerParts: number
+): boolean
+	local kind = RoomConfig.buildingKind(towerRoom, towerParts)
+	local top = RoomConfig.topFloor(floorCount) + (if kind == "floor" then 1 else 0)
+	if n >= 1 and n <= top then
+		return true
+	end
+	return (hasRooftop or kind == "roof") and n == RoomConfig.roofFloor(floorCount, towerRoom, towerParts)
+end
+
+--[[
+	층 패드를 둘 방 로컬 x·z. 다음에 살 부품 k = towerParts + 1 의 partPads 자리.
+	짓는 방이 없거나 부품 1(뼈대)을 아직 안 샀거나 다 샀으면 nil = 다 지은 맨 위 층의 TOWER_PAD_XZ 자리
+]]
+function RoomConfig.padLocal(roomId: string, towerParts: number): Vector2?
+	local room = BY_ID[roomId]
+	local p = if room and towerParts >= 1 then room.partPads[towerParts] else nil
+	return if p then Vector2.new(p.X, p.Z) else nil
 end
 
 --- n층의 방 id. 3층 미만이거나 아직 없으면 nil
@@ -463,6 +515,10 @@ do
 		)
 		assert(room.seats[row.seat.index], `RoomConfig: {room.id} 에 학생 좌석 {row.seat.index} 이 없다`)
 		assert(#room.seats >= 4 and #room.seats <= 6, `RoomConfig: {room.id} 좌석이 4~6개가 아니다`)
+		assert(
+			#room.partPads == RoomConfig.PARTS - 1,
+			`RoomConfig: {room.id} partPads 가 {RoomConfig.PARTS - 1}개가 아니다`
+		)
 		local zone = room.zone
 		assert(
 			(room.kind == "roof") == (zone ~= nil),

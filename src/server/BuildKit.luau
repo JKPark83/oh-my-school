@@ -14,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Keys = require(ReplicatedStorage.Shared.Config.Keys)
 local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
+local StudentConfig = require(ReplicatedStorage.Shared.Config.StudentConfig)
 
 local BuildKit = {}
 
@@ -80,6 +81,33 @@ function BuildKit.part(parent: Instance, name: string, size: Vector3, position: 
 	p.Shape = opts.shape or Enum.PartType.Block
 	finish(p, parent, name, size, position, opts)
 	return p
+end
+
+--- 앉을 수 있는 의자 판(Seat). 속성은 BuildKit.part 와 같다(CanTouch 기본 true — Seat 는 닿아야 앉힌다).
+--- disabled = 학생이 앉는 자리(플레이어가 학생과 겹쳐 앉지 않게)
+function BuildKit.seat(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	position: Vector3,
+	opts: Opts,
+	disabled: boolean?
+): Seat
+	local p = Instance.new("Seat")
+	p.Shape = opts.shape or Enum.PartType.Block
+	p.Disabled = disabled == true
+	finish(p, parent, name, size, position, opts)
+	return p
+end
+
+--- 학생이 배정된 자리인가(StudentConfig 의 seat). 그 의자는 BuildKit.seat(..., disabled = true) 로 짓는다
+function BuildKit.studentSeat(facilityId: string, index: number): boolean
+	for _, row in StudentConfig.LIST do
+		if row.seat.facilityId == facilityId and row.seat.index == index then
+			return true
+		end
+	end
+	return false
 end
 
 --- 쐐기 파트. 로컬 +Z 쪽이 높은 변(뒷면 수직), -Z 쪽으로 비탈이 내려간다. opts.shape 는 무시한다

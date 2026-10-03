@@ -575,7 +575,7 @@ local function nearElevator(plotId: number, root: BasePart): boolean
 	return false
 end
 
---- RideElevator(plotId, floor). 방문객도 탄다. 다 지은 층·옥상 방이 있는 옥상만, 엘리베이터 근처에서만(개선계획 §3.3)
+--- RideElevator(plotId, floor). 방문객도 탄다. 다 지은 층·짓는 중인 층·옥상(옥상 방이 있거나 짓는 중)만, 엘리베이터 근처에서만(개선계획 §3.3)
 local function rideElevator(player: Player, plotId: number, floor: number)
 	if plotId % 1 ~= 0 or floor % 1 ~= 0 or not plotModels[plotId] then
 		return
@@ -585,8 +585,15 @@ local function rideElevator(player: Player, plotId: number, floor: number)
 	if not profile or not RoomConfig.isOpen(profile) then
 		return
 	end
-	local roofN = Tower.roofFloor(#profile.floors, profile.towerRoom, profile.towerParts)
-	if not RoomConfig.canRide(floor, #profile.floors, next(profile.rooftop) ~= nil, roofN) then
+	if
+		not RoomConfig.canRide(
+			floor,
+			#profile.floors,
+			next(profile.rooftop) ~= nil,
+			profile.towerRoom,
+			profile.towerParts
+		)
+	then
 		return
 	end
 	local character = player.Character
@@ -904,6 +911,19 @@ function PlotService.teleport(player: Player, cf: CFrame, waitStream: boolean?)
 		if player.Character ~= character or not character.Parent then
 			return -- 기다리는 동안 리스폰·퇴장
 		end
+	end
+	-- 의자에 앉은 채면 SeatWeld 가 캐릭터를 의자로 끌어당기거나 의자를 끌고 간다. 먼저 일으킨다
+	-- (클라 탑 방 의자의 Weld 는 클라가 Sit = false 를 받고 지운다)
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.SeatPart then
+		for _, weld in humanoid.SeatPart:GetChildren() do
+			if weld:IsA("Weld") and weld.Name == "SeatWeld" and weld.Part1 and weld.Part1:IsDescendantOf(character) then
+				weld:Destroy()
+			end
+		end
+	end
+	if humanoid and humanoid.Sit then
+		humanoid.Sit = false
 	end
 	character:PivotTo(cf + Vector3.new(0, 4, 0))
 	teleported:Fire(player)

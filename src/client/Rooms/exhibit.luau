@@ -28,11 +28,12 @@ local function rz(deg: number): CFrame
 	return CFrame.Angles(0, 0, math.rad(deg))
 end
 
---- 천장에 매단 행성 1 개 = 줄 + 공 2 파트. 줄은 공 아랫면부터 천장까지(공을 꿰뚫는다)
+--- 천장에 매단 행성 1 개 = 줄 + 공 2 파트. 줄은 공 아랫면부터 천장까지(공을 꿰뚫는다). 머리 위라 충돌 없음
 local function hang(put: Kit.Put, name: string, pos: Vector3, dia: number, color: Color3)
 	local y0 = pos.Y - dia / 2
-	Kit.cylinder(put, name .. "String", Vector3.new(pos.X, (y0 + Kit.CEIL) / 2, pos.Z), 0.08, Kit.CEIL - y0, BONE)
-	Kit.ball(put, name, pos, dia, color)
+	local air: Kit.PutOpts = { collide = false }
+	Kit.cylinder(put, name .. "String", Vector3.new(pos.X, (y0 + Kit.CEIL) / 2, pos.Z), 0.08, Kit.CEIL - y0, BONE, air)
+	Kit.ball(put, name, pos, dia, color, air)
 end
 
 local recipe: Kit.Recipe = {
@@ -40,8 +41,20 @@ local recipe: Kit.Recipe = {
 		local room = ctx.room
 		-- 관람 벤치(앞줄 좌석 1~3, 뒷줄 4~5). 의자처럼 윗면 SIT_HIP - 0.15
 		local h = Kit.SIT_HIP - 0.15
-		put("ChairBenchFront", Vector3.new(11, h, 2), Vector3.new(-9, h / 2, 1.2), WorldPalette.benchWood)
-		put("ChairBenchBack", Vector3.new(7, h, 2), Vector3.new(-9, h / 2, 8.2), WorldPalette.benchWood)
+		put(
+			"ChairBenchFront",
+			Vector3.new(11, h, 2),
+			Vector3.new(-9, h / 2, 1.2),
+			WorldPalette.benchWood,
+			{ seat = true }
+		)
+		put(
+			"ChairBenchBack",
+			Vector3.new(7, h, 2),
+			Vector3.new(-9, h / 2, 8.2),
+			WorldPalette.benchWood,
+			{ seat = true }
+		)
 
 		-- 공룡 받침대(밟을 수 있는 낮은 단)
 		put(
@@ -121,7 +134,7 @@ local recipe: Kit.Recipe = {
 		hang(put, "Jupiter", Vector3.new(8.5, 15.3, 4.5), 1.8, WorldPalette.benchWood)
 		local saturn = Vector3.new(-0.5, 15.3, 5.5)
 		hang(put, "Saturn", saturn, 1.3, WorldPalette.signBoard)
-		Kit.cylinder(put, "SaturnRing", saturn, 2.6, 0.08, WorldPalette.cork)
+		Kit.cylinder(put, "SaturnRing", saturn, 2.6, 0.08, WorldPalette.cork, { collide = false })
 
 		-- 진열장 속: 암모나이트(세운 원판)·뼈 화석, 운석
 		local fx = FOSSIL_X
@@ -227,7 +240,15 @@ local recipe: Kit.Recipe = {
 		)
 		-- 공룡 발자국 3(나무 바닥과 대비되는 초록): 엘리베이터 도착 쪽에서 공룡 쪽으로 걷는 납작판(통로를 막지 않는다)
 		for i, p in { Vector2.new(9, 6.5), Vector2.new(5, 7.8), Vector2.new(1, 6.5) } do
-			Kit.cylinder(put, `Footprint{i}`, Vector3.new(p.X, 0.06, p.Y), 1.6, 0.12, WorldPalette.lawn)
+			Kit.cylinder(
+				put,
+				`Footprint{i}`,
+				Vector3.new(p.X, 0.06, p.Y),
+				1.6,
+				0.12,
+				WorldPalette.lawn,
+				{ collide = false }
+			)
 		end
 		Kit.board(put, "Banner", "W", 4, 10, 12, 2.5, room.accent)
 	end,
