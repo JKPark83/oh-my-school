@@ -86,7 +86,7 @@ SoundConfig.DEFS = DEFS
 
 --[[
 	배경음. 곡이 끝나면 다음 곡으로 넘어가고 마지막 곡 뒤에는 처음으로 돌아간다.
-	한 곡만 반복하면 2분마다 같은 곡이 돌아와 금방 질려서 두 곡을 번갈아 튼다.
+	2026-10-03 사용자가 후보 10곡 중 「Woodland Walks」 하나를 골랐다(한 곡이면 그 곡을 되풀이한다).
 	효과음(Game 그룹)과 따로 끄고 켜도록 SoundGroup "Music" 에 묶는다.
 	복도 웅성거림(hallway 0.08)보다 크고 효과음(0.35~0.8)보다는 작게 깐다.
 ]]
@@ -94,10 +94,8 @@ SoundConfig.MUSIC = {
 	volume = 0.12, -- 2026-10-03 0.25 는 크다는 의견으로 반으로 줄였다
 	duck = 0.3, -- duck 효과음이 울리는 동안 배경음 그룹 Volume
 	tracks = {
-		-- APM "Play School" 2:01(밝은 동요풍)
-		"rbxassetid://1841060369",
-		-- APM "Happy Daze (b)" 2:21(어쿠스틱 기타 포크, Juice Music)
-		"rbxassetid://1839993539",
+		-- APM "Woodland Walks" 1:29(피치카토 현악, 가볍고 통통 튄다)
+		"rbxassetid://9043323476",
 	},
 }
 
