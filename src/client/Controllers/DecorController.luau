@@ -56,8 +56,14 @@ type CameraApi = {
 type SoundApi = {
 	play: (key: string, pitch: number?) -> (),
 }
+type FeedbackApi = {
+	play: (kind: string, payload: any?) -> (),
+}
 local CameraController = (require(script.Parent.CameraController) :: any) :: CameraApi
 local SoundController = (require(script.Parent.SoundController) :: any) :: SoundApi
+local FeedbackController = (require(script.Parent.FeedbackController) :: any) :: FeedbackApi
+local MeshCache = require(script.Parent.Parent.MeshCache)
+local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 
 local DecorController = {}
 
@@ -76,6 +82,13 @@ local GHOST_BAD_TRANSPARENCY = 0.65
 local GHOST_OUTLINE = 0.3
 local TAP_DISTANCE = 500
 local SOUND_NUDGE = "nudge"
+local SOUND_LIFT = "lift"
+local SOUND_TURN = "turn"
+local SOUND_STORE = "store"
+-- 놓임 연출: 서버 확인(DecorPlaced) 뒤 그 칸 모델이 작게 → 살짝 넘쳐 → 제 크기로 커진다
+local POP_FROM = 0.6
+local POP_SECONDS = 0.35
+local POP_WAIT = 1 -- DecorPlaced 뒤 Decor 어트리뷰트가 이 안에 안 오면 연출을 버린다
 
 -- ── 화면(812×375 기준 px, HudController 와 같은 UIScale 규칙) ──
 local BASE_HEIGHT = 375
@@ -153,6 +166,8 @@ local placedVersion = 0 -- 내 부지 Decor 가 바뀔 때마다 +1
 local mode: Mode? = nil
 local modeToken = 0
 local blockerLights: { [Model]: { light: Highlight, tween: Tween } } = {}
+-- DecorPlaced 로 온 자리. 그 칸이 이 모습으로 그려지면 뿅 연출을 한 번 한다(이벤트와 어트리뷰트 중 어느 쪽이 먼저 와도 된다)
+local popWant: { slot: number, item: string, cx: number, cz: number, rot: number, t: number }? = nil
 local hiddenJump: GuiObject? = nil
 
 -- GUI
@@ -343,6 +358,58 @@ local function settleCollision(dt: number)
 	end
 end
 
+--- 놓인 순간: 피벗(바닥 가운데)을 축으로 POP_FROM → 1 (Back 으로 살짝 넘친다) + 「톡」·먼지(FeedbackController)
+local function pop(model: Model)
+	-- 커지는 동안 충돌 상자가 캐릭터를 밀지 않게 잠깐 끈다(TowerRenderController.pop 과 같다)
+	local solid: { BasePart } = {}
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") and p.CanCollide then
+			p.CanCollide = false
+			table.insert(solid, p)
+		end
+	end
+	local value = Instance.new("NumberValue")
+	value.Value = POP_FROM
+	model:ScaleTo(POP_FROM)
+	value.Changed:Connect(function(v)
+		if model.Parent then
+			model:ScaleTo(v)
+		end
+	end)
+	local t = TweenService:Create(value, TweenInfo.new(POP_SECONDS, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Value = 1,
+	})
+	t.Completed:Once(function()
+		for _, p in solid do
+			p.CanCollide = true
+		end
+		value:Destroy()
+	end)
+	t:Play()
+	FeedbackController.play("decorPlaced", { position = model:GetPivot().Position })
+end
+
+--- popWant 칸이 그 모습으로 그려져 있으면 연출한다. 아직이면 다음 renderPlot 이 다시 부른다
+local function tryPop()
+	local want = popWant
+	local plotId = myPlotId
+	if not want or not plotId then
+		return
+	end
+	if os.clock() - want.t > POP_WAIT then
+		popWant = nil
+		return
+	end
+	local p = readPlaced(plotId)[want.slot]
+	local entry = rendered[plotId]
+	local model = if entry then entry.models[want.slot] else nil
+	if not p or not model or p.item ~= want.item or p.cx ~= want.cx or p.cz ~= want.cz or p.rot ~= want.rot then
+		return
+	end
+	popWant = nil
+	pop(model)
+end
+
 local function renderPlot(plotId: number)
 	unrenderPlot(plotId)
 	local rootFolder = fxRoot
@@ -361,7 +428,11 @@ local function renderPlot(plotId: number)
 	for slot, p in readPlaced(plotId) do
 		local item = DecorConfig.byId(p.item)
 		if item then
-			local model = DecorBuilder.build(item, worldCFrame(pivot, built, item, p.cx, p.cz, p.rot))
+			local model = DecorBuilder.build(
+				item,
+				worldCFrame(pivot, built, item, p.cx, p.cz, p.rot),
+				{ mesh = MeshCache.decor(item.id) }
+			)
 			model:SetAttribute("Slot", slot)
 			if mine then
 				-- 탭으로 고르려면 레이캐스트에 잡혀야 한다. 터치는 계속 끈다
@@ -380,6 +451,7 @@ local function renderPlot(plotId: number)
 	rendered[plotId] = entry
 	if mine then
 		applyHidden()
+		tryPop()
 	end
 end
 
@@ -587,7 +659,7 @@ end
 -- ── 고스트 ───────────────────────────────────────────────────────
 
 local function makeGhost(item: DecorConfig.Item): (Model, { GhostPart }, Highlight)
-	local ghost = DecorBuilder.build(item, CFrame.new(), { ghost = true })
+	local ghost = DecorBuilder.build(item, CFrame.new(), { ghost = true, mesh = MeshCache.decor(item.id) })
 	ghost.Name = "Ghost"
 	local parts: { GhostPart } = {}
 	for _, part in ghost:GetDescendants() do
@@ -829,6 +901,7 @@ local function onRotate()
 	end
 	current.rot = (current.rot + 1) % 4
 	current.pinned = nil
+	SoundController.play(SOUND_TURN)
 	onHeartbeat()
 end
 
@@ -1025,6 +1098,7 @@ function DecorController.beginMove(slot: number)
 		return
 	end
 	enter("move", p.item, slot, p.rot)
+	SoundController.play(SOUND_LIFT)
 end
 
 --- 꾸미기 모드를 끝낸다. 카메라는 들어가기 전 각도로 0.4초에 돌아간다
@@ -1058,11 +1132,25 @@ function DecorController.onEvent(payload: any)
 	if typeof(payload) ~= "table" then
 		return
 	end
+	local kind = payload.kind
+	-- 놓임·보관 소리는 모드와 상관없다(서버 확인이 모드 끝난 뒤에 와도 울린다)
+	if kind == "DecorPlaced" and type(payload.slot) == "number" and type(payload.item) == "string" then
+		popWant = {
+			slot = payload.slot,
+			item = payload.item,
+			cx = payload.cx,
+			cz = payload.cz,
+			rot = payload.rot,
+			t = os.clock(),
+		}
+		tryPop()
+	elseif kind == "DecorStored" then
+		SoundController.play(SOUND_STORE)
+	end
 	local current = mode
 	if not current then
 		return
 	end
-	local kind = payload.kind
 	if kind == "DecorPlaced" or kind == "DecorStored" then
 		if current.pending then
 			DecorController.cancel()
@@ -1086,6 +1174,16 @@ function DecorController.Start()
 	fxRoot = fx
 
 	buildGui()
+
+	-- 꾸미기 메시를 미리 불러 둔다(상점 카드·고스트도 메시로 보이게). 오면 그리는 부지를 메시로 다시 짓는다
+	for itemId in PropAssets.DECOR do
+		MeshCache.decor(itemId)
+	end
+	MeshCache.onReady(function()
+		for plotId in near do
+			renderPlot(plotId)
+		end
+	end)
 
 	myPlotId = readMyPlot()
 	player:GetAttributeChangedSignal(Keys.ATTR_PLOT):Connect(function()

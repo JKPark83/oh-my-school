@@ -77,6 +77,7 @@ local SOUND_LEGEND = "legend"
 local SOUND_CELEBRATE = "celebrate"
 local SOUND_COMBO = "combo"
 local SOUND_REWARD = "reward"
+local SOUND_PLACE = "place"
 
 -- 등급(Types.Tier)
 local TIER_NORMAL: Types.Tier = "평범"
@@ -945,6 +946,18 @@ handlers.liked = function(payload: any)
 	local name = if type(payload.name) == "string" then payload.name else ""
 	HudController.toast(`{name} 님이 멋져요를 보냈어요!`)
 	sound(SOUND_REWARD)
+	haptic("small")
+end
+
+-- 꾸미기 물건이 놓였다(DecorController 가 뿅 커지는 순간 부른다. 내 부지만). 「톡」 + 바닥 먼지 + 반짝
+handlers.decorPlaced = function(payload: any)
+	local position = if typeof(payload.position) == "Vector3" then payload.position else nil
+	if not position then
+		return
+	end
+	sound(SOUND_PLACE)
+	burst(position, PRESET_DUST, 10)
+	burst(position + Vector3.new(0, 2, 0), PRESET_SPARKLE, 8)
 	haptic("small")
 end
 

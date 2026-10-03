@@ -1,6 +1,6 @@
 --!strict
 --[[
-	클라 소품 메시 원본 캐시(PropAssets.HERO). TowerRenderController·InteriorRenderController 가 같이 쓴다.
+	클라 소품 메시 원본 캐시(PropAssets.HERO·DECOR). TowerRenderController·InteriorRenderController·DecorController·PanelController 가 같이 쓴다.
 	  MeshCache.get(asset)  준비된 원본(복제해서 쓴다). 아직이면 불러오기를 걸고 nil, id 0·실패도 nil(= 파트 폴백).
 	  MeshCache.onReady(fn) 새 메시가 준비되면 부른다. 여러 개가 잇따라 와도 READY_DELAY 에 한 번만.
 ]]
@@ -8,6 +8,7 @@
 local AssetService = game:GetService("AssetService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local DecorBuilder = require(ReplicatedStorage.Shared.DecorBuilder)
 local PropAssets = require(ReplicatedStorage.Shared.Config.PropAssets)
 
 local MeshCache = {}
@@ -60,6 +61,13 @@ function MeshCache.get(asset: PropAssets.MeshAsset): MeshPart?
 		end)
 	end
 	return nil
+end
+
+--- 꾸미기 아이템 메시(PropAssets.DECOR). DecorBuilder.build 의 options.mesh 로 넘긴다. 없거나 아직이면 nil(= 파트)
+function MeshCache.decor(itemId: string): DecorBuilder.Mesh?
+	local entry = PropAssets.DECOR[itemId]
+	local part = if entry then MeshCache.get(entry.asset) else nil
+	return if entry and part then { part = part, yaw = entry.yaw, height = entry.height } else nil
 end
 
 function MeshCache.onReady(fn: () -> ())

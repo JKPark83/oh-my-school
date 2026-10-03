@@ -353,6 +353,189 @@ PropAssets.HERO = {
 }
 
 --[[
+	꾸미기 물건 메시(2026-10-03). 키 = DecorConfig 아이템 id. 없는 아이템은 DecorConfig.parts 로만 짓는다.
+	  · DecorBuilder 가 메시를 파트 폴백의 상자(모든 파트를 감싼 상자) 와 발자국 90% 중 큰 쪽(가로·세로), 파트 상자 높이 안에
+	    비율 그대로 가장 크게 넣는다. size 는 만든 그대로라 비율로만 쓴다.
+	  · yaw = 메시 앞을 +Z(파트 폴백의 앞)로 돌리는 각도(도). P5 HERO 는 0, 2026-10-03 생성 메시는 180.
+	  · 클라만 쓴다(client/MeshCache.decor). id 0·못 불러옴·아직 안 옴이면 파트로 짓는다. 고스트는 텍스처를 뗀 같은 메시다.
+	  · 풍선·무지개깃발·별조명은 파트로 둔다(생성기가 풍선 줄을 못 만들고, 깃발은 6색 줄무늬로 나왔고, 별조명은 메시면 Neon 빛이 없다).
+	  · height = 파트 상자 높이 대신 쓸 높이 상한. 폴백이 납작한 물건(연못·화단)이 발자국을 채우게 한다.
+	  · 삼각형: 새로 만든 것은 ≤ 1,500(기획서 §12.1 꾸미기 메시). 생성기가 상한을 넘긴 공 바구니만 2,132.
+]]
+export type DecorMesh = {
+	asset: MeshAsset,
+	yaw: number,
+	height: number?,
+}
+
+PropAssets.DECOR = {
+	-- P5 주인공 소품을 그대로 쓴다
+	easel = { asset = PropAssets.HERO.easel, yaw = 0 } :: DecorMesh,
+	trophy = { asset = PropAssets.HERO.trophy, yaw = 0 } :: DecorMesh,
+	fountain = { asset = PropAssets.HERO.fountain, yaw = 0 } :: DecorMesh,
+	telescope = { asset = PropAssets.HERO.telescope, yaw = 0 } :: DecorMesh,
+	rocket = { asset = PropAssets.HERO.rocket, yaw = 0 } :: DecorMesh,
+	globe = { asset = PropAssets.HERO.globe, yaw = 0 } :: DecorMesh,
+	teddy = { asset = PropAssets.HERO.bear, yaw = 0 } :: DecorMesh,
+	-- 2026-10-03 Studio 메시 생성(게임 소유자 계정)
+	bench = {
+		asset = {
+			id = 129647804260510,
+			texture = 136796766243550,
+			size = Vector3.new(5.025, 2.979, 2.4),
+			triangles = 1378,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	lamp = {
+		asset = {
+			id = 122249960451174,
+			texture = 131031489313637,
+			size = Vector3.new(1.497, 8.6, 1.484),
+			triangles = 1144,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	mailbox = {
+		asset = {
+			id = 133863834922141,
+			texture = 78434023215728,
+			size = Vector3.new(1.6, 2.47, 0.952),
+			triangles = 1132,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	planter = {
+		asset = {
+			id = 116384304036971,
+			texture = 92080466630759,
+			size = Vector3.new(2.963, 3.739, 3.0),
+			triangles = 1500,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	tree = {
+		asset = {
+			id = 79865512411746,
+			texture = 123425864960883,
+			size = Vector3.new(4.5, 4.521, 4.432),
+			triangles = 1500,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	signpost = {
+		asset = {
+			id = 87035783753506,
+			texture = 108796790839639,
+			size = Vector3.new(3.091, 3.105, 0.8),
+			triangles = 1488,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	bikerack = {
+		asset = {
+			id = 137493166722518,
+			texture = 121292555355100,
+			size = Vector3.new(4.51, 2.5, 1.773),
+			triangles = 1466,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	swing = {
+		asset = {
+			id = 88728073357577,
+			texture = 108313881067706,
+			size = Vector3.new(5.442, 5.886, 4.0),
+			triangles = 1428,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	slide = {
+		asset = {
+			id = 116008477512602,
+			texture = 110823161791122,
+			size = Vector3.new(2.055, 3.324, 3.6),
+			triangles = 1492,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	ballbin = {
+		asset = {
+			id = 139558026220269,
+			texture = 120894615840504,
+			size = Vector3.new(2.8, 1.437, 2.777),
+			triangles = 2132,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	piano = {
+		asset = {
+			id = 134726022862557,
+			texture = 74760168822767,
+			size = Vector3.new(4.77, 4.2, 3.24),
+			triangles = 1372,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	labtable = {
+		asset = {
+			id = 130279531781625,
+			texture = 74100116419583,
+			size = Vector3.new(6.661, 4.8, 3.093),
+			triangles = 1444,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	tiger = {
+		asset = {
+			id = 103224835074959,
+			texture = 109225794187744,
+			size = Vector3.new(4.137, 5, 3.868),
+			triangles = 1492,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	cake = {
+		asset = {
+			id = 124268470908819,
+			texture = 84244342436362,
+			size = Vector3.new(2.656, 2.744, 2.7),
+			triangles = 1498,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+	pond = {
+		asset = {
+			id = 84201716950550,
+			texture = 104204342966327,
+			size = Vector3.new(5.236, 1.5, 5.219),
+			triangles = 1500,
+		},
+		yaw = 180,
+		height = 2.6, -- 폴백 높이(1)에 맞추면 9 스터드 발자국을 반만 채운다
+	} :: DecorMesh,
+	flowerbed = {
+		asset = {
+			id = 85431338387556,
+			texture = 124437981823040,
+			size = Vector3.new(4.855, 1.6, 2.927),
+			triangles = 1492,
+		},
+		yaw = 180,
+		height = 2.5, -- 연못과 같은 이유
+	} :: DecorMesh,
+	bookcart = {
+		asset = {
+			id = 84613068697461,
+			texture = 95301898571676,
+			size = Vector3.new(3.151, 3, 1.783),
+			triangles = 1474,
+		},
+		yaw = 180,
+	} :: DecorMesh,
+} :: { [string]: DecorMesh }
+
+--[[
 	나무(2026-10-01 generate_mesh, 게임 소유자 계정). 줄기·잎 2파트에 원래 텍스처를 쓴다(팔레트 색 아님).
 	옛 나무(메시 1개, 삼각형 1,488, 초록 한 색)는 줄기까지 초록이라 브로콜리처럼 보여 바꿨다.
 	잎 4,594 + 줄기 406 = 5,000. 크기는 생성물 그대로(가로 7 · 높이 7.68), PropLibrary 가 0.85~1.15 배로 흔든다.

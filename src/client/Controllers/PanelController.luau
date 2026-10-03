@@ -33,6 +33,7 @@ local DecorConfig = require(Shared.Config.DecorConfig)
 local RoomConfig = require(Shared.Config.RoomConfig)
 local DecorBuilder = require(Shared.DecorBuilder)
 local DecorCodec = require(Shared.DecorCodec)
+local MeshCache = require(script.Parent.Parent.MeshCache)
 local Keys = require(Shared.Config.Keys)
 
 -- 형제 컨트롤러. 계약(구현계획 §3.4)의 함수만 쓴다. 아직 옛 버전이 남아 있을 수 있어 타입은 묻지 않는다
@@ -861,7 +862,7 @@ local function decorView(parent: Instance, item: DecorConfig.Item, size: UDim2, 
 	vp.Ambient = Color3.fromRGB(200, 200, 210)
 	vp.LightColor = WHITE
 	vp.LightDirection = Vector3.new(-1, -1, -1)
-	local model = DecorBuilder.build(item, CFrame.identity)
+	local model = DecorBuilder.build(item, CFrame.identity, { mesh = MeshCache.decor(item.id) })
 	local camera = Instance.new("Camera")
 	local center, extent = model:GetBoundingBox()
 	local dist = extent.Magnitude * DECOR_VIEW_DIST + 1

@@ -3,7 +3,7 @@
 	소품 라이브러리. 개선계획 §3.1 #6~#10.
 
 	메시 id(PropAssets)가 있으면 MeshPart 하나로, 없거나 불러오기가 실패하면 파트로 짓는다.
-	  PropLibrary.tree(parent, cframe, seed)      나무. 메시 2파트(줄기·잎, 원래 텍스처), 폴백은 Tree.build(파트 3~5)에 그대로 맡긴다
+	  PropLibrary.tree(parent, cframe, seed)      나무. 메시 2파트(줄기·잎, 원래 텍스처) + 안 보이는 줄기 기둥 1(충돌), 폴백은 Tree.build(파트 3~5)에 그대로 맡긴다
 	  PropLibrary.flowerbed(parent, cframe, seed) 화단. 메시 1파트, 폴백은 흙판 1 + 꽃 뭉치 3 = 파트 4
 	  PropLibrary.wallLamp(parent, cframe)        벽등. 메시 4파트(받침·틀·유리·전구), 폴백은 벽판·팔·지붕·불빛 = 파트 4. PointLight 1
 	  PropLibrary.storeModel(parent, entry, cframe) Creator Store 모델(광장 전용·비핵심). 실패하면 nil
@@ -26,6 +26,7 @@ local WorldPalette = require(ReplicatedStorage.Shared.Config.WorldPalette)
 local PropLibrary = {}
 
 local SCALE_MIN, SCALE_MAX = 0.85, 1.15 -- 메시 나무 크기 흔들기
+local TRUNK_COLLIDER_D = 1.4 -- 메시 나무 줄기 기둥 지름(scale 1). 보이는 줄기 굵기쯤
 
 -- 화단 폴백: 흙판 4×2(높이 0.4) 위에 꽃 뭉치 3개
 local BED_SIZE = Vector3.new(4, 0.4, 2)
@@ -133,10 +134,28 @@ function PropLibrary.tree(parent: Instance, cframe: CFrame, seed: number): Model
 		mesh.CFrame = base * CFrame.new(piece.offset * scale)
 		mesh.TextureID = if piece.texture ~= 0 then `rbxassetid://{piece.texture}` else ""
 		mesh.Anchored = true
-		mesh.CanCollide = false -- 상자 충돌이라 잎까지 막는다. 지나갈 수 있게 둔다
+		mesh.CanCollide = false -- 상자 충돌이라 뿌리·잎 폭까지 막는다. 막는 건 아래 줄기 기둥이 한다
 		mesh.CastShadow = true
 		mesh.Parent = model
 	end
+	-- 보이지 않는 줄기 기둥(원기둥 축 = X 라 Z 로 90° 세운다). 캐릭터가 나무를 뚫고 지나가지 않게
+	local trunkH = PropAssets.TREE.pieces[1].size.Y * scale
+	local d = TRUNK_COLLIDER_D * scale
+	local collider = BuildKit.part(
+		model,
+		"TrunkCollider",
+		Vector3.new(trunkH, d, d),
+		(base * CFrame.new(0, trunkH / 2, 0)).Position,
+		{
+			color = WorldPalette.trunk,
+			transparency = 1,
+			cast = false,
+			shape = Enum.PartType.Cylinder,
+			cframe = CFrame.Angles(0, 0, math.pi / 2),
+		}
+	)
+	collider.CanQuery = false -- 카메라·탭 레이에 안 보이는 기둥이 걸리지 않게
+	collider.CanTouch = false
 	model.Parent = parent
 	return model
 end

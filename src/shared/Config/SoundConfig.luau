@@ -1,6 +1,6 @@
 --!strict
 --[[
-	사운드 18종 + 배경음 플레이리스트. 기획서 §9.6 표.
+	사운드 21종 + 배경음 플레이리스트. 기획서 §9.6 표.
 
 	★ id 는 두 종류다. rbxassetid:// 는 Creator Store 의 무료 음원이고,
 	  rbxasset://sounds/* 는 로블록스 엔진 내장 음원을 pitch(PlaybackSpeed)와 volume 으로
@@ -73,6 +73,13 @@ local DEFS: { [string]: SoundDef } = {
 	-- 음악실 피아노 건반을 밟음(주인·방문객 각자 자기 화면에서만). 호출 쪽 pitch 로 건반마다 반음씩 올린다.
 	-- PSE "Toy Piano Grand Hitting Each Key 1"(건반 하나, 약 1초 감쇠)
 	piano = { id = "rbxassetid://9120218141", volume = 0.9, speed = 1, looped = false },
+	-- 꾸미기 물건이 바닥에 「톡」 놓임(서버 확인 뒤, 뿅 커지는 순간). PSE "Wood Impacts Soft Impacts On Temple Blocks 6" 0.6초
+	place = { id = "rbxassetid://9120917813", volume = 0.8, speed = 1, looped = false },
+	-- 놓인 물건을 집어 듦(옮기기 시작)·회전. 같은 목탁 계열을 높게. PSE "… Temple Blocks 4" 0.6초
+	lift = { id = "rbxassetid://9120917605", volume = 0.5, speed = 1.3, looped = false },
+	turn = { id = "rbxassetid://9120917605", volume = 0.35, speed = 1.7, looped = false },
+	-- 보관함으로 넣음. 콤보 반짝을 낮게. PSE "Synth Sparkle Tone High Pitch Bell Tone Ding 3"
+	store = { id = "rbxassetid://9126073064", volume = 0.45, speed = 0.8, looped = false },
 }
 
 SoundConfig.DEFS = DEFS
@@ -84,7 +91,7 @@ SoundConfig.DEFS = DEFS
 	복도 웅성거림(hallway 0.08)보다 크고 효과음(0.35~0.8)보다는 작게 깐다.
 ]]
 SoundConfig.MUSIC = {
-	volume = 0.25,
+	volume = 0.12, -- 2026-10-03 0.25 는 크다는 의견으로 반으로 줄였다
 	duck = 0.3, -- duck 효과음이 울리는 동안 배경음 그룹 Volume
 	tracks = {
 		-- APM "Play School" 2:01(밝은 동요풍)
