@@ -1388,6 +1388,7 @@ local function buildElevator(content: Frame, payload: any)
 		b.LayoutOrder = i
 		b.Activated:Connect(function()
 			Remotes.RideElevator:FireServer(plotId, stop.floor)
+			SoundController.play("elevator")
 			PanelController.close()
 		end)
 	end

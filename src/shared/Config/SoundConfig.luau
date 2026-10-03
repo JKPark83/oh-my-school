@@ -1,6 +1,6 @@
 --!strict
 --[[
-	사운드 21종 + 배경음 플레이리스트. 기획서 §9.6 표.
+	사운드 22종 + 배경음 플레이리스트. 기획서 §9.6 표.
 
 	★ id 는 두 종류다. rbxassetid:// 는 Creator Store 의 무료 음원이고,
 	  rbxasset://sounds/* 는 로블록스 엔진 내장 음원을 pitch(PlaybackSpeed)와 volume 으로
@@ -80,6 +80,8 @@ local DEFS: { [string]: SoundDef } = {
 	turn = { id = "rbxassetid://9120917605", volume = 0.35, speed = 1.7, looped = false },
 	-- 보관함으로 넣음. 콤보 반짝을 낮게. PSE "Synth Sparkle Tone High Pitch Bell Tone Ding 3"
 	store = { id = "rbxassetid://9126073064", volume = 0.45, speed = 0.8, looped = false },
+	-- 엘리베이터 층 버튼을 누름(「띵동」 차임). 패널 여닫기 tick 과 다르게 들리도록. PSE "Elevator Bell Synth Chimes 2" 2.4초
+	elevator = { id = "rbxassetid://9114301515", volume = 0.6, speed = 1, looped = false },
 }
 
 SoundConfig.DEFS = DEFS
